@@ -50,9 +50,9 @@ describe('light appearance', () => {
     if (preset === 'default') { expect(css).toBe(''); return; }
     expect(document.documentElement.getAttribute('data-light-background')).toBe('solid');
     for (const token of ['background', 'card', 'popover']) expect(css).toContain(`--${token}:0 0% 100%`);
-    for (const token of ['muted', 'secondary', 'accent', 'border', 'input']) expect(css).not.toMatch(new RegExp(`--${token}:`));
+    for (const token of ['muted', 'secondary', 'accent', 'border', 'input']) expect(css).toMatch(new RegExp(`--${token}:`));
   });
-  it('removes all custom variables and image layers in dark mode and restores light', () => {
+  it('retains palette tokens but hides image layers in dark mode and restores light', () => {
     const v = normalizeLightAppearance({ preset: 'rose', background: IMAGE });
     applyLightAppearance(v, false, 'blob:sample');
     expect(document.documentElement.hasAttribute('data-light-appearance')).toBe(true);
@@ -61,7 +61,8 @@ describe('light appearance', () => {
     applyLightAppearance(v, true, 'blob:sample');
     expect(document.documentElement.hasAttribute('data-light-appearance')).toBe(false);
     expect(document.documentElement.hasAttribute('data-light-background')).toBe(false);
-    expect(document.getElementById('pd-light-appearance')!.textContent).toBe('');
+    expect(document.getElementById('pd-light-appearance')!.textContent).toContain('--pd-wallpaper:none');
+    expect(document.documentElement.hasAttribute('data-appearance')).toBe(true);
     applyLightAppearance(v, false);
     expect(document.documentElement.hasAttribute('data-light-appearance')).toBe(true);
     applyLightAppearance(normalizeLightAppearance(), false);
@@ -83,7 +84,7 @@ describe('light appearance', () => {
     expect(style.textContent).not.toContain('--pd-image-opacity');
     expect(deriveLightBackgrounds(image).content).toContain('90%, transparent');
     applyLightAppearance(image, true);
-    expect(style.textContent).toBe('');
+    expect(style.textContent).toContain('--pd-wallpaper:none');
     applyLightAppearance(normalizeLightAppearance({ panelOpacity: 100 }), false);
     expect(style.textContent).toBe('');
   });
@@ -116,9 +117,9 @@ describe('light appearance', () => {
     expect(deriveLightBackgrounds(legacy).backdrop).toBe('#b9dfce');
     applyLightAppearance(legacy, false);
     expect(document.documentElement.getAttribute('data-light-background')).toBe('solid');
-    expect(document.getElementById('pd-light-appearance')!.textContent).not.toContain('linear-gradient');
+    expect(document.getElementById('pd-light-appearance')!.textContent).not.toContain('#e9bee4');
     applyLightAppearance(legacy, true);
-    expect(document.getElementById('pd-light-appearance')!.textContent).toBe('');
+    expect(document.getElementById('pd-light-appearance')!.textContent).toContain('--pd-wallpaper:none');
   });
   it('folds image intensity and both panel opacities into one transparency', () => {
     // visible image = intensity × (1 − sidebar opacity)
@@ -138,7 +139,7 @@ describe('light appearance', () => {
     applyLightAppearance(value, false);
     expect(document.getElementById('pd-light-appearance')!.textContent).toContain('--pd-content-alpha:75%');
     applyLightAppearance(value, true);
-    expect(document.getElementById('pd-light-appearance')!.textContent).toBe('');
+    expect(document.getElementById('pd-light-appearance')!.textContent).toContain('--pd-wallpaper:none');
   });
   it.each(['#000000', '#ffffff', '#ff0000', '#0000ff', '#00ff00'])('keeps panel labels readable at opacity limits with %s', background => {
     for (const transparency of [MIN_TRANSPARENCY, DEFAULT_TRANSPARENCY, 25, MAX_TRANSPARENCY]) {

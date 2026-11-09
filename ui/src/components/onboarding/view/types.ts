@@ -1,20 +1,9 @@
-import type { CliProvider } from '../../provider-auth/types';
 import type { ApiModelListItem } from '../../../shared/modelListApi';
 import type { CatalogProvider, CatalogProviderProtocol } from '../../../shared/catalogProviders';
 import type { OnboardingStepId } from './constants';
 import type { TokenMode, WorkspaceType } from '../../project-creation-wizard/types';
 
-export type { CliProvider };
 export type { OnboardingStepId };
-
-export type ProviderAuthStatus = {
-  authenticated: boolean;
-  email: string | null;
-  loading: boolean;
-  error: string | null;
-};
-
-export type ProviderStatusMap = Record<CliProvider, ProviderAuthStatus>;
 
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error' | 'manual';
 

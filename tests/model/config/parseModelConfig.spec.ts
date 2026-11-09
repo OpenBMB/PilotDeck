@@ -145,8 +145,8 @@ test("official openai and anthropic catalog models default to supporting speed",
   assert.equal(config.providers.anthropic.models["claude-sonnet-4-5-20250929"].capabilities.supportsSpeed, true);
 });
 
-test("all protocol defaults enable thinking for undeclared models", () => {
-  for (const protocol of ["openai", "anthropic", "google"] as const) {
+test("all protocol defaults use 256K context, 32K output and enable thinking for undeclared models", () => {
+  for (const protocol of ["openai", "openai-responses", "anthropic", "google"] as const) {
     const config = parseModelConfig({
       providers: {
         [`custom-${protocol}`]: {
@@ -162,6 +162,8 @@ test("all protocol defaults enable thinking for undeclared models", () => {
       true,
       protocol,
     );
+    assert.equal(config.providers[`custom-${protocol}`].models["undeclared-model"].capabilities.maxContextTokens, 262_144, protocol);
+    assert.equal(config.providers[`custom-${protocol}`].models["undeclared-model"].capabilities.maxOutputTokens, 32_768, protocol);
   }
 });
 
@@ -245,6 +247,25 @@ test("catalog models keep their catalog image capability when no override is set
   assert.deepEqual(
     config.providers.openai.models["gpt-4o-mini"].multimodal.input,
     ["text", "image"],
+  );
+});
+
+test("partial multimodal overrides preserve catalog image constraints", () => {
+  const models = {
+    baseline: { "gpt-4o-mini": {} },
+    partial: { "gpt-4o-mini": { multimodal: { input: ["text", "image"] } } },
+    explicit: { "gpt-4o-mini": { multimodal: { input: ["text", "image"], maxImagesPerRequest: 3 } } },
+  } as const;
+  const parse = (model: typeof models[keyof typeof models]) => parseModelConfig({
+    providers: { openai: { apiKey: "test-key", models: model } },
+  }).providers.openai.models["gpt-4o-mini"].multimodal;
+
+  assert.deepEqual(parse(models.partial), parse(models.baseline));
+  assert.equal(parse(models.explicit).maxImagesPerRequest, 3);
+  assert.deepEqual(parse(models.explicit).supportedImageMimeTypes, parse(models.baseline).supportedImageMimeTypes);
+  assert.throws(
+    () => parse({ "gpt-4o-mini": { multimodal: { input: ["text", "image"], maxImagesPerRequest: 0 } } }),
+    (error: unknown) => (error as { code?: string }).code === "invalid_config_value",
   );
 });
 

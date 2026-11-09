@@ -3,35 +3,31 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import ModelPoolSections from './index';
-const mocks=vi.hoisted(()=>({commit:vi.fn()}));
-vi.mock('../../../../hooks/usePilotDeckConfig',()=>({usePilotDeckConfig:()=>({
-  raw:JSON.stringify({agent:{model:'HX API/old',maxContextTokens:128000},model:{providers:{'HX API':{protocol:'openai',url:'https://example.invalid/v1',models:{old:{},untested:{}}}}}}),
-  loading:false,error:null,commitRaw:mocks.commit,acceptServerConfig:vi.fn(),
-})}));
-vi.mock('./components/ModelsSection',()=>({default:()=> <div data-testid="modern-provider-workspace"/>}));
-afterEach(()=>{cleanup();vi.clearAllMocks();});
-it('saves an untested primary model from the new model pool without altering providers',async()=>{
- mocks.commit.mockResolvedValue({ok:true});
- render(<ModelPoolSections title="Models"/>);
- const select=screen.getByLabelText('pilotDeckConfig.panels.agents.mainModel.label');
- fireEvent.change(select,{target:{value:'HX API/untested'}});
- await waitFor(()=>expect(mocks.commit).toHaveBeenCalledOnce());
- const next=parse(mocks.commit.mock.calls[0][0]);
- expect(next.agent.model).toBe('HX API/untested');
- expect(next.model.providers['HX API'].models).toEqual({old:{},untested:{}});
- expect(screen.getByTestId('modern-provider-workspace')).toBeTruthy();
- expect(document.querySelector('[data-model-reference="agent.model"]')).toBeTruthy();
+const mocks = vi.hoisted(() => ({ commit: vi.fn() }));
+vi.mock('../../../../hooks/usePilotDeckConfig', () => ({ usePilotDeckConfig: () => ({
+  raw: JSON.stringify({ agent: { model: 'HX API/old', maxContextTokens: 128000, subagents: { default: 'HX API/helper' } }, model: { providers: { 'HX API': { protocol: 'openai', models: { old: {} } } } } }),
+  loading: false, error: null, commitRaw: mocks.commit, acceptServerConfig: vi.fn(),
+}) }));
+vi.mock('./components/ModelsSection', () => ({ default: ({ config, onChange }: any) => <div data-testid="modern-provider-workspace">
+  <button onClick={() => onChange({ ...config, model: { providers: { 'HX API': { ...config.model.providers['HX API'], models: { old: { capabilities: { maxContextTokens: 65536 } } } } } } })}>Save model settings</button>
+</div> }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+it('shows the provider workspace without primary-model or agent-context controls', () => {
+  render(<ModelPoolSections title="Models" />);
+  expect(screen.getByTestId('modern-provider-workspace')).toBeTruthy();
+  expect(screen.queryByLabelText('pilotDeckConfig.panels.agents.mainModel.label')).toBeNull();
+  expect(screen.queryByLabelText('pilotDeckConfig.panels.agents.mainModel.contextLimit')).toBeNull();
+  expect(document.querySelector('[data-model-reference="agent.model"]')).toBeNull();
+  expect(mocks.commit).not.toHaveBeenCalled();
 });
-it.each([['65536',65536],['',undefined]])('migrates the saved context override and saves %j without changing model capabilities',async(value,expected)=>{
- mocks.commit.mockResolvedValue({ok:true});
- render(<ModelPoolSections title="Models"/>);
- const input=screen.getByLabelText('pilotDeckConfig.panels.agents.mainModel.contextLimit') as HTMLInputElement;
- expect(input.value).toBe('128000');
- fireEvent.change(input,{target:{value}});
- fireEvent.blur(input);
- await waitFor(()=>expect(mocks.commit).toHaveBeenCalledOnce());
- const next=parse(mocks.commit.mock.calls[0][0]);
- expect(next.agent.model).toBe('HX API/old');
- expect(next.agent.maxContextTokens).toBe(expected);
- expect(next.model.providers['HX API'].models).toEqual({old:{},untested:{}});
+
+it('removes the hidden legacy context override on explicit model saves while preserving other agent settings', async () => {
+  mocks.commit.mockResolvedValue({ ok: true });
+  render(<ModelPoolSections title="Models" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Save model settings' }));
+  await waitFor(() => expect(mocks.commit).toHaveBeenCalledOnce());
+  const config = parse(mocks.commit.mock.calls[0][0]);
+  expect(config.agent).toEqual({ model: 'HX API/old', subagents: { default: 'HX API/helper' } });
+  expect(config.model.providers['HX API'].models.old.capabilities.maxContextTokens).toBe(65536);
 });

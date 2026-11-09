@@ -66,11 +66,11 @@ export function ConfirmDialog({ title, children, confirmLabel, destructive = fal
         </header>
         <div id={bodyId} className="min-h-0 overflow-y-auto break-words px-5 pb-5 text-sm text-muted-foreground">
           {children}
-          {error && <p role="alert" className="mt-3 rounded-md bg-destructive/10 p-3 text-destructive">{error}</p>}
+          {error && <p role="alert" className="mt-3 rounded-md bg-destructive/10 p-3 text-[var(--pd-danger-ink)]">{error}</p>}
         </div>
         <footer className="flex justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
           <button ref={cancel} type="button" disabled={busy} onClick={onCancel} className="h-9 shrink-0 rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50">{t('confirmDialog.cancel')}</button>
-          <button type="button" disabled={busy || disabled} onClick={onConfirm} className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-[var(--pd-accent,#5b5ce2)] text-white enabled:hover:bg-[var(--pd-accent-strong,#4948cf)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-accent,#5b5ce2)] focus-visible:ring-offset-2 focus-visible:ring-offset-background'}`}>
+          <button type="button" disabled={busy || disabled} onClick={onConfirm} className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-[var(--pd-accent,#5b5ce2)] text-white enabled:hover:bg-[var(--pd-button-hover,#4948cf)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-accent,#5b5ce2)] focus-visible:ring-offset-2 focus-visible:ring-offset-background'}`}>
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? t('confirmDialog.working') : confirmLabel || t('confirmDialog.confirm')}
           </button>
         </footer>

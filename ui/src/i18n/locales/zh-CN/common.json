@@ -1,8 +1,17 @@
 {
+  "formControls": {
+    "chooseDate": "选择日期", "chooseTime": "选择时间",
+    "previousMonth": "上个月", "nextMonth": "下个月",
+    "hour": "时", "minute": "分", "clear": "清空", "today": "今天", "apply": "确定"
+  },
   "filePickerFailed": "无法打开或读取文件选择，请重试。",
   "zoomIndicator": {
     "label": "界面缩放",
     "reset": "复位"
+  },
+  "keyboard": {
+    "enter": "Enter",
+    "escape": "Esc"
   },
   "buttons": {
     "save": "保存",
@@ -53,7 +62,10 @@
     "noMatches": "无匹配结果",
     "previous": "上一个匹配项",
     "next": "下一个匹配项",
-    "close": "关闭搜索"
+    "close": "关闭搜索",
+    "historyLoadFailed": "无法加载更早的消息。",
+    "retryHistory": "重试",
+    "loadingHistory": "正在加载对话历史"
   },
   "filesWorkbench": {
     "openFileTitle": "打开文件开始工作",
@@ -81,6 +93,10 @@
     }
   },
   "skillsTab": {
+    "enabled": "已开启",
+    "disabled": "已关闭",
+    "toggleSkill": "启用 {{name}}",
+    "enabledCount": "已开启 {{count}} / {{total}}",
     "pickProject": "选一个项目来管理它的技能。",
     "generalChat": "通用对话",
     "refresh": "刷新",
@@ -690,8 +706,11 @@
     "modelUnavailable": "模型配置不可用",
     "modelInvalid": "PilotDeck 无法验证模型配置。",
     "fixAndRetry": "请修复配置后重试。",
-    "gatewayFailed": "Gateway 启动失败",
-    "gatewayUnavailable": "模型配置已保存，但本地 Gateway 暂不可用。",
+    "gatewayFailed": "Gateway 不可用",
+    "gatewayUnavailable": "本地 Gateway 已停止或未能启动，模型配置已保存。",
+    "openRuntimeLog": "打开运行日志",
+    "runtimeLogLocation": "日志位置",
+    "configurationFile": "配置文件",
     "gatewayRetryHint": "重试期间仍可使用网页界面。",
     "requiredFields": "请填写所有字段。",
     "usernameLength": "用户名至少需要 3 个字符。",
@@ -751,6 +770,10 @@
     },
     "tasksCompleted": "已完成 {{completed}}/{{total}}",
     "updatingTodos": "正在更新待办事项",
+    "todoList": "待办事项",
+    "todoListUpdated": "待办事项已更新",
+    "toolDetails": "详情",
+    "todoProgress": "已完成 {{completed}}/{{count}}",
     "taskList": "任务列表",
     "taskDetails": "任务详情",
     "subagentResult": "子智能体结果",
@@ -801,7 +824,10 @@
     "questionsCount": "{{count}} 个问题",
     "projectScope": "项目",
     "reloadInterface": "重新加载界面",
-    "chatLayoutError": "消息显示异常，可以尝试重新加载界面。"
+    "chatLayoutError": "消息显示异常，可以尝试重新加载界面。",
+    "questionAnswered": "已回答",
+    "answersProgress": "已回答 {{answered}}/{{count}}",
+    "questionTool": "提问"
   },
   "confirmDialog": {
     "title": "确认操作",

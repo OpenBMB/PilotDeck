@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeModelError } from "../../../src/model/errors/normalizeModelError.js";
+import { NetworkFetchError } from "../../../src/network/fetch.js";
 
 function codeFor(message: string): string {
   return normalizeModelError("test", "openai", new Error(message)).code;
@@ -32,6 +33,20 @@ test("normalizeModelError classifies common network failures", () => {
   assert.equal(codeFor("connect ECONNREFUSED 127.0.0.1:443"), "connection_refused");
   assert.equal(codeFor("certificate has expired"), "tls_error");
   assert.equal(codeFor("proxy CONNECT failed"), "proxy_error");
+});
+
+test("classifies transport codes and nested causes without retrying TLS or cancellation", () => {
+  for (const [error, code, retryable] of [
+    [new NetworkFetchError("network_fetch_failed", "Connection closed"), "transport_error", true],
+    [new TypeError("terminated", { cause: { code: "ECONNRESET" } }), "connection_reset", true],
+    [new TypeError("fetch failed", { cause: { code: "ETIMEDOUT" } }), "timeout", true],
+    [new TypeError("fetch failed", { cause: { code: "CERT_HAS_EXPIRED" } }), "tls_error", false],
+    [new NetworkFetchError("network_abort", "Aborted"), "aborted", false],
+  ] as const) {
+    const result = normalizeModelError("test", "openai", error);
+    assert.equal(result.code, code);
+    assert.equal(result.retryable, retryable);
+  }
 });
 
 test("normalizeModelError marks unsupported image model errors as image-strip recoverable", () => {

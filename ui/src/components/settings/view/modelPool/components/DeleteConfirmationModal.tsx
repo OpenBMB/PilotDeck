@@ -169,7 +169,7 @@ export default function DeleteConfirmationModal({
           {change.reason === "redundant" && <span className="ml-2 text-xs">{t(key("redundant"))}</span>}
         </span>
         {tab && onNavigate && (
-          <button type="button" className="shrink-0 text-xs text-primary hover:underline disabled:opacity-50"
+          <button type="button" className="shrink-0 text-xs text-[var(--pd-accent-strong,#4948cf)] hover:underline disabled:opacity-50"
             disabled={applying} onClick={() => onNavigate(tab)}>
             {t(key("openSettings"))}
           </button>
@@ -200,12 +200,12 @@ export default function DeleteConfirmationModal({
           <p>{t(key("inUse"), { name })}</p>
         </div>
         {blocked?.code === "ROUTER_REQUIRES_MODEL" && (
-          <p role="alert" className="rounded-md bg-destructive/10 p-3 text-destructive">
+          <p role="alert" className="rounded-md bg-destructive/10 p-3 text-[var(--pd-danger-ink)]">
             {t(key("routerRequiresModel"))}
           </p>
         )}
         {blocked && blocked.code !== "ROUTER_REQUIRES_MODEL" && blocked.code !== "REPLACEMENT_REQUIRED" && (
-          <p role="alert" className="rounded-md bg-destructive/10 p-3 text-destructive">{blocked.message}</p>
+          <p role="alert" className="rounded-md bg-destructive/10 p-3 text-[var(--pd-danger-ink)]">{blocked.message}</p>
         )}
         {showReplacement && (
           <label className="flex flex-col gap-2">

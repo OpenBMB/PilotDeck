@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { promisify } from 'node:util';
+import path from 'node:path';
 import skillsRouter from './skills.js';
 
 const mocks = vi.hoisted(() => ({ exec: vi.fn(), import: vi.fn() }));
@@ -123,7 +124,7 @@ it('imports a reviewed publisher package without replacing existing global skill
       force: false,
     }),
   );
-  expect(mocks.import.mock.calls[0][0].sourcePath).toMatch(/\/skills\/@alice\/pdf$/);
+  expect(mocks.import.mock.calls[0][0].sourcePath.endsWith(path.sep + path.join('skills', '@alice', 'pdf'))).toBe(true);
   expect(response.json.mock.calls[0][0]).toMatchObject({
     installed: true,
     slug: 'alice--pdf',

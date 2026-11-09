@@ -21,8 +21,17 @@ export async function probeMacPermissions({ runtime, execute, env }) {
     if (runtime.probeSupported) {
       const result = path.join(directory, `pilotdeck-permissions-${randomUUID()}.json`);
       fs.writeFileSync(result, '', { mode: 0o600, flag: 'wx' });
-      await execute('/usr/bin/open', ['-n', '-g', '-W', '-a', runtime.app, '--args', 'probe', '--result-file', result], { env, timeout: 10_000 });
-      return permissionResult(JSON.parse(fs.readFileSync(result, 'utf8')), runtime.bundleId);
+      // The helper publishes its result and exits immediately. open -W can
+      // lose that process before installing its kevent exit watcher. Wait on
+      // the private result-file protocol instead of the launcher's exit watch.
+      const deadline = Date.now() + 10_000;
+      await execute('/usr/bin/open', ['-n', '-g', '-a', runtime.app, '--args', 'probe', '--result-file', result], { env, timeout: 10_000 });
+      while (Date.now() < deadline) {
+        const value = fs.readFileSync(result, 'utf8');
+        if (value.trim()) return permissionResult(JSON.parse(value), runtime.bundleId);
+        await delay(50);
+      }
+      throw new Error('Native permission check timed out waiting for its result.');
     }
     // Older signed releases have no probe entrypoint. Use an isolated, short-
     // lived host/driver solely for the read-only check; never publish its socket.

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import './attachmentPreview.css';
 
 export interface LightboxImage {
   data: string;
@@ -67,30 +68,17 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
   if (typeof document === 'undefined') return null;
   if (images.length === 0) return null;
 
-  const active = images[activeIndex];
+  const active = images[Math.min(activeIndex, images.length - 1)];
 
   return createPortal(
     <div
+      data-modal-overlay
       role="dialog"
       aria-modal="true"
       aria-label={active?.name || t('common:uiText.imagePreview')}
-      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/85 backdrop-blur-sm"
+      className="attachment-preview-viewport z-[2147483647] flex items-center justify-center bg-black/85 px-16 py-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
-        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white shadow-sm transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-        aria-label={t('common:uiText.closePreview')}
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-
       {images.length > 1 ? (
         <button
           type="button"
@@ -124,17 +112,17 @@ const ImageLightbox = ({ images, startIndex = 0, onClose }: ImageLightboxProps) 
       ) : null}
 
       <figure
-        className="flex max-h-[92vh] max-w-[92vw] flex-col items-center gap-2"
+        className="flex max-h-full min-h-0 max-w-full flex-col items-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
         <img
           key={active.data}
           src={active.data}
           alt={active.name || t('common:uiText.imagePreview')}
-          className="max-h-[88vh] max-w-[92vw] rounded-md object-contain shadow-2xl"
+          className="max-h-full min-h-0 max-w-full rounded-md object-contain shadow-2xl"
         />
         {active.name || images.length > 1 ? (
-          <figcaption className="flex items-center gap-2 text-xs text-white/80">
+          <figcaption className="flex max-w-full shrink-0 items-center gap-2 text-xs text-white/80">
             {active.name ? <span className="truncate">{active.name}</span> : null}
             {images.length > 1 ? (
               <span className="rounded-full bg-white/15 px-2 py-0.5 tabular-nums">

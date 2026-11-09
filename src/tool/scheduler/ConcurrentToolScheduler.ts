@@ -4,60 +4,71 @@ import type { ToolRuntime } from "../execution/ToolRuntime.js";
 import type { ToolRegistry } from "../registry/ToolRegistry.js";
 import type { PilotDeckToolScheduler } from "./ToolScheduler.js";
 
-/**
- * Executes concurrency-safe tool calls in parallel and serializes the rest.
- *
- * Ordering: all concurrency-safe calls run first (via Promise.all), then
- * non-safe calls run sequentially.  Results are returned in the original
- * call order regardless of execution order.
- */
+export type ConcurrentToolSchedulerOptions = {
+  /** Maximum active runtime calls in one batch. Defaults to four. */
+  maxConcurrency?: number;
+};
+
+/** Executes consecutive safe calls in a bounded pool; exclusive calls are barriers. */
 export class ConcurrentToolScheduler implements PilotDeckToolScheduler {
+  private readonly maxConcurrency: number;
+
   constructor(
     private readonly runtime: ToolRuntime,
     private readonly registry: ToolRegistry,
-  ) {}
+    options: ConcurrentToolSchedulerOptions = {},
+  ) {
+    this.maxConcurrency = options.maxConcurrency ?? 4;
+    if (!Number.isSafeInteger(this.maxConcurrency) || this.maxConcurrency < 1) {
+      throw new RangeError("maxConcurrency must be a positive safe integer.");
+    }
+  }
 
   async executeAll(
     calls: PilotDeckToolCall[],
     context: PilotDeckToolRuntimeContext,
   ): Promise<PilotDeckToolResult[]> {
-    if (calls.length <= 1) {
-      const results: PilotDeckToolResult[] = [];
-      for (const call of calls) {
-        results.push(await this.runtime.execute(call, context));
+    if (calls.length === 0) return [];
+    if (calls.length === 1) return [await this.runtime.execute(calls[0], context)];
+
+    const results = new Array<PilotDeckToolResult>(calls.length);
+    const active = new Set<Promise<void>>();
+    // Presence is separate from the rejected value (which may be undefined).
+    let failure: { reason: unknown } | undefined;
+    const checkFailure = (): void => { if (failure) throw failure.reason; };
+    const start = (index: number): void => {
+      const execution = (async () => {
+        try {
+          results[index] = await this.runtime.execute(calls[index], context, {
+            requireConcurrencySafe: this.maxConcurrency > 1,
+          });
+        } catch (reason) {
+          failure ??= { reason };
+        }
+      })();
+      const tracked = execution.finally(() => { active.delete(tracked); });
+      active.add(tracked);
+    };
+
+    try {
+      for (let index = 0; index < calls.length; index++) {
+        if (active.size >= this.maxConcurrency) await Promise.race(active);
+        checkFailure();
+        const call = calls[index];
+        if (context.abortSignal?.aborted || !this.registry.get(call.name)?.isConcurrencySafe(call.input)) {
+          await Promise.all(active);
+          checkFailure();
+          results[index] = await this.runtime.execute(call, context);
+        } else {
+          start(index);
+        }
       }
+      await Promise.all(active);
+      checkFailure();
       return results;
+    } finally {
+      // Neither cancellation nor an unexpected failure may orphan started calls.
+      await Promise.all(active);
     }
-
-    const resultSlots = new Array<PilotDeckToolResult | undefined>(calls.length);
-
-    const concurrentIndices: number[] = [];
-    const sequentialIndices: number[] = [];
-
-    for (let i = 0; i < calls.length; i++) {
-      const call = calls[i];
-      const tool = this.registry.get(call.name);
-      if (tool && tool.isConcurrencySafe(call.input)) {
-        concurrentIndices.push(i);
-      } else {
-        sequentialIndices.push(i);
-      }
-    }
-
-    // Phase 1: run concurrency-safe calls in parallel
-    if (concurrentIndices.length > 0) {
-      const promises = concurrentIndices.map(async (idx) => {
-        const result = await this.runtime.execute(calls[idx], context);
-        resultSlots[idx] = result;
-      });
-      await Promise.all(promises);
-    }
-
-    // Phase 2: run the rest sequentially
-    for (const idx of sequentialIndices) {
-      resultSlots[idx] = await this.runtime.execute(calls[idx], context);
-    }
-
-    return resultSlots as PilotDeckToolResult[];
   }
 }

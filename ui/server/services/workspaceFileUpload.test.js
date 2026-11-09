@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fileSymlinkOrSkip } from '../test-support/symlink.js';
 import express from 'express';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
@@ -84,10 +85,12 @@ describe('workspace uploads', () => {
     await f.cleanStaging();
   });
 
-  it('treats directories and dangling symlinks as name conflicts', async () => {
+  it.for(['directory', 'file'])('treats directories and dangling %s links as name conflicts', async (type, context) => {
     const f = await fixture();
     await fs.mkdir(path.join(f.root, 'folder'));
-    await fs.symlink(path.join(f.root, 'missing'), path.join(f.root, 'link'));
+    if (type === 'file') {
+      if (!fileSymlinkOrSkip(context, path.join(f.root, 'missing'), path.join(f.root, 'link'))) return;
+    } else await fs.symlink(path.join(f.root, 'missing'), path.join(f.root, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
     const checked = await f.check(['folder', 'link']);
     expect(checked.body.conflicts).toEqual(['folder', 'link']);
     const result = await f.send([file('folder'), file('link')]);
@@ -143,7 +146,7 @@ describe('workspace uploads', () => {
     const f = await fixture();
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'pd-outside-test-'));
     cleanups.push(() => fs.rm(outside, { recursive: true, force: true }));
-    await fs.symlink(outside, path.join(f.root, 'link'));
+    await fs.symlink(outside, path.join(f.root, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
     for (const name of ['../escape.txt', 'link/escape.txt']) {
       const result = await f.send([file('good.txt'), file(name)]);
       expect(result.body.error.code).toBe('UPLOAD_INVALID_PATH');

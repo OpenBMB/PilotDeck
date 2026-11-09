@@ -53,6 +53,7 @@ export class SessionRouter {
   private readonly closingSessions = new Map<string, Promise<void>>();
   private readonly closingProjects = new Map<string, string | undefined>();
   private readonly projectGenerations = new Map<string, number>();
+  private readonly sessionGenerations = new Map<string, symbol>();
   private readonly pausedProjects = new Set<string>();
   private readonly creatingSessions = new Map<Promise<AgentSession>, GatewaySessionContext>();
   private readonly inFlightTurns = new Map<string, string>();
@@ -61,6 +62,8 @@ export class SessionRouter {
   private readonly now: () => Date;
   private readonly idleSweepTimer?: ReturnType<typeof setInterval>;
   private isShutdown = false;
+  private runtimeRevision = 0;
+  private readonly projectRuntimeRevisions = new Map<string, number>();
 
   constructor(private readonly options: SessionRouterOptions) {
     this.idleSessionTimeoutMs = options.idleSessionTimeoutMs ?? DEFAULT_IDLE_SESSION_TIMEOUT_MS;
@@ -72,40 +75,63 @@ export class SessionRouter {
     }
   }
 
-  async getOrCreate(context: GatewaySessionContext): Promise<AgentSession> {
-    this.assertProjectOpen(context.projectKey);
-    const generation = this.projectGenerations.get(context.projectKey ?? "");
+  async getOrCreate(context: GatewaySessionContext, turnRunId?: string): Promise<AgentSession> {
+    if (this.isShutdown) throw new Error("Session router is closed.");
     this.sweepIdle();
-    const closing = this.closingSessions.get(context.sessionKey);
-    if (closing) await closing;
-    const cached = this.sessions.get(context.sessionKey);
-    if (cached) {
-      cached.context = mergeSessionContext(cached.context, context);
-      if (cached.dirtyReason && this.options.recreateSession) {
-        await this.emitSessionEvict(context.sessionKey, cached, "dirty_recreate");
-        const recreated = await this.createTrackedSession(cached.context, () => this.options.recreateSession!(cached.context, cached.session));
-        if (generation !== this.projectGenerations.get(context.projectKey ?? "")) {
-          await recreated.dispose?.();
-          throw new Error("Project was closed while recreating the session.");
+    const sessionGeneration = this.sessionGenerations.get(context.sessionKey) ?? Symbol(context.sessionKey);
+    this.sessionGenerations.set(context.sessionKey, sessionGeneration);
+    const sessionClosed = () => this.isShutdown || this.sessionGenerations.get(context.sessionKey) !== sessionGeneration;
+    try {
+      const runtimeRevision = this.runtimeRevision;
+      const projectKey = this.sessions.get(context.sessionKey)?.context.projectKey ?? context.projectKey;
+      const projectRevision = this.projectRuntimeRevisions.get(projectKey ?? '');
+      const runtimeChanged = () => runtimeRevision !== this.runtimeRevision
+        || projectRevision !== this.projectRuntimeRevisions.get(projectKey ?? '');
+      this.assertProjectOpen(context.projectKey);
+      const generation = this.projectGenerations.get(context.projectKey ?? "");
+      const closing = this.closingSessions.get(context.sessionKey);
+      if (closing) await closing;
+      if (sessionClosed()) throw new Error("Session was closed while initializing.");
+      const cached = this.sessions.get(context.sessionKey);
+      if (cached) {
+        cached.context = mergeSessionContext(cached.context, context);
+        // A history/resume request must not recreate the session underneath a live
+        // turn. Only the turn that reserved this slot may refresh its runtime.
+        const activeRunId = this.inFlightTurns.get(context.sessionKey);
+        if (cached.dirtyReason && this.options.recreateSession && (!activeRunId || activeRunId === turnRunId)) {
+          await this.emitSessionEvict(context.sessionKey, cached, "dirty_recreate");
+          if (sessionClosed()) throw new Error("Session was closed while recreating.");
+          const recreated = await this.createTrackedSession(cached.context, () => this.options.recreateSession!(cached.context, cached.session));
+          if (sessionClosed() || generation !== this.projectGenerations.get(context.projectKey ?? "")) {
+            await recreated.dispose?.();
+            throw new Error("Session or project was closed while recreating the session.");
+          }
+          cached.session = recreated;
+          cached.dirtyReason = runtimeChanged() ? 'runtime_changed' : undefined;
         }
-        cached.session = recreated;
-        cached.dirtyReason = undefined;
+        cached.lastUsedAt = this.nowMs();
+        return cached.session;
       }
-      cached.lastUsedAt = this.nowMs();
-      return cached.session;
-    }
 
-    const session = await this.createTrackedSession(context, () => this.options.createSession(context));
-    if (generation !== this.projectGenerations.get(context.projectKey ?? "")) {
-      await session.dispose?.();
-      throw new Error("Project was closed while creating the session.");
+      const session = await this.createTrackedSession(context, () => this.options.createSession(context));
+      if (sessionClosed() || generation !== this.projectGenerations.get(context.projectKey ?? "")) {
+        await session.dispose?.();
+        throw new Error("Session or project was closed while creating the session.");
+      }
+      this.sessions.set(context.sessionKey, {
+        session,
+        lastUsedAt: this.nowMs(),
+        context,
+        ...(runtimeChanged() ? { dirtyReason: 'runtime_changed' } : {}),
+      });
+      return session;
+    } finally {
+      if (!this.sessions.has(context.sessionKey)
+        && ![...this.creatingSessions.values()].some(pending => pending.sessionKey === context.sessionKey)
+        && this.sessionGenerations.get(context.sessionKey) === sessionGeneration) {
+        this.sessionGenerations.delete(context.sessionKey);
+      }
     }
-    this.sessions.set(context.sessionKey, {
-      session,
-      lastUsedAt: this.nowMs(),
-      context,
-    });
-    return session;
   }
 
   private assertProjectOpen(projectKey?: string): void {
@@ -144,6 +170,7 @@ export class SessionRouter {
   resumeProject(projectKey: string): void { this.pausedProjects.delete(projectKey); }
 
   beginTurn(sessionKey: string, runId: string): boolean {
+    if (this.isShutdown) return false;
     this.sweepIdle();
     if (this.inFlightTurns.has(sessionKey)) {
       return false;
@@ -200,6 +227,7 @@ export class SessionRouter {
   }
 
   async close(sessionKey: string): Promise<void> {
+    this.sessionGenerations.delete(sessionKey);
     const record = this.sessions.get(sessionKey);
     if (record && this.sessions.delete(sessionKey)) {
       await this.emitSessionEvict(sessionKey, record, "closed");
@@ -210,6 +238,7 @@ export class SessionRouter {
   }
 
   markAllDirty(reason = "runtime_changed"): number {
+    this.runtimeRevision++;
     let count = 0;
     for (const record of this.sessions.values()) {
       record.dirtyReason = reason;
@@ -219,6 +248,7 @@ export class SessionRouter {
   }
 
   markProjectDirty(projectKey: string, reason = "runtime_changed"): number {
+    this.projectRuntimeRevisions.set(projectKey, (this.projectRuntimeRevisions.get(projectKey) ?? 0) + 1);
     let count = 0;
     for (const record of this.sessions.values()) {
       if (record.context.projectKey !== projectKey) {
@@ -274,6 +304,7 @@ export class SessionRouter {
       void this.emitSessionEvict(sessionKey, record, "shutdown").catch(() => undefined);
     }
     this.sessions.clear();
+    this.sessionGenerations.clear();
     this.inFlightTurns.clear();
   }
 
@@ -301,6 +332,7 @@ export class SessionRouter {
       }
       if (now - record.lastUsedAt > this.idleSessionTimeoutMs) {
         this.sessions.delete(sessionKey);
+        this.sessionGenerations.delete(sessionKey);
         void this.emitSessionEvict(sessionKey, record, "idle").catch(() => undefined);
       }
     }

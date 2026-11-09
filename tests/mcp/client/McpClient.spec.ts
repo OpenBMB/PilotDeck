@@ -35,3 +35,20 @@ test("McpClient routes streamable_http fetches with bounded timeouts", async () 
   await transportFetch?.("https://mcp.example.test/mcp", { method: "POST" });
   assert.equal(calls.at(-1)?.timeoutMs, 12_345);
 });
+
+for (const closeBeforeFailure of [false, true]) {
+  test(`OAuth handshake failure ${closeBeforeFailure ? "after close preserves idle" : "requests sign-in"}`, async (t) => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { UnauthorizedError } = await import("@modelcontextprotocol/sdk/client/auth.js");
+    let reject!: (error: Error) => void;
+    t.mock.method(Client.prototype, "connect", () => new Promise<void>((_, fail) => { reject = fail; }));
+    const client = new McpClient({ id: "oauth-status", transport: "streamable_http", url: "https://example.com/mcp" });
+    const pending = client.start();
+    const failed = assert.rejects(pending);
+    if (closeBeforeFailure) await client.close();
+    reject(new UnauthorizedError("Sign in required"));
+    await failed;
+    assert.equal(client.getStatus(), closeBeforeFailure ? "idle" : "needs-auth");
+    await client.close();
+  });
+}

@@ -57,7 +57,7 @@ export default function GithubAuthenticationCard({
       )}
 
       {!loadingTokens && tokenLoadError && (
-        <p className="mb-3 text-sm text-destructive">{tokenLoadError}</p>
+        <p className="mb-3 text-sm text-[var(--pd-danger-ink)]">{tokenLoadError}</p>
       )}
 
       {!loadingTokens && availableTokens.length > 0 && (

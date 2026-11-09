@@ -52,7 +52,7 @@ describe('desktop update assets', () => {
     expect(selectUpdateAssets(latest, platform, arch)).toMatchObject({ asset: latest.assets[0], feed });
     expect(validateUpdateInfo({ version: latest.version, files: [{ url: payload, sha512, size: 42 }] }, latest, platform, arch)).toEqual(latest.assets[0]);
     expect(() => validateUpdateInfo({ version: latest.version, files: [{ url: payload, sha512, size: 43 }] }, latest, platform, arch)).toThrow('invalidUpdateMetadata');
-    expect(selectUpdateAssets({ ...latest, assets: latest.assets.slice(0, 1) }, platform, arch)).toBeNull();
+    expect(selectUpdateAssets({ ...latest, assets: latest.assets.slice(0, 1) }, platform, arch)?.asset).toEqual(latest.assets[0]);
   });
 
   it('requires the x64 Linux package name after checking the latest version', () => {
@@ -78,6 +78,7 @@ describe('desktop update assets', () => {
       updater: updater as unknown as AppUpdater, repository: 'OpenBMB/PilotDeck',
       platform: 'linux', arch: 'arm64', version: '2026.927.0', packaged: true,
       latestRelease: async () => latest,
+      downloadAvailable: async () => true,
       compareVersions: (left, right) => left.localeCompare(right),
       prepareToInstall, recoverRuntime: vi.fn(), verifyFile,
     });
@@ -85,7 +86,7 @@ describe('desktop update assets', () => {
     controller.start();
     await controller.wait();
     expect(updater.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({
-      channel: 'latest', url: 'https://github.com/OpenBMB/PilotDeck/releases/download/v2026.09.28/',
+      provider: 'custom', url: 'https://github.com/OpenBMB/PilotDeck/releases/download/v2026.09.28/',
     }));
     expect(verifyFile).toHaveBeenCalledWith('/tmp/PilotDeck-test.deb', latest.assets[0]);
     expect(prepareToInstall).toHaveBeenCalledOnce();

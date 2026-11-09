@@ -1,4 +1,5 @@
 import express from 'express';
+import generalWorkspaceRoutes from './generalWorkspace.js';
 import { apiKeysDb, credentialsDb, notificationPreferencesDb, pushSubscriptionsDb } from '../database/db.js';
 import { getPublicKey } from '../services/vapid-keys.js';
 import { normalizeNotificationPreferences } from '../../shared/notifications.js';
@@ -8,6 +9,7 @@ import {
 } from '../services/permissionSettings.js';
 
 const router = express.Router();
+router.use('/general-workspace', generalWorkspaceRoutes);
 
 // ===============================
 // Tool Permission Settings

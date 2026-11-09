@@ -50,6 +50,10 @@
   },
   "renamePlaceholder": "重命名 - 留空恢复默认",
   "contextMenu": {
+    "openInFinder": "在 Finder 中打开",
+    "openInFileExplorer": "在文件资源管理器中打开",
+    "openInFileManager": "在文件管理器中打开",
+    "openDirectoryFailed": "无法打开工作目录，该目录可能已移动或删除。",
     "label": "操作菜单"
   },
   "app": {

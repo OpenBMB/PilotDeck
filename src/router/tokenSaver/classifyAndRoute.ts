@@ -9,6 +9,7 @@ import type { RouterModelRef, RouterTokenSaverConfig } from "../config/schema.js
 import { extractLastUserMessage } from "./extractLastUserMessage.js";
 import { generateJudgePrompt } from "./generateJudgePrompt.js";
 import { parseTier } from "./parseTier.js";
+import { awaitWithAbort } from "../../runtime/abort.js";
 
 export type TokenSaverDecision = {
   tier: string;
@@ -43,6 +44,7 @@ export async function classifyAndRoute(
   input: ClassifyAndRouteInput,
 ): Promise<TokenSaverDecision | undefined> {
   const { config } = input;
+  input.abortSignal?.throwIfAborted();
   if (!config.enabled) {
     return undefined;
   }
@@ -94,7 +96,7 @@ export async function classifyAndRoute(
   });
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (attempt > 1) {
-      await new Promise((r) => setTimeout(r, 1_000));
+      await abortableDelay(1_000, input.abortSignal);
     }
     let timeout: NodeJS.Timeout | undefined;
     let timedOut = false;
@@ -122,8 +124,9 @@ export async function classifyAndRoute(
       });
       const judgeRequestPromise = input.judgeRuntime.complete(judgeRequest, {
         signal: judgeAbortController.signal,
+        requestContext: { sessionId: input.sessionId, purpose: "router-judge" },
       });
-      const response = await Promise.race([
+      const response = await awaitWithAbort(input.abortSignal, () => Promise.race([
         judgeRequestPromise,
         new Promise<never>((_, reject) => {
           timeout = setTimeout(() => {
@@ -133,7 +136,7 @@ export async function classifyAndRoute(
             reject(timeoutError);
           }, timeoutMs);
         }),
-      ]);
+      ]));
       console.log(
         `[token-saver] Judge raw content blocks (attempt ${attempt}):`,
         JSON.stringify(response.content).slice(0, 500),
@@ -301,6 +304,15 @@ export async function classifyAndRoute(
 
 class TokenSaverTimeoutError extends Error {
   readonly name = "TokenSaverTimeoutError";
+}
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => { clearTimeout(timer); reject(signal?.reason); };
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function describeFailure(error: unknown, attempts: number): TokenSaverFailure {

@@ -24,9 +24,10 @@ import type { Project } from '../../../../types/app';
 import { ToolRenderer, shouldHideToolResult } from '../../tools';
 import { UnifiedToolCall, usesUnifiedToolCall } from '../../tools/UnifiedToolCall';
 import { CollapsibleDisplay } from '../../tools/components';
-import DocumentReferenceChip from '../../../chat-v2/DocumentReferenceChip';
+import DocumentReferenceChip from './DocumentReferenceChip';
 import { Markdown } from './Markdown';
 import MessageCopyControl from './MessageCopyControl';
+import ConversationError from './ConversationError';
 import ImageLightbox, { type LightboxImage } from './ImageLightbox';
 
 type DiffLine = {
@@ -269,6 +270,9 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
   ]);
 
   const formattedTime = useMemo(() => new Date(message.timestamp).toLocaleTimeString(), [message.timestamp]);
+  if (message.type === 'error') {
+    return <div className="chat-message error px-3 sm:px-0" ref={messageRef}><ConversationError message={message} /></div>;
+  }
   const shouldHideThinkingMessage = Boolean(message.isThinking && !showThinking);
 
   if (shouldHideThinkingMessage) {
@@ -490,7 +494,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, o
                         type="button"
                         key={`${image.name || 'tool-image'}-${idx}`}
                         onClick={() => openLightbox(toolResultImages, idx)}
-                        className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900"
+                        className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:border-neutral-700 dark:bg-neutral-900"
                         aria-label={image.name ? `Preview ${image.name}` : 'Preview image'}
                       >
                         <img

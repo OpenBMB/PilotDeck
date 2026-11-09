@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
+import { Check, ChevronRight, HelpCircle, MessageCircleQuestion } from 'lucide-react';
+import { AnimatedDisclosure } from '../../../../ui/AnimatedDisclosure';
 import type { Question } from '../../../types/types';
 
 interface QuestionAnswerContentProps {
@@ -55,12 +57,14 @@ function normalizeQuestions(value: unknown): Question[] {
   return [];
 }
 
-function normalizeAnswers(value: unknown): Record<string, string> {
+function normalizeAnswers(value: unknown): Record<string, string | string[]> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
       .filter(([key]) => key.trim())
-      .map(([key, answer]) => [key, typeof answer === 'string' ? answer : String(answer ?? '')]),
+      .filter(([, answer]) => (typeof answer === 'string' && Boolean(answer.trim())) || Array.isArray(answer))
+      .map(([key, answer]) => [key, typeof answer === 'string' ? answer
+        : (answer as unknown[]).filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))]),
   );
 }
 
@@ -81,7 +85,14 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
   className = '',
 }) => {
   const { t } = useTranslation('common');
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const id = useId();
+  const [view, setView] = useState({ resolved, open: false, expandedIdx: null as number | null });
+  let phase = view;
+  if (view.resolved !== resolved) {
+    phase = { resolved, open: false, expandedIdx: null };
+    setView(phase);
+  }
+  const { expandedIdx } = phase;
   const normalizedQuestions = normalizeQuestions(questions);
   const normalizedAnswers = normalizeAnswers(answers);
 
@@ -100,163 +111,56 @@ export const QuestionAnswerContent: React.FC<QuestionAnswerContentProps> = ({
     );
   }
 
-  const hasAnyAnswer = Object.keys(normalizedAnswers).length > 0;
-  const total = normalizedQuestions.length;
-
+  const answerCount = normalizedQuestions.filter(question => normalizedAnswers[question.question]?.length).length;
+  const status = !resolved ? t('common:uiText.waitingForAnswer') : answerCount
+    ? t('common:uiText.answersProgress', { answered: answerCount, count: normalizedQuestions.length }) : t('common:uiText.skipped');
+  const toolBodyId = `${id}-tool`;
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div data-question-tool className={`w-full min-w-0 ${className}`}>
+      <button type="button" className="chat-process-trigger hover-brand-text" aria-expanded={phase.open} aria-controls={toolBodyId}
+        onClick={() => setView({ ...phase, open: !phase.open })}>
+        <MessageCircleQuestion aria-hidden="true" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+        <span>{t('common:uiText.questionTool')}</span>
+        <span className="text-muted-foreground">{t('common:uiText.questionsCount', { count: normalizedQuestions.length })}</span>
+        <span className="tabular-nums text-muted-foreground">{status}</span>
+        <ChevronRight aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none ${phase.open ? 'rotate-90' : ''}`} />
+      </button>
+      <AnimatedDisclosure id={toolBodyId} expanded={phase.open} contentClassName="ml-[22px] mt-2">
+        <div data-question-transcript className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card text-foreground">
       {normalizedQuestions.map((q, idx) => {
-        const answer = normalizedAnswers[q.question];
-        const answerLabels = answer ? answer.split(', ') : [];
-        const skipped = !answer;
-        const isExpanded = expandedIdx === idx;
-
-        return (
-          <div
-            key={idx}
-            className="border-gray-150 overflow-hidden rounded-lg border bg-gray-50/50 dark:border-gray-700/50 dark:bg-gray-800/30"
-          >
-            <button
-              type="button"
-              onClick={() => setExpandedIdx(isExpanded ? null : idx)}
-              className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50"
-            >
-              <div className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full ${
-                answerLabels.length > 0
-                  ? 'bg-blue-100 dark:bg-blue-900/40'
-                  : 'bg-gray-100 dark:bg-gray-800'
-              }`}>
-                {answerLabels.length > 0 ? (
-                  <svg className="h-2.5 w-2.5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <div className="h-1.5 w-1.5 rounded-full bg-gray-300 dark:bg-gray-600" />
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  {q.header && (
-                    <span className="inline-flex items-center rounded border border-blue-100/80 bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-blue-600 dark:border-blue-800/40 dark:bg-blue-900/30 dark:text-blue-400">
-                      {q.header}
-                    </span>
-                  )}
-                  {total > 1 && (
-                    <span className="text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
-                      {idx + 1}/{total}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-0.5 text-xs leading-snug text-gray-600 dark:text-gray-400">
-                  {q.question}
-                </div>
-
-                {!isExpanded && answerLabels.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {answerLabels.map((lbl) => {
-                      const isCustom = !q.options.some(o => o.label === lbl);
-                      return (
-                        <span
-                          key={lbl}
-                          className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                        >
-                          {lbl}
-                          {isCustom && (
-                            <span className="text-[9px] font-normal text-blue-400 dark:text-blue-500">{t('common:uiText.customAnswer')}</span>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {!isExpanded && skipped && resolved && (
-                  <span className="mt-1 inline-block text-[10px] italic text-gray-400 dark:text-gray-500">{t('common:uiText.skipped')}</span>
-                )}
-              </div>
-
-              <svg
-                className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-gray-400 transition-transform duration-200 dark:text-gray-500 ${
-                  isExpanded ? 'rotate-180' : ''
-                }`}
-                fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {isExpanded && (
-              <div className="border-t border-gray-100 px-3 pb-2.5 pt-0.5 dark:border-gray-700/40">
-                <div className="ml-6.5 space-y-1">
-                  {q.options.map((opt) => {
-                    const wasSelected = answerLabels.includes(opt.label);
-                    return (
-                      <div
-                        key={opt.label}
-                        className={`flex items-start gap-2 rounded-lg px-2.5 py-1.5 text-[12px] ${
-                          wasSelected
-                            ? 'border border-blue-200/60 bg-blue-50/80 dark:border-blue-800/40 dark:bg-blue-900/20'
-                            : 'text-gray-400 dark:text-gray-500'
-                        }`}
-                      >
-                        <div className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${q.multiSelect ? 'rounded-[3px]' : 'rounded-full'} flex items-center justify-center border-[1.5px] ${
-                          wasSelected
-                            ? 'border-blue-500 bg-blue-500 dark:border-blue-400 dark:bg-blue-500'
-                            : 'border-gray-300 dark:border-gray-600'
-                        }`}>
-                          {wasSelected && (
-                            <svg className="h-2 w-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <span className={wasSelected ? 'font-medium text-gray-900 dark:text-gray-100' : ''}>
-                            {opt.label}
-                          </span>
-                          {opt.description && (
-                            <span className={`mt-0.5 block text-[11px] ${
-                              wasSelected ? 'text-blue-600/70 dark:text-blue-300/70' : 'text-gray-400 dark:text-gray-600'
-                            }`}>
-                              {opt.description}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {answerLabels.filter(lbl => !q.options.some(o => o.label === lbl)).map(lbl => (
-                    <div
-                      key={lbl}
-                      className="flex items-start gap-2 rounded-lg border border-blue-200/60 bg-blue-50/80 px-2.5 py-1.5 text-[12px] dark:border-blue-800/40 dark:bg-blue-900/20"
-                    >
-                      <div className={`mt-0.5 h-3.5 w-3.5 flex-shrink-0 ${q.multiSelect ? 'rounded-[3px]' : 'rounded-full'} flex items-center justify-center border-[1.5px] border-blue-500 bg-blue-500 dark:border-blue-400 dark:bg-blue-500`}>
-                        <svg className="h-2 w-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="font-medium text-gray-900 dark:text-gray-100">{lbl}</span>
-                        <span className="ml-1 text-[10px] text-blue-500 dark:text-blue-400">{t('common:uiText.customAnswer')}</span>
-                      </div>
-                    </div>
-                  ))}
-
-                  {skipped && resolved && (
-                    <div className="px-2.5 py-1 text-[11px] italic text-gray-400 dark:text-gray-500">{t('common:uiText.noAnswer')}</div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        );
+        const rawAnswer = normalizedAnswers[q.question];
+        const answerLabels = Array.isArray(rawAnswer) ? rawAnswer : typeof rawAnswer === 'string' && rawAnswer.trim()
+          ? q.multiSelect && !q.options.some(option => option.label === rawAnswer) ? rawAnswer.split(', ') : [rawAnswer] : [];
+        const answer = answerLabels.length ? answerLabels.join(', ') : undefined;
+        const expanded = expandedIdx === idx;
+        const contentId = `${id}-${idx}`;
+        return <div key={q.question} className="min-w-0 border-b border-border/50 last:border-b-0">
+          <button type="button" aria-expanded={expanded} aria-controls={contentId}
+            onClick={() => setView({ ...phase, expandedIdx: expanded ? null : idx })}
+            className="flex w-full min-w-0 items-start gap-2 px-3 py-1.5 text-left text-[13px] leading-5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
+            {answer ? <Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand-strong)]" />
+              : <HelpCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+            <span className="min-w-0 flex-1 truncate font-medium text-muted-foreground">{q.header || q.question}</span>
+            {answer && <span className="max-w-[60%] truncate text-foreground" title={answer}>{answer}</span>}
+            {(normalizedQuestions.length === 1 || (resolved && !answer)) && <span className="shrink-0 text-[12px] text-muted-foreground">
+              {answer ? t('common:uiText.questionAnswered')
+                : resolved ? t('common:uiText.skipped') : t('common:uiText.waitingForAnswer')}
+            </span>}
+            <ChevronRight aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
+          </button>
+          <AnimatedDisclosure id={contentId} expanded={expanded} keepMounted
+            contentClassName="space-y-2 border-t border-border/60 px-3 py-3 text-[13px] leading-5">
+              <p>{q.question}</p>
+              {answer && <p className="whitespace-pre-wrap break-words font-medium text-foreground">{answer}</p>}
+              {q.options.map(option => <div key={option.label} data-answer-selected={answerLabels.includes(option.label)} className={`rounded-lg px-3 py-2 ${answerLabels.includes(option.label) ? 'bg-[var(--brand-soft)] text-foreground' : 'bg-muted/40 text-muted-foreground'}`}>
+                <div className="font-medium">{option.label}</div>
+                {option.description && <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">{option.description}</p>}
+              </div>)}
+          </AnimatedDisclosure>
+        </div>;
       })}
-
-      {!resolved && !hasAnyAnswer && (
-        <div className="text-[11px] text-amber-600 dark:text-amber-400">{t('common:uiText.waitingForAnswer')}</div>
-      )}
+        </div>
+      </AnimatedDisclosure>
     </div>
   );
 };

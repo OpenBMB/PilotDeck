@@ -51,6 +51,8 @@ import {
   missingInputModalities,
 } from "./utils/mediaRequirements.js";
 import type { TelemetryClient } from "../telemetry/index.js";
+import { currentRequestContext } from "../network/requestContext.js";
+import { buildCachePlan } from "../context/cache/CachePlan.js";
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -325,6 +327,7 @@ export function createRouterRuntime(
   }
 
   async function decide(input: RouterDecisionInput): Promise<RouterDecision> {
+    input.abortSignal?.throwIfAborted();
     if (!enabled) {
       return {
         provider: input.request.provider,
@@ -352,6 +355,7 @@ export function createRouterRuntime(
     };
 
     const custom = await resolveCustom(inputWithUsage);
+    input.abortSignal?.throwIfAborted();
     const scenarioOutcome = decideScenario(inputWithUsage, config.scenarios ?? {} as any);
 
     let scenarioType: RouterScenarioType = scenarioOutcome.scenarioType;
@@ -385,8 +389,11 @@ export function createRouterRuntime(
       (input.isMainAgent || subagentPolicy !== "skip")
     ) {
       let stickyHit = false;
+      // Request-only context (memory, date notices, artifact indexes) does not
+      // turn a fresh user request into an ongoing conversation.
+      const hasConversationHistory = input.request.messages.filter(message => message.metadata?.synthetic !== true).length > 1;
 
-      if (input.isMainAgent && input.request.messages.length > 1) {
+      if (input.isMainAgent && hasConversationHistory) {
         const mainSticky = sessionStore.get(input.sessionId, false);
         if (mainSticky?.stickyProvider && mainSticky.stickyModel) {
           selection = {
@@ -400,7 +407,7 @@ export function createRouterRuntime(
         }
       }
 
-      if (!input.isMainAgent && subagentPolicy === "judge" && input.request.messages.length > 1) {
+      if (!input.isMainAgent && subagentPolicy === "judge" && hasConversationHistory) {
         const subSticky = sessionStore.get(input.sessionId, true);
         if (subSticky?.stickyProvider && subSticky.stickyModel) {
           selection = {
@@ -522,6 +529,8 @@ export function createRouterRuntime(
 
     decision.mutations = mutations;
 
+    input.abortSignal?.throwIfAborted();
+
     sessionStore.set({
       sessionId: input.sessionId,
       isSubagent: !input.isMainAgent,
@@ -555,7 +564,7 @@ export function createRouterRuntime(
       (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
       ? request.cachePlan
       : undefined;
-    return clampMaxOutputTokensToModelCap({
+    const finalized = {
       ...request,
       ...decision.requestPatch,
       provider: decision.provider,
@@ -565,7 +574,12 @@ export function createRouterRuntime(
         ? routedCachePlan?.messages
         : request.cacheBreakpoints,
       cachePlan: routedCachePlan,
-    }, deps.modelRuntime);
+    };
+    if (routedCachePlan && (messages !== request.messages || finalized.systemPrompt !== request.systemPrompt || finalized.tools !== request.tools)) {
+      finalized.cachePlan = buildCachePlan({ ...finalized, tools: finalized.tools ?? [], enabled: true }, routedCachePlan.generation);
+      finalized.cacheBreakpoints = finalized.cachePlan?.messages;
+    }
+    return clampMaxOutputTokensToModelCap(finalized, deps.modelRuntime);
   }
 
   async function* execute(
@@ -574,6 +588,8 @@ export function createRouterRuntime(
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
     if (!enabled) {
+      if (ctx.abortSignal?.aborted) return;
+      request = await ctx.requestForTarget?.(decision) ?? request;
       const routedCachePlan = request.cachePlan &&
         (request.cachePlan.provider === undefined || request.cachePlan.provider === decision.provider) &&
         (request.cachePlan.model === undefined || request.cachePlan.model === decision.model)
@@ -594,6 +610,8 @@ export function createRouterRuntime(
         deps.modelRuntime,
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(downgradedPassthrough, deps.modelRuntime);
+      await ctx.onRequestPrepared?.(cappedPassthroughRequest);
+      if (ctx.abortSignal?.aborted) return;
       let sawErrorEvent = false;
       for await (const item of streamAttempt(cappedPassthroughRequest, deps.modelRuntime, ctx, events)) {
         if (item.kind === "event") {
@@ -690,10 +708,14 @@ export function createRouterRuntime(
         model: attempt.model,
         resolvedFrom: attemptIndex === 0 ? decision.resolvedFrom : "fallback",
       };
-      let attemptRequest = applyDecisionToRequest(attemptDecision, request);
+      const targetRequest = await ctx.requestForTarget?.(attemptDecision) ?? request;
+      if (ctx.abortSignal?.aborted) return;
+      let attemptRequest = applyDecisionToRequest(attemptDecision, targetRequest);
       if (attemptPlan.downgradeUnsupportedMedia) {
         attemptRequest = downgradeRequestForAttempt(attemptRequest, attempt, deps.modelRuntime);
       }
+      await ctx.onRequestPrepared?.(attemptRequest);
+      if (ctx.abortSignal?.aborted) return;
       lastAttempt = attempt;
       lastDecision = attemptDecision;
 
@@ -1112,9 +1134,16 @@ function downgradeRequestForAttempt(
     // Unknown provider/model should still be reported by validateModelRequest.
     return request;
   }
+  if (missingInputModalities(multimodal, collectRequiredInputModalities(request.messages)).length === 0) return request;
   const messages = cloneMessages(request.messages);
   downgradeUnsupportedContent(messages, multimodal);
-  return { ...request, messages };
+  return refreshCachePlan({ ...request, messages });
+}
+
+function refreshCachePlan(request: CanonicalModelRequest): CanonicalModelRequest {
+  if (!request.cachePlan) return request;
+  const cachePlan = buildCachePlan({ ...request, tools: request.tools ?? [], enabled: true }, request.cachePlan.generation);
+  return { ...request, cachePlan, cacheBreakpoints: cachePlan?.messages };
 }
 
 /**
@@ -1146,6 +1175,14 @@ async function* streamAttempt(
   try {
     for await (const event of modelRuntime.stream(request, {
       signal: abortSignal,
+      requestContext: {
+        sessionId: ctx.sessionId,
+        // "compact" is an internal routing marker, not a user turn identity.
+        // Manual compaction outside a turn intentionally has no turn header.
+        turnId: ctx.turnId === "compact" ? currentRequestContext().turnId : ctx.turnId,
+        projectPath: ctx.projectPath,
+        purpose: ctx.turnId === "compact" ? "compaction" : "conversation",
+      },
       onRetryProgress(progress) {
         events.emit({
           type: "pilotdeck_router_retry_progress",

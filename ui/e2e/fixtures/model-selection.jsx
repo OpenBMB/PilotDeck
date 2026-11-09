@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import MessageRow from '../../src/components/chat-v2/MessageRowV2';
-import Composer from '../../src/components/chat-v2/ComposerV2';
+import MessageRow from '../../src/components/chat/view/MessageRow';
+import Composer from '../../src/components/chat/view/Composer';
 import { FileTypeIcon } from '../../src/components/file-tree/components/FileTypeIcon';
 import { useChatModelSelection } from '../../src/components/chat/hooks/useChatModelSelection';
 import { useChatComposerState } from '../../src/components/chat/hooks/useChatComposerState';

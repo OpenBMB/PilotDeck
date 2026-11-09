@@ -1,4 +1,65 @@
 {
+  "turnNavigation": {
+    "label": "对话导航",
+    "jump": "跳转到第 {{number}} 轮对话",
+    "turn": "第 {{number}} 轮对话",
+    "loadEarlier": "加载更早的对话"
+  },
+  "context": {
+    "tokenUnit": "tokens",
+    "title": "上下文预算",
+    "used": "已用",
+    "systemPrompt": "系统指令",
+    "tools": "工具说明",
+    "messages": "会话内容",
+    "estimates": "分类 token 估算"
+  },
+  "conversationError": {
+    "label": "请求未完成",
+    "details": "错误详情",
+    "authDetails": "认证错误的提供商原文不在对话中显示，请检查 API 密钥与访问权限。",
+    "generic": { "title": "这次请求未能完成", "hint": "可以重试，或在对话中切换模型。若持续出现，请展开详情排查。" },
+    "auth": { "title": "模型服务的身份验证未通过", "hint": "请检查模型池中该提供商的 API 密钥和访问权限。" },
+    "billing": { "title": "模型服务的余额或额度不足", "hint": "请检查提供商账户的余额和额度，或在对话中切换模型。" },
+    "rateLimit": { "title": "模型服务暂时限制了请求", "hint": "请稍后重试，减少同时运行的请求，或在对话中切换模型。" },
+    "context": { "title": "这段对话超出了模型的上下文容量", "hint": "可以发送 /compact 压缩对话、开始新对话，或切换到上下文更大的模型。模型的上下文上限可在模型池的模型配置中调整。" },
+    "payload": { "title": "这次请求的内容过大", "hint": "请减少附件或缩短内容，也可以压缩对话后重试。" },
+    "filtered": { "title": "模型服务未能处理这次请求的内容", "hint": "请调整请求内容后重试；若仍然出现，可检查提供商的内容策略。" },
+    "model": { "title": "所选模型暂不可用", "hint": "请在对话中选择其他模型，或检查模型池中的模型名称和访问权限。" },
+    "timeout": { "title": "等待模型回复超时", "hint": "请检查网络后重试。若经常超时，可调整该模型的超时设置，或切换模型。" },
+    "network": { "title": "与模型服务的连接中断了", "hint": "请检查网络、代理及提供商地址，再重新发送请求。" },
+    "server": { "title": "模型服务暂时出现问题", "hint": "请稍后重试，或在对话中切换到其他模型。" }
+  },
+  "imageGeneration": {
+  "drawing": "正在绘图…",
+  "loading": "正在加载图片…",
+  "complete": "图片已生成",
+  "failed": "绘图失败",
+  "loadFailed": "图片加载失败，请重新打开此聊天",
+  "interrupted": "绘图已停止",
+  "enlarge": "放大图片",
+  "image": "生成的图片",
+  "download": "下载原图",
+  "saved": "已保存到 {{path}}"
+},
+  "attachmentPreview": {
+    "imageNote": "静态预览；下载原文件可查看完整分辨率和动画。",
+    "sheetTruncated": "表格预览每张工作表最多显示 200 行、50 列，完整内容请下载查看。",
+    "tooLarge": "文档预览支持 20 MB 以内的文件，请下载后打开此文件。",
+    "title": "附件预览",
+    "open": "预览 {{name}}",
+    "close": "关闭预览",
+    "download": "下载文件",
+    "previous": "上一个附件",
+    "next": "下一个附件",
+    "scrollPrevious": "向左滚动附件",
+    "scrollNext": "向右滚动附件",
+    "count": "{{count}} 个附件",
+    "unsupported": "此文件暂不支持预览，可下载后用其他应用打开。",
+    "failed": "无法预览此文件，仍可下载后打开。",
+    "truncated": "仅显示前 256 KB，下载可查看完整内容。",
+    "loading": "正在加载预览…"
+  },
   "copyBlock": {
     "plainText": "纯文本",
     "wrap": "代码自动换行",
@@ -111,10 +172,26 @@
     "waitingForApproval": "等待你审批",
     "waitingForPermission": "等待授权",
     "retrying": "重连中 {{attempt}}/{{max}}{{delay}}",
+    "retryDelay": "（{{seconds}} 秒后）",
+    "retryReasons": {
+      "network_error": "网络连接中断",
+      "server_error": "服务商暂时不可用",
+      "continuation": "继续中断的回复",
+      "rate_limit": "请求受到限流",
+      "overloaded": "服务商负载过高",
+      "zero_usage": "模型返回空回复"
+    },
     "waitingForSubagent": "等待子任务完成",
     "waitingForWebFetch": "正在获取网页内容..."
   },
   "process": {
+    "group": { "details": "执行过程", "running": "执行过程" },
+    "duration": {
+      "day": "{{count}} 天",
+      "hour": "{{count}} 小时",
+      "minute": "{{count}} 分",
+      "second": "{{count}} 秒"
+    },
     "summary": {
       "processed": "已处理 {{duration}}",
       "completed": "过程已完成",
@@ -129,6 +206,13 @@
       "errors": "{{count}} 个错误"
     },
     "live": {
+      "viewedImages": "已查看 {{count}} 张图片",
+      "generatedImages": "已生成 {{count}} 张图片",
+      "editedImages": "已编辑 {{count}} 张图片",
+      "generatedVideos": "已生成 {{count}} 个视频",
+      "openedPages": "已打开 {{count}} 个网页",
+      "browserActions": "已执行 {{count}} 次浏览器操作",
+      "loadedSkills": "已加载 {{count}} 个技能",
       "editedFiles": "已编辑 {{count}} 个文件",
       "editedFiles_one": "已编辑 {{count}} 个文件",
       "editedFiles_other": "已编辑 {{count}} 个文件",
@@ -138,6 +222,9 @@
       "searches": "已搜索 {{count}} 次",
       "searches_one": "已搜索 {{count}} 次",
       "searches_other": "已搜索 {{count}} 次",
+      "webFetches": "已读取 {{count}} 个网页",
+      "webFetches_one": "已读取 {{count}} 个网页",
+      "webFetches_other": "已读取 {{count}} 个网页",
       "commands": "已运行 {{count}} 条命令",
       "commands_one": "已运行 {{count}} 条命令",
       "commands_other": "已运行 {{count}} 条命令",
@@ -201,9 +288,23 @@
     "selectedOption": "✓ PilotDeck 选择了选项 {{number}}",
     "instructionDetail": "在 CLI 中，您可以使用方向键或输入数字来交互式地选择此选项。"
   },
+  "filePreparation": {
+    "write": "正在生成文件内容",
+    "edit": "正在生成修改内容",
+    "received": "已接收 {{kilobytes}} KB"
+  },
+  "imagePreview": {
+    "label": "预览图片",
+    "named": "预览 {{name}}",
+    "uploaded": "已上传图片",
+    "toolResult": "工具结果图片"
+  },
   "thinking": {
     "title": "思考中...",
     "completed": "思考过程",
+    "finished": "已思考",
+    "runningDuration": "正在思考 {{count}} 秒",
+    "completedDuration": "已思考 {{count}} 秒",
     "emoji": "💭 思考中...",
     "liveContentLabel": "实时思考内容"
   },
@@ -323,13 +424,9 @@
     "clearInput": "清空输入",
     "scrollToBottom": "滚动到底部",
     "contextStatusTitle": "上下文窗口",
-    "contextStatusUsed": "已用 {{used}} / {{total}} tokens。",
     "contextStatus": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。接近上限时会自动压缩上下文。",
     "contextStatusBlocking": "已使用 {{percentLabel}}。已用 {{used}} / {{total}} tokens。已执行压缩，但上下文仍处于保护阈值。",
-    "contextStatusAutoCompact": "接近配置上限时会自动压缩上下文。",
-    "contextStatusBlockingBody": "已执行压缩，但上下文仍处于保护阈值。",
     "contextStatusUnknown": "上下文用量未知，将在下次模型响应后显示。",
-    "contextStatusUnknownBody": "尚未上报 token 用量，会在下一次模型响应后显示。",
     "permissions": {
       "default": "默认权限",
       "defaultDescription": "需要风险操作时先询问",
@@ -480,6 +577,7 @@
       "sessionMessages": "正在加载会话消息..."
     },
     "messages": {
+      "loadFailed": "无法加载更早的消息。",
       "showingOf": "显示 {{shown}} / {{total}} 条消息",
       "scrollToLoad": "向上滚动以加载更多",
       "showingLast": "显示最近 {{visibleCount}} / {{total}} 条消息",
@@ -678,6 +776,12 @@
   },
   "toolDisplay": {
     "copyCommand": "复制命令",
+    "previewLines": "已显示 {{count}}/{{total}} 行",
+    "moreLines": "显示更多行",
+    "largeChangePreview": "改动较大，当前显示内容预览，可复制完整文件内容。",
+    "longLinePreview": "预览中的超长行已缩短，复制时会保留完整内容。",
+    "tool": "工具",
+    "duration": "{{seconds}} 秒",
     "collapse": "收起完整内容",
     "full": "展开完整内容",
     "copy": "复制",
@@ -685,6 +789,7 @@
     "output": "输出",
     "success": "成功",
     "failed": "失败",
+    "fetchFailed": "网页读取失败",
     "exitCode": "退出码 {{code}}",
     "executing": "正在运行…",
     "actionRequired": "需要处理",
@@ -694,31 +799,65 @@
     "changes": "变更",
     "noChanges": "无变更",
     "running": {
+      "viewImage": "正在查看图片",
+      "generateImage": "正在生成图片",
+      "editImage": "正在编辑图片",
+      "generateVideo": "正在生成视频",
+      "browse": "正在打开网页",
+      "interact": "正在操作浏览器",
       "command": "正在运行",
       "write": "正在写入",
       "edit": "正在编辑",
       "read": "正在读取",
       "search": "正在搜索",
       "tool": "正在使用",
+      "fetch": "正在读取网页",
       "skill": "正在读取技能"
     },
     "pending": {
+      "viewImage": "查看图片",
+      "generateImage": "生成图片",
+      "editImage": "编辑图片",
+      "generateVideo": "生成视频",
+      "browse": "打开网页",
+      "interact": "浏览器操作",
       "command": "命令",
       "write": "写入",
       "edit": "编辑",
       "read": "读取",
       "search": "搜索",
       "tool": "工具",
+      "fetch": "读取网页",
       "skill": "读取技能"
     },
     "done": {
+      "viewImage": "已查看图片",
+      "generateImage": "已生成图片",
+      "editImage": "已编辑图片",
+      "generateVideo": "已生成视频",
+      "browse": "已打开网页",
+      "interact": "已操作浏览器",
       "command": "已运行",
       "write": "已写入",
       "edit": "已编辑",
       "read": "已读取",
       "search": "已搜索",
       "tool": "已使用",
+      "fetch": "已读取网页",
       "skill": "已读取技能"
     }
+  },
+  "videoGeneration": {
+    "generating": "正在生成视频…",
+    "interrupted": "视频生成已中断",
+    "download": "下载视频",
+    "playbackUnavailable": "浏览器无法播放此视频，可下载后使用本地播放器打开。",
+    "reconnecting": "连接中断，正在自动重连…",
+    "downloading": "视频已生成，正在取回…",
+    "paused": "已暂停获取，生成任务已保留",
+    "configuration": "请检查视频服务配置后继续获取",
+    "resume": "继续获取",
+    "retryUnavailable": "暂时无法连接，请稍后重试",
+    "exportUnavailable": "视频已取回，保存到项目未完成，可使用同一视频重新保存。"
   }
 }

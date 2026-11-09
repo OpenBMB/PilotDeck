@@ -1,12 +1,18 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { PilotDeckToolRuntimeError } from "../../protocol/errors.js";
+import { resolveRealWritePath } from "./pathSafety.js";
 
 export async function writeTextFile(
   filePath: string,
   content: string,
   options?: { allowOverwrite?: boolean },
 ): Promise<"created" | "overwritten"> {
+  // Publish to the authorized physical target, never replace a file symlink.
+  const target = resolveRealWritePath(filePath);
+  if (!target) throw new PilotDeckToolRuntimeError("file_conflict", `Cannot resolve ${filePath}.`);
+  filePath = target;
   const existing = await stat(filePath).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;
@@ -26,7 +32,13 @@ export async function writeTextFile(
   }
 
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, content, "utf8");
+  const temporary = path.join(path.dirname(filePath), `.pilotdeck-restore-${randomUUID()}`);
+  try {
+    await writeFile(temporary, content, { flag: "wx", mode: existing?.mode ?? 0o644 });
+    if (existing) await chmod(temporary, existing.mode);
+    if (existing) await rename(temporary, filePath);
+    else await link(temporary, filePath);
+  } finally { await unlink(temporary).catch(() => {}); }
   return existing ? "overwritten" : "created";
 }
 

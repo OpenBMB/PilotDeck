@@ -9,6 +9,8 @@ import { addProjectManually } from '../projects.js';
 import { runChatViaGateway } from '../pilotdeck-bridge.js';
 import { Octokit } from '@octokit/rest';
 import { IS_PLATFORM } from '../constants/config.js';
+import { withAuthenticatedRequest } from '../middleware/requestContext.js';
+import { requestLimiters } from '../middleware/rateLimits.js';
 
 const router = express.Router();
 
@@ -33,7 +35,7 @@ const validateExternalApiKey = (req, res, next) => {
         return res.status(500).json({ error: 'Platform mode: No user found in database' });
       }
       req.user = user;
-      return next();
+      return withAuthenticatedRequest(req, res, next).catch(next);
     } catch (error) {
       console.error('Platform mode error:', error);
       return res.status(500).json({ error: 'Platform mode: Failed to fetch user' });
@@ -48,13 +50,15 @@ const validateExternalApiKey = (req, res, next) => {
   }
 
   const user = apiKeysDb.validateApiKey(apiKey);
-
-  if (!user) {
+  // The credential lookup returns a database principal, never a credential.
+  // Limit downstream attribution/rate keys to the positive integer account ID.
+  const userId = Number(user?.id);
+  if (!user || !Number.isSafeInteger(userId) || userId <= 0) {
     return res.status(401).json({ error: 'Invalid or inactive API key' });
   }
 
-  req.user = user;
-  next();
+  req.user = { id: userId, username: user.username };
+  return withAuthenticatedRequest(req, res, next).catch(next);
 };
 
 /**
@@ -825,7 +829,7 @@ class ResponseCollector {
  *     "cleanup": false
  *   }
  */
-router.post('/', validateExternalApiKey, async (req, res) => {
+router.post('/', validateExternalApiKey, requestLimiters.model, async (req, res) => {
   const { githubUrl, projectPath, message, provider = 'pilotdeck', model, githubToken, branchName, sessionId } = req.body;
 
   // Parse stream and cleanup as booleans (handle string "true"/"false" from curl)

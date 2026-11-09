@@ -311,7 +311,7 @@ export default function CodeEditorTabBar({
                   title={file.path}
                   onClick={() => onSelect(tab.id)}
                   onKeyDown={(event) => handleKeyDown(event, index)}
-                  className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                  className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--pd-focus,#3b82f6)]"
                 >
                   <FileTypeIcon filename={file.name} className="h-3.5 w-3.5" />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{file.name}</span>
@@ -329,7 +329,7 @@ export default function CodeEditorTabBar({
                     onClose(tab.id);
                   }}
                   className={cn(
-                    'mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 outline-none transition-colors hover:bg-neutral-200 hover:text-neutral-900 focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
+                    'mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 outline-none transition-colors hover:bg-neutral-200 hover:text-neutral-900 focus-visible:ring-2 focus-visible:ring-[var(--pd-focus,#3b82f6)] dark:hover:bg-neutral-800 dark:hover:text-neutral-100',
                     !active && 'opacity-0 group-hover/tab:opacity-100 focus:opacity-100',
                   )}
                   title={labels.closeTab(file.name)}

@@ -23,6 +23,9 @@ import {
 } from "./SteerMailbox.js";
 
 export type AgentSessionOptions = {
+  releaseSessionResources?: () => void;
+  /** Hold runtime resources until the complete turn generator has closed. */
+  acquireTurnResources?: () => () => void;
   sessionId: string;
   turnRunner: TurnRunner;
   cwd?: string;
@@ -43,6 +46,7 @@ export type AgentSessionRuntimeReloadSnapshot = {
 };
 
 export class AgentSession {
+  private disposal?: Promise<void>;
   private state: AgentSessionStateShape;
   private readonly steerMailbox = new SteerMailbox();
 
@@ -51,6 +55,13 @@ export class AgentSession {
   }
 
   async *submit(input: AgentInput, submitOptions: AgentSubmitOptions = {}): AsyncGenerator<AgentEvent, void, unknown> {
+    const release = this.options.acquireTurnResources?.();
+    try {
+      yield* this.submitTurn(input, submitOptions);
+    } finally { release?.(); }
+  }
+
+  private async *submitTurn(input: AgentInput, submitOptions: AgentSubmitOptions): AsyncGenerator<AgentEvent, void, unknown> {
     const turnId = submitOptions.turnId ?? this.nextId();
     this.state.status = "running";
     this.state.currentTurnId = turnId;
@@ -128,8 +139,13 @@ export class AgentSession {
   }
 
   async dispose(): Promise<void> {
-    if (this.state.status === "running") this.abort("session_closed");
-    await this.options.turnRunner.dispose?.();
+    this.disposal ??= (async () => {
+      try {
+        if (this.state.status === "running") this.abort("session_closed");
+        await this.options.turnRunner.dispose?.();
+      } finally { this.options.releaseSessionResources?.(); }
+    })();
+    await this.disposal;
   }
 
   abort(reason?: string): void {

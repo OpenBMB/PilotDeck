@@ -44,7 +44,7 @@ two small objects under PilotDeck/_debug/retention-delete/<run_id>/, confirms
 their names and sizes, calls the same batch deletion helper as production
 retention, and lists the prefix again to confirm absence. Existing objects cause
 an abort before any overwrite or deletion. Failures retain a residual inventory;
-there is no fallback deletion. This job uses the already-authorized debug
+there is no fallback deletion. This job uses the configured debug
 Environment broker secret and shares the release-to-obs lock. Even if deletion
 fails, it runs read-only production retention without --apply, saving both
 retention-delete-check.json and retention-plan.json as an artifact.

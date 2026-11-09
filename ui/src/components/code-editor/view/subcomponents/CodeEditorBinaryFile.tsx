@@ -1,3 +1,4 @@
+import VideoPlayer from '../../../media/VideoPlayer';
 import {
   Suspense,
   lazy,
@@ -5,6 +6,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ComponentProps,
   type ReactNode,
 } from 'react';
 import type { IWorkbookData } from '@univerjs/core';
@@ -22,6 +24,7 @@ import type { CodeEditorFile } from '../../types/types';
 import {
   isBuiltinOfficeFile,
   isImageFile,
+  isVideoFile,
   isOfficeFile,
   isPdfFile,
   isSpreadsheetFile,
@@ -34,7 +37,6 @@ import {
   type ReferenceCapabilities,
 } from '../../../../types/contentReference';
 import ContentReferenceMenu from './ContentReferenceMenu';
-import PdfDocumentPreview from './PdfDocumentPreview';
 import RegionSelectionOverlay, { type CapturedRegion } from './RegionSelectionOverlay';
 import SpreadsheetTabs, { type SpreadsheetSheetTab } from './SpreadsheetTabs';
 
@@ -47,6 +49,7 @@ const DocxBuiltinPreview = lazy(
 const PptxBuiltinPreview = lazy(
   () => import('./PptxBuiltinPreview'),
 );
+const LazyPdfDocumentPreview = lazy(() => import('./PdfDocumentPreview'));
 
 type CodeEditorBinaryFileProps = {
   file: CodeEditorFile;
@@ -664,6 +667,17 @@ function PreviewSpinner({ label }: { label?: string }) {
         <p className="text-[12px] text-neutral-500 dark:text-neutral-400">{label}</p>
       )}
     </div>
+  );
+}
+
+// Native PDFs and both converted Office paths share this loading boundary.
+// Their request, refresh and selection state stays in the existing parents.
+function PdfDocumentPreview(props: ComponentProps<typeof LazyPdfDocumentPreview>) {
+  const { t } = useTranslation('codeEditor');
+  return (
+    <Suspense fallback={<PreviewSpinner label={t('loading', { fileName: props.fileName })} />}>
+      <LazyPdfDocumentPreview {...props} />
+    </Suspense>
   );
 }
 
@@ -1482,15 +1496,18 @@ export default function CodeEditorBinaryFile({
   const iconBtn =
     'flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100';
 
+  const isVideo = isVideoFile(file.name);
   const isImage = isImageFile(file.name);
   const isPdf = isPdfFile(file.name);
   const isOffice = isOfficeFile(file.name);
-  const canPreview = isImage || isPdf || isOffice;
+  const canPreview = isVideo || isImage || isPdf || isOffice;
   const hasEmbeddedDocumentToolbar = isPdf || isOffice;
   const documentIsFullscreen = isSidebar ? isExpanded : isFullscreen;
   const onToggleDocumentFullscreen = isSidebar ? onToggleExpand : onToggleFullscreen;
 
-  const previewContent = isImage
+  const previewContent = isVideo && projectName
+    ? <div className="flex h-full items-center justify-center p-4"><VideoPlayer src={api.fileContentUrl(projectName, file.path)} downloadUrl={api.fileDownloadUrl(projectName, file.path)} name={file.name} /></div>
+    : isImage
     ? <ImagePreview projectName={projectName} file={file} title={title} message={message} onClose={onClose} />
     : isPdf
       ? (

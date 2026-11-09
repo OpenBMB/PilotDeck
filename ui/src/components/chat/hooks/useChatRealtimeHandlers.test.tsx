@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project, ProjectSession, SessionProvider } from '../../../types/app';
 import { useSessionStore, type SessionStore } from '../../../stores/useSessionStore';
 import {
@@ -20,6 +20,13 @@ vi.mock('../../../contexts/WebSocketContext', () => ({
 
 const provider = 'pilotdeck' as SessionProvider;
 const noop = () => undefined;
+let gatewayEventToFrames: (event: Record<string, unknown>, sessionId: string, provider: SessionProvider) => unknown[];
+beforeAll(async () => {
+  // Keep cold backend initialization outside React test lifetimes and the
+  // per-assertion timeout while still exercising the real transport mapper.
+  const bridgePath = '../../../../server/pilotdeck-bridge.js';
+  ({ gatewayEventToFrames } = await import(bridgePath));
+}, 60_000);
 afterEach(cleanup);
 
 function createSessionStore() {
@@ -46,6 +53,42 @@ describe('useChatRealtimeHandlers terminal errors', () => {
       mocks.listener = listener;
       return noop;
     });
+  });
+
+  it('ends a new send when preflight fails immediately after session creation', () => {
+    const sessionStore = createSessionStore();
+    const setIsLoading = vi.fn(), setCanAbortSession = vi.fn(), setActiveRunId = vi.fn();
+    const onSessionInactive = vi.fn();
+    renderHook(() => useChatRealtimeHandlers({
+      provider,
+      selectedProject: { name: 'general', fullPath: '/tmp/pilot-home' } as unknown as Project,
+      selectedSession: null,
+      currentSessionId: null,
+      setCurrentSessionId: noop,
+      setIsLoading,
+      setSessionRuntimeState: noop,
+      activeRunId: 'workspace-failed-start',
+      setActiveRunId,
+      setCanAbortSession,
+      setIsAborting: noop,
+      setClaudeStatus: noop,
+      setPilotDeckStatus: noop,
+      setTokenBudget: noop,
+      setPendingPermissionRequests: noop,
+      pendingViewSessionRef: { current: { sessionId: null, startedAt: Date.now() } },
+      onSessionInactive,
+      sessionStore,
+    }));
+    act(() => {
+      mocks.listener?.({ kind: 'session_created', sessionId: 'web:s_failed', newSessionId: 'web:s_failed', runId: 'workspace-failed-start' });
+      mocks.listener?.({ kind: 'error', sessionId: 'web:s_failed', runId: 'workspace-failed-start', terminal: true,
+        code: 'gateway_bridge_error', content: 'General workspace must be separate from PILOT_HOME.' });
+    });
+    expect(setIsLoading).toHaveBeenCalledWith(false);
+    expect(setCanAbortSession).toHaveBeenCalledWith(false);
+    expect(setActiveRunId).toHaveBeenCalledWith(null);
+    expect(onSessionInactive).toHaveBeenCalledWith('web:s_failed');
+    expect(sessionStore.appendRealtime).toHaveBeenCalledWith('web:s_failed', expect.objectContaining({ kind: 'error' }));
   });
 
   it.each(['thinking', 'stream_delta'])('starts a separate %s block when compaction begins', (kind) => {
@@ -83,12 +126,6 @@ describe('useChatRealtimeHandlers terminal errors', () => {
   });
 
   it.each([false, true])('preserves first WS child termination and error details (existing cache: %s)', async (cached) => {
-    // Load the Node bridge at runtime without adding its backend dependencies
-    // to the browser TypeScript project. Exercise the real transport mapping.
-    const bridgePath = '../../../../server/pilotdeck-bridge.js';
-    const { gatewayEventToFrames } = await import(bridgePath) as {
-      gatewayEventToFrames: (event: Record<string, unknown>, sessionId: string, provider: SessionProvider) => unknown[];
-    };
     const { result } = renderHook(useSessionStore);
     const sessionStore = result.current;
     renderHook(() => useChatRealtimeHandlers({

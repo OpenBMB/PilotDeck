@@ -65,6 +65,7 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
       toolCallId: string;
       ok: boolean;
       resultPreview?: string;
+      data?: Record<string, unknown>;
       /** Mirrors `GatewayEvent.tool_call_finished.errorCode`. */
       errorCode?: string;
       /**
@@ -104,7 +105,7 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "worktree_created"; runId: string; cwd: string }
   | { type: "worktree_removed"; cwd: string }
   | { type: "agent_status"; event: string; detail?: Record<string, unknown> }
-  | { type: "turn_completed"; usage: Record<string, number>; finishReason: string }
+  | { type: "turn_completed"; usage: Record<string, number>; finishReason: string; startedAt?: string; completedAt?: string }
   | {
       type: "error";
       message: string;
@@ -158,10 +159,12 @@ export type WebGatewayMethod =
   | "list_projects"
   | "describe_project"
   | "reload_config"
+  | "python_runtime_status"
   | "skill_list"
   | "skill_read"
   | "skill_write"
   | "skill_create"
+  | "skill_set_enabled"
   | "skill_delete"
   | "skill_import"
   | "skill_validate"
@@ -328,17 +331,25 @@ export type WebSessionPermissionGrant = {
 };
 
 export type WebReadSessionMessagesInput = {
+  includeModelContext?: boolean;
   sessionKey: string;
   projectKey?: string;
   sessionKind?: "background_task";
   parentSessionId?: string;
   relativeTranscriptPath?: string;
+  /** Soft message budget for backward pages, extended to the oldest included user turn. */
   limit?: number;
+  /** Forward: numeric offset. Backward: before:<messageId>, omitted for the newest page. */
   cursor?: string;
+  /** On a backward tail refresh, include this previously loaded message and everything newer. */
+  includeFromId?: string;
   direction?: "forward" | "backward";
 };
 
 export type WebReadSessionMessagesResult = {
+  /** A backward anchor disappeared after history replacement; this is a fresh tail. */
+  historyReset?: boolean;
+  modelContext?: import('../../session/context/ModelContextSnapshot.js').ModelContextSnapshot | null;
   /** History plus an absolute active-turn baseline captured after the disk read. */
   stream?: GatewayActiveTurnSnapshot;
   messages: import("./webMessage.js").WebMessage[];
@@ -425,6 +436,7 @@ export type WebProjectSummary = {
   projectKey: string;
   name: string;
   fullPath: string;
+  /** Nonempty primary transcript files; malformed summaries are skipped lazily. */
   sessionCount: number;
   lastActivity?: number;
   createdAt?: number;

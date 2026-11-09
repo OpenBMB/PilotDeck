@@ -8,12 +8,42 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: web-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  web:
+  changes:
+    name: Select Web checks
     runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.paths.outputs.web }}
+      browser: ${{ steps.paths.outputs.browser }}
+      docker: ${{ steps.paths.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.1
+      - name: Verify CI scope selection
+        run: node --test apps/desktop/scripts/classify-ci-changes.test.mjs
+      - id: paths
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node apps/desktop/scripts/classify-ci-changes.mjs "$BASE_SHA" "$HEAD_SHA"
+
+  web:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
+    # Keep the browser runner within the locked Playwright version's OS support.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -33,20 +63,93 @@ jobs:
       - name: Build Gateway and Web UI
         run: pnpm run build:web
 
+      - name: Verify deferred editor dependencies
+        run: |
+          node --test tests/scripts/ui-build-graph.test.mjs
+          node scripts/check-ui-build-graph.mjs
+
+      - name: Test CI and release workflow boundaries
+        run: node --test apps/desktop/scripts/workflow-boundaries.test.mjs
+
+      - name: Test context inspection and runtime activity boundaries
+        run: >-
+          node --test --test-timeout 60000
+          dist/tests/session/model-context-snapshot.spec.js
+          dist/tests/agent/loop/context-cap.spec.js
+          dist/tests/context/token-accounting-runtime.spec.js
+          dist/tests/gateway/gateway-server-port.spec.js
+          dist/tests/gateway/background-runtime-reload.spec.js
+          dist/tests/gateway/extension-runtime-reload.spec.js
+          dist/tests/gateway/session-runtime-invalidation.spec.js
+          dist/tests/gateway/turn-ownership.spec.js
+          dist/tests/gateway/transport-ownership.spec.js
+          dist/tests/agent/runtime-lease.spec.js
+
+      - name: Test tool, prompt and extension contracts
+        env:
+          PILOT_HOME: ${{ runner.temp }}/pilotdeck-contract-tests
+        run: >-
+          node --test --test-timeout 60000
+          dist/tests/tool/execution-contracts.spec.js
+          dist/tests/tool/scheduler-ordering.spec.js
+          dist/tests/context/prompt-preparation-contracts.spec.js
+          dist/tests/context/cache-runtime.spec.js
+          dist/tests/context/python-awareness.spec.js
+          dist/tests/extension/plugins/prompt-contributions.spec.js
+          dist/tests/agent/loop/request-preparation.spec.js
+          dist/tests/agent/loop/request-attempt.spec.js
+          dist/tests/model/request/media-preparation.spec.js
+          dist/tests/agent/sub/SubAgentSession.spec.js
+          dist/tests/mcp/live-catalog.spec.js
+          dist/tests/mcp/client/McpClient.spec.js
+          dist/tests/mcp/runtime/McpRuntime.spec.js
+          dist/tests/agent/loop/tool-failure-propagation.spec.js
+          dist/tests/router/cache-plan-routing.spec.js
+          dist/tests/router/tokenSaver.spec.js
+          dist/tests/router/scenario/subagentDetector.spec.js
+
       - name: Test Web UI and server
-        # The upstream suite currently lets Vitest collect a Playwright E2E file,
-        # and streamSmoother's fake-timer spec is independently flaky. Keep the
-        # rest of the Web suite as the merge gate until those baseline tests are
-        # repaired in their own change.
-        # Desktop Smoke runs both updater suites with desktop dependencies.
+        # Vitest projects collect only src/ and server/ tests; browser E2E has
+        # its own runner. Desktop Smoke runs updater tests with desktop dependencies.
         run: >-
           pnpm --dir ui exec vitest run
-          --exclude 'e2e/**'
-          --exclude 'src/components/chat/hooks/streamSmoother.test.ts'
           --exclude 'server/services/desktopUpdateNetwork.test.ts'
+          --exclude 'server/services/desktopUpdateAvailability.test.ts'
           --exclude 'server/services/desktopUpdates.spec.ts'
+          --exclude 'server/services/desktopAutoUpdate.test.ts'
+          --exclude 'server/services/jsonReleaseProvider.test.ts'
+
+      - name: Install Chromium for chat scrolling regressions
+        if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
+        run: pnpm --dir ui exec playwright install --with-deps chromium
+
+      - name: Test chat scrolling, history, search, media and settings
+        if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
+        run: pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs
+
+      - name: Test production editor loading and state
+        if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
+        run: pnpm --dir ui exec playwright test -c e2e/editor-loading.config.mjs
+
+      - name: Upload chat scrolling failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: chat-scrolling-failure
+          path: artifacts/stream-playwright
+          if-no-files-found: ignore
+
+      - name: Upload editor loading failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-loading-failure
+          path: artifacts/editor-loading-playwright
+          if-no-files-found: ignore
 
   docker:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -56,4 +159,14 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: pilotdeck:web-regression
+          cache-from: type=gha,scope=web-image
+          cache-to: type=gha,scope=web-image,mode=max
+      - name: Verify isolated image startup dependencies
+        run: >-
+          docker run --rm --entrypoint node pilotdeck:web-regression
+          --import tsx --input-type=module -e
+          "import { classifyRuntimeError } from '@pilotdeck/config';
+          import './ui/server/runtimeBootstrap.js';
+          if (classifyRuntimeError({code:'ENOENT'}) !== 'PD_RESOURCE_NOT_FOUND') process.exit(1);"

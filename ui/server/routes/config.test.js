@@ -14,6 +14,22 @@ import { webSearchConfigForProvider } from '../../src/components/settings/view/a
 const nativeFetch = globalThis.fetch;
 const tempDirs = [];
 
+it('returns Python capability from the executing Gateway and handles disconnected hosts', async () => {
+  const status = { enabled: true, state: 'ready', version: '3.12.16', executable: '/execution-host/python', packages: { numpy: '2' } };
+  const pythonStatus = vi.fn().mockResolvedValueOnce(status).mockRejectedValueOnce(new Error('offline'));
+  const { requestStatus } = await createConfigApp({ pythonStatus });
+  expect((await requestStatus('/api/config/python-runtime')).body).toEqual(status);
+  expect((await requestStatus('/api/config/python-runtime')).status).toBe(503);
+});
+
+it('normalizes the Python preference to true and rejects non-boolean values', () => {
+  expect(validatePilotDeckConfig({}).config.runtime.python.enabled).toBe(true);
+  expect(validatePilotDeckConfig({ runtime: { python: { enabled: false } } }).config.runtime.python.enabled).toBe(false);
+  for (const runtime of [null, false, { python: null }, { python: { enabled: 'false' } }]) {
+    expect(validatePilotDeckConfig({ runtime }).errors).toContain('runtime.python.enabled must be a boolean');
+  }
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -528,7 +544,7 @@ describe('config model-list route', () => {
     const authHeaders = [];
     vi.stubEnv('DEEPSEEK_API_KEY', 'deepseek-from-env');
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      authHeaders.push(init?.headers?.Authorization);
+      authHeaders.push(new Headers(init?.headers).get('authorization'));
       return jsonResponse({ data: [{ id: 'deepseek-chat' }] });
     }));
 
@@ -551,7 +567,7 @@ describe('config model-list route', () => {
     const authHeaders = [];
     vi.stubEnv('OPENAI_API_KEY', 'responses-from-env');
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
-      authHeaders.push(init?.headers?.Authorization);
+      authHeaders.push(new Headers(init?.headers).get('authorization'));
       return jsonResponse({ data: [{ id: 'gpt-4.1' }] });
     }));
 
@@ -2659,7 +2675,7 @@ describe('config routes invalid YAML fallback', () => {
   });
 });
 
-async function createConfigApp({ config = {}, probe } = {}) {
+async function createConfigApp({ config = {}, probe, pythonStatus } = {}) {
   const writePilotDeckConfig = vi.fn(async (nextConfig) => ({
     config: nextConfig,
     raw: stringifyYaml(nextConfig),
@@ -2689,7 +2705,7 @@ async function createConfigApp({ config = {}, probe } = {}) {
     };
   });
   vi.doMock('../pilotdeck-bridge.js', () => ({
-    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined) })),
+    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined), getPythonRuntimeStatus: pythonStatus })),
   }));
 
   const { default: configRoutes } = await import('./config.js');
@@ -2941,4 +2957,20 @@ it('persists a custom endpoint change after dropping the old endpoint credential
   expect(readFileSync(configPath, 'utf8')).toContain('https://new.example/search');
   expect(readFileSync(configPath, 'utf8')).not.toContain('saved-secret');
   expect(resolveWebSearchConfig((await request('/api/config')).body.config.tools.webSearch).endpoint).toBe('https://new.example/search');
+});
+
+it.each(['raw', 'config'])('scopes masked video credentials to the saved API address in %s updates', async shape => {
+  const { request, configPath } = await createDiskConfigApp(stringifyYaml({ tools: { videoGeneration: {
+    enabled: false, apiKey: 'saved-video-secret', baseUrl: 'https://videos.example/v1', model: 'video-model',
+  } } }));
+  const config = (await request('/api/config')).body.config;
+  const original = readFileSync(configPath, 'utf8');
+  config.tools.videoGeneration.baseUrl = 'https://other.example/v1';
+  const body = () => JSON.stringify(shape === 'raw' ? { raw: stringifyYaml(config) } : { config });
+  const blocked = await request('/api/config', { method: 'PUT', body: body() });
+  expect(blocked.status).toBe(400); expect(blocked.body.error).toContain('video API key');
+  expect(readFileSync(configPath, 'utf8')).toBe(original);
+  config.tools.videoGeneration.baseUrl = 'https://videos.example/v1'; config.tools.videoGeneration.model = 'changed-model';
+  expect((await request('/api/config', { method: 'PUT', body: body() })).status).toBe(200);
+  expect(parseYaml(readFileSync(configPath, 'utf8')).tools.videoGeneration.apiKey).toBe('saved-video-secret');
 });

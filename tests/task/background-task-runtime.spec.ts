@@ -8,7 +8,9 @@ import { resolveDefaultCommandShell } from "../../src/runtime/commandShell.js";
 class FakeChild extends EventEmitter {
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
-  readonly pid = 4242;
+  // A fake child has no Windows process tree. Exercise its kill hook rather
+  // than sending taskkill to an unrelated native PID.
+  readonly pid = process.platform === 'win32' ? undefined : 4242;
   readonly kills: Array<string | undefined> = [];
   unrefCalled = false;
 
@@ -49,7 +51,7 @@ test("BackgroundTaskRuntime tracks output and emits one completion", async () =>
 
   const task = await runtime.start({ command: "echo ok", cwd: "/tmp", env, sessionId: "s1", agentId: "a1" });
   assert.equal(task.status, "running");
-  assert.equal(task.pid, 4242);
+  assert.equal(task.pid, child.pid);
   assert.equal(child.unrefCalled, true);
   const expectedShell = resolveDefaultCommandShell({ env });
   assert.equal(invocation?.command, expectedShell.shell);
@@ -57,7 +59,7 @@ test("BackgroundTaskRuntime tracks output and emits one completion", async () =>
   assert.equal(invocation?.options.shell, undefined);
   assert.equal(invocation?.options.cwd, "/tmp");
   assert.equal(invocation?.options.env, env);
-  assert.equal(invocation?.options.detached, true);
+  assert.equal(invocation?.options.detached, process.platform !== 'win32');
   assert.equal(invocation?.options.windowsVerbatimArguments, expectedShell.windowsVerbatimArguments);
 
   child.stdout.write("hello\n");

@@ -9,6 +9,7 @@ import type {
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayTurnOptions,
   GatewayCancelSteerInput,
   GatewayCancelSteerResult,
   GatewaySteerTurnInput,
@@ -47,6 +48,8 @@ import type {
   SkillAddressInput,
   SkillCreateInput,
   SkillCreateResult,
+  SkillSetEnabledInput,
+  SkillSetEnabledResult,
   SkillDeleteInput,
   SkillDeleteResult,
   SkillImportInput,
@@ -93,8 +96,8 @@ export class RemoteGateway implements Gateway {
     this.client.onDisconnect(handler);
   }
 
-  submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
-    return this.client.stream("submit_turn", input);
+  submitTurn(input: GatewaySubmitTurnInput, options?: GatewayTurnOptions): AsyncIterable<GatewayEvent> {
+    return this.client.stream("submit_turn", input, options);
   }
 
   async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
@@ -242,6 +245,10 @@ export class RemoteGateway implements Gateway {
     return parseReloadConfigResult(await this.client.request("reload_config", {}));
   }
 
+  async getPythonRuntimeStatus(): Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus> {
+    return await this.client.request('python_runtime_status', {}) as import('../../runtime/pythonRuntime.js').PythonRuntimeStatus;
+  }
+
   async prepareWeixinLogin(): Promise<PrepareWeixinLoginResult> {
     return (await this.client.request("prepare_weixin_login", {})) as PrepareWeixinLoginResult;
   }
@@ -264,6 +271,10 @@ export class RemoteGateway implements Gateway {
 
   async skillCreate(input: SkillCreateInput): Promise<SkillCreateResult> {
     return (await this.client.request("skill_create", input)) as SkillCreateResult;
+  }
+
+  async skillSetEnabled(input: SkillSetEnabledInput): Promise<SkillSetEnabledResult> {
+    return (await this.client.request("skill_set_enabled", input)) as SkillSetEnabledResult;
   }
 
   async skillDelete(input: SkillDeleteInput): Promise<SkillDeleteResult> {

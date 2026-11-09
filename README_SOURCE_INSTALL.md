@@ -300,6 +300,21 @@ If the default ports are already in use, change them with environment variables,
 SERVER_PORT=3002 PILOTDECK_GATEWAY_PORT=18790 PILOTDECK_GATEWAY_URL=ws://127.0.0.1:18790/ws npm run start
 ```
 
+## API rate limits
+
+The Web server applies per-process, one-minute admission limits. Over-budget requests receive HTTP 429, JSON `code: RATE_LIMITED`, and `Retry-After` (seconds). Requests are rejected before starting the protected work; already admitted streams/downloads are not interrupted. Normal browser assets, health checks and WebSocket chat traffic do not consume these HTTP API quotas. Existing preview and model-connection-test limits remain in place.
+
+| Environment variable | Default per minute | Scope |
+| --- | ---: | --- |
+| `PILOTDECK_API_IP_LIMIT` | 6000 | `/api` and protected `/memory-dashboard` requests, per client IP, before body parsing/authentication |
+| `PILOTDECK_API_USER_LIMIT` | 1200 | Authenticated requests, per database user, counted once even with repeated authentication |
+| `PILOTDECK_AUTH_ATTEMPT_LIMIT` | 20 | Shared login/registration budget per IP; successful responses refund their slot |
+| `PILOTDECK_HTTP_MODEL_LIMIT` | 30 | Shared external-agent, AI commit-message and manual cron-run admissions per authenticated user |
+
+Set positive integer overrides (maximum 1,000,000) in the server environment and restart. Invalid values, including zero, use the defaults. The normal API budget accommodates a supported 500-image preview batch plus polling from multiple tabs. Changing an API key, diagnostic user/device header or session does not reset a user's budget. IPv6 client keys aggregate a /56 subnet.
+
+IP selection follows the existing `PILOTDECK_TRUST_PROXY` setting (default: loopback proxies; `false` or `0` disables trust). Only configure trusted proxy IPs/CIDRs, and have those proxies overwrite forwarding headers. Direct untrusted peers cannot select their bucket using `X-Forwarded-For`. Shared NAT/proxy deployments may need a higher ingress budget; authenticated users still receive separate user budgets. Counters are in memory, reset on server restart and are not shared across replicas. Public multi-replica deployments also need a shared gateway/proxy limit; these limits do not replace connection, body-size or WebSocket protections.
+
 ## Troubleshooting
 
 - `Node.js >=22.13.0 and <23 is required`: switch to Node.js 22.13.0 or newer within the Node.js 22 line, then reinstall dependencies.

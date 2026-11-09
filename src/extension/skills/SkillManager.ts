@@ -3,12 +3,15 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, posix, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 
+import { isSkillEnabled, readSkillPreferences, writeSkillEnabled } from "./skillPreferences.js";
 import { getPilotExtensionPaths } from "../../pilot/paths.js";
 import { isVirtualProjectRoot } from "../../pilot/writablePaths.js";
 import type {
   SkillAddressInput,
   SkillCreateInput,
   SkillCreateResult,
+  SkillSetEnabledInput,
+  SkillSetEnabledResult,
   SkillDeleteInput,
   SkillDeleteResult,
   SkillImportInput,
@@ -173,9 +176,13 @@ export class SkillManager {
       ? await listSkillsIn(this.projectSkillsRoot(effectiveProject), "project")
       : [];
 
-    const builtinSlugs = new Set(builtinSkills.map((skill) => skill.slug));
-    const userSlugs = new Set(userSkills.map((skill) => skill.slug));
-    const projectSlugs = new Set(projectSkills.map((skill) => skill.slug));
+    const preferences = readSkillPreferences(this.pilotHome);
+    for (const skill of [...builtinSkills, ...userSkills, ...projectSkills]) {
+      skill.enabled = isSkillEnabled(preferences, { scope: skill.scope, slug: skill.slug, projectKey: effectiveProject });
+    }
+    const builtinSlugs = new Set(builtinSkills.filter(skill => skill.enabled).map((skill) => skill.slug));
+    const userSlugs = new Set(userSkills.filter(skill => skill.enabled).map((skill) => skill.slug));
+    const projectSlugs = new Set(projectSkills.filter(skill => skill.enabled).map((skill) => skill.slug));
 
     const builtin = builtinSkills.map((skill) => ({
         ...skill,
@@ -212,6 +219,7 @@ export class SkillManager {
           : scope === "plugin" ? []
             : [...builtin, ...user, ...project];
     const searchable = selected
+      .filter(skill => skill.enabled !== false && !skill.overriddenBy)
       .map((skill) => ({ ...skill, command: `/${skill.slug}`, matches: skillMatches(skill, query) }))
       .filter((skill) => !query || skill.matches.length > 0)
       .sort((left, right) => left.command.localeCompare(right.command));
@@ -297,6 +305,15 @@ export class SkillManager {
       skillPath: skillDir,
       skill,
     };
+  }
+
+  async setEnabled(input: SkillSetEnabledInput): Promise<SkillSetEnabledResult> {
+    if (typeof input.enabled !== "boolean" || !["builtin", "user", "project"].includes(input.scope)) {
+      throw new SkillManagerError("invalid_input", "A valid scope and boolean enabled are required.");
+    }
+    await this.read(input);
+    writeSkillEnabled(this.pilotHome, input, input.enabled);
+    return { ok: true, enabled: input.enabled };
   }
 
   async delete(input: SkillDeleteInput): Promise<SkillDeleteResult> {

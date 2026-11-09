@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { awaitWithAbort } from "../runtime/abort.js";
 import type { CanonicalMessage } from "../model/index.js";
 import { ToolResultBudget } from "./budget/ToolResultBudget.js";
 import type { TokenBudgetManager, TokenBudgetSnapshot } from "./budget/TokenBudgetManager.js";
@@ -10,6 +11,7 @@ import {
   truncateHeadPreservingCheckpoint,
 } from "./compaction/CompactionEngine.js";
 import { buildCachePlan, stableSerialize } from "./cache/CachePlan.js";
+import { isRealUserRequestMessage } from "./compaction/toolPairIntegrity.js";
 import type { MicroCompactionEngine } from "./compaction/MicroCompactionEngine.js";
 import type { SnipEngine } from "./compaction/SnipEngine.js";
 import { ensureTrailingUserMessage } from "./compaction/toolPairIntegrity.js";
@@ -24,6 +26,7 @@ import type {
   ContextCaptureTurnInput,
   ContextDiagnostic,
   ContextPrepareInput,
+  ContextPreparation,
   ContextRecoveryDecision,
   ContextRecoveryInput,
   ContextRuntime,
@@ -47,6 +50,8 @@ export type AutoCompactResult =
     };
 
 export type DefaultContextRuntimeOptions = {
+  /** Durable host artifacts that can finish after an Agent turn is interrupted. */
+  sessionArtifactContext?: (sessionId: string, signal?: AbortSignal) => Promise<string | undefined>;
   extension?: ExtensionResolver;
   promptAssembler?: PromptAssembler;
   messageProjector?: MessageProjector;
@@ -100,6 +105,7 @@ const EMERGENCY_TOOL_RESULT_TOKENS = 256;
 const EMERGENCY_HEAD_KEEP_RATIO = 0.10;
 
 export class DefaultContextRuntime implements ContextRuntime {
+  private readonly sessionArtifactContext?: DefaultContextRuntimeOptions["sessionArtifactContext"];
   private readonly extension: ExtensionResolver;
   private readonly promptAssembler: PromptAssembler;
   private readonly messageProjector: MessageProjector;
@@ -128,6 +134,7 @@ export class DefaultContextRuntime implements ContextRuntime {
   private readonly now: () => Date;
 
   constructor(options: DefaultContextRuntimeOptions = {}) {
+    this.sessionArtifactContext = options.sessionArtifactContext;
     this.extension = options.extension ?? new NullExtensionResolver();
     this.promptAssembler = options.promptAssembler ?? new PromptAssembler(this.extension);
     this.messageProjector = options.messageProjector ?? new MessageProjector();
@@ -152,6 +159,20 @@ export class DefaultContextRuntime implements ContextRuntime {
   }
 
   async prepareForModel(input: ContextPrepareInput): Promise<ModelContext> {
+    const preparation = await this.prepareContextAttempt(input);
+    const context = preparation.project(input);
+    if (!input.previewOnly) preparation.commit(context);
+    return context;
+  }
+
+  get prepareForModelAttempt(): ((input: ContextPrepareInput) => Promise<ContextPreparation>) | undefined {
+    // A legacy subclass may customize prepareForModel. Do not bypass that
+    // override merely because it inherits this runtime's optional fast path.
+    return this.prepareForModel === DefaultContextRuntime.prototype.prepareForModel ? this.prepareContextAttempt : undefined;
+  }
+
+  private async prepareContextAttempt(input: ContextPrepareInput): Promise<ContextPreparation> {
+    input.abortSignal?.throwIfAborted();
     const diagnostics: ContextDiagnostic[] = [];
 
     const projection = this.messageProjector.project({
@@ -223,7 +244,12 @@ export class DefaultContextRuntime implements ContextRuntime {
       messageIndex = update.index;
     }
     requestMessages.push(...projection.messages.slice(messageIndex));
-    const prompt = this.promptAssembler.assemble({
+    const artifacts = await awaitWithAbort(input.abortSignal,
+      async () => this.sessionArtifactContext?.(input.sessionId, input.abortSignal));
+    input.abortSignal?.throwIfAborted();
+    if (artifacts) requestMessages.push({ role: "user", content: [{ type: "text", text: artifacts }],
+      metadata: { synthetic: true, purpose: "session_artifact_status" } });
+    const projectPrompt = this.promptAssembler.prepare({
       cwd: input.cwd,
       provider: input.provider,
       model: input.model,
@@ -233,26 +259,23 @@ export class DefaultContextRuntime implements ContextRuntime {
       tools: input.tools,
       customSystemPrompt: input.customSystemPrompt,
       appendSystemPrompt: input.appendSystemPrompt,
+      pythonRuntime: input.pythonRuntime,
       now: () => new Date(promptTimestamp),
     });
 
-    const parts = [...prompt.parts];
+    const instructionParts: string[] = [];
     if (this.memoryAttachmentBuilder) {
-      const memory = await this.memoryAttachmentBuilder.build({
+      const memory = await awaitWithAbort(input.abortSignal, () => this.memoryAttachmentBuilder!.build({
         query: extractRecentUserText(projection.messages) ?? "",
         sessionId: input.sessionId,
         projectRoot: this.projectRoot ?? input.cwd,
         recentMessages: projection.messages,
         signal: input.abortSignal,
         timeoutMs: this.memoryRetrievalTimeoutMs,
-      });
-      for (const block of memory.attachments) {
-        for (const content of block.content) {
-          if (content.type === "text" && content.text.trim().length > 0) {
-            parts.push(content.text);
-          }
-        }
-      }
+      }));
+      // Retrieval varies with the live task. Keep it after history so stable
+      // instructions and prior messages remain eligible for prefix reuse.
+      requestMessages.push(...memory.attachments);
       for (const diagnostic of memory.diagnostics) {
         diagnostics.push({
           code: diagnostic.code,
@@ -260,37 +283,25 @@ export class DefaultContextRuntime implements ContextRuntime {
           message: diagnostic.message,
         });
       }
-      if (input.abortSignal?.aborted) {
-        return {
-          messages: projection.messages,
-          systemPrompt: parts.join("\n\n"),
-          systemPromptParts: parts,
-          tools: input.tools,
-          diagnostics,
-          boundaries: [],
-          metadata: {
-            droppedCount: projection.droppedCount,
-            toolCount: input.tools.length,
-          },
-        };
-      }
+      input.abortSignal?.throwIfAborted();
     }
 
     if (this.instructionDiscovery) {
       try {
-        const layers = await this.instructionDiscovery.discover();
+        const layers = await awaitWithAbort(input.abortSignal, () => this.instructionDiscovery!.discover(input.abortSignal));
         if (layers.length > 0) {
           const blocks = layers.map(l => {
             const desc = instructionScopeDescription(l.scope);
             return `Contents of ${l.path}${desc}:\n\n${l.content}`;
           });
-          parts.push(
+          instructionParts.push(
             `<project-instructions>\nProject instructions are shown below. Adhere to these instructions. ` +
             `IMPORTANT: These instructions OVERRIDE any default behavior.\n\n` +
             `${blocks.join("\n\n")}\n</project-instructions>`,
           );
         }
       } catch {
+        input.abortSignal?.throwIfAborted();
         diagnostics.push({
           code: "instruction_discovery_failed",
           severity: "warning",
@@ -299,44 +310,29 @@ export class DefaultContextRuntime implements ContextRuntime {
       }
     }
 
-    const joined = parts.join("\n\n");
-
-    const cachePlanInput = {
-      provider: input.provider,
-      model: input.model,
-      systemPrompt: joined,
-      tools: input.tools,
-      messages: requestMessages,
-      enabled: input.protocol === "anthropic" && input.supportsPromptCache === true,
-    };
-    const cachePlanFingerprint = buildCachePlan(cachePlanInput, 0)?.fingerprint;
-    const cachePlan = buildCachePlan(
-      cachePlanInput,
-      input.previewOnly ? (this.cachePlanState.get(input.sessionId)?.generation ?? 0) : this.nextCachePlanGeneration(
-        input.sessionId,
-        cachePlanFingerprint,
-        this.cacheResetSessions.delete(input.sessionId),
-      ),
-    );
-
-    // Budget probes must not consume resets or commit hypothetical histories.
-    if (!input.previewOnly) {
-      this.promptTimeState.set(input.sessionId, { timestamp: promptTimestamp, messages: messageFingerprints, dateUpdates });
-    }
-
+    input.abortSignal?.throwIfAborted();
+    const committed = new WeakMap<ModelContext, string | undefined>();
     return {
-      messages: requestMessages,
-      systemPrompt: joined,
-      systemPromptParts: parts,
-      tools: input.tools,
-      diagnostics,
-      boundaries: [],
-      metadata: {
-        droppedCount: projection.droppedCount,
-        toolCount: input.tools.length,
+      project: target => {
+        input.abortSignal?.throwIfAborted();
+        const parts = [...projectPrompt(target).parts, ...instructionParts];
+        const joined = parts.join("\n\n");
+        const cachePlan = buildCachePlan({ ...target, systemPrompt: joined, tools: input.tools,
+          messages: requestMessages, enabled: target.protocol === "anthropic" && target.supportsPromptCache === true,
+        }, this.cachePlanState.get(input.sessionId)?.generation ?? 0);
+        return { messages: requestMessages, systemPrompt: joined, systemPromptParts: parts, tools: input.tools,
+          diagnostics, boundaries: [], metadata: { droppedCount: projection.droppedCount, toolCount: input.tools.length },
+          cacheBreakpoints: cachePlan?.messages, cachePlan };
       },
-      cacheBreakpoints: cachePlan?.messages,
-      cachePlan,
+      commit: context => {
+        input.abortSignal?.throwIfAborted();
+        if (committed.has(context) && committed.get(context) === context.cachePlan?.fingerprint) return;
+        committed.set(context, context.cachePlan?.fingerprint);
+        const generation = this.nextCachePlanGeneration(input.sessionId, context.cachePlan?.fingerprint,
+          this.cacheResetSessions.delete(input.sessionId));
+        if (context.cachePlan) context.cachePlan.generation = generation;
+        this.promptTimeState.set(input.sessionId, { timestamp: promptTimestamp, messages: messageFingerprints, dateUpdates });
+      },
     };
   }
 
@@ -821,7 +817,7 @@ function instructionScopeDescription(scope: InstructionScope): string {
 function extractRecentUserText(messages: CanonicalMessage[]): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.role !== "user") continue;
+    if (!isRealUserRequestMessage(message)) continue;
     for (const block of message.content) {
       if (block.type === "text" && block.text.trim().length > 0) {
         return block.text;

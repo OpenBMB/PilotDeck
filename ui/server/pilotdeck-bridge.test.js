@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
+import { mapAgentEvent } from '../../src/gateway/client/InProcessGateway.ts';
+import { createAskUserQuestionTool } from '../../src/tool/builtin/askUserQuestion.ts';
+import { InMemoryElicitationChannel } from '../../src/tool/elicitation/PilotDeckElicitationChannel.ts';
+import { FileInputProgress } from '../../src/gateway/stream/FileInputProgress.ts';
 
 import {
     beginActivitySnapshotRead,
@@ -28,6 +32,78 @@ import {
     syncLocalActiveRunFromSnapshot,
     uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
+
+it.each(['completed', 'aborted_streaming', 'aborted_tools', 'model_error'])('preserves execution timing through the real %s Gateway projection', reason => {
+    const result = { type: reason === 'completed' ? 'success' : reason.startsWith('aborted') ? 'aborted' : 'error',
+        sessionId: 's', turnId: 'r', stopReason: reason, usage: {}, permissionDenials: [], turns: 1,
+        startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z' };
+    const projected = mapAgentEvent({ type: 'turn_completed', sessionId: 's', turnId: 'r', result }, 'r');
+    const complete = projected.find(event => event.type === 'turn_completed');
+    expect(complete).toMatchObject({ startedAt: result.startedAt, completedAt: result.completedAt });
+    expect(gatewayEventToFrames(complete, 's', 'pilotdeck')[0]).toMatchObject({ kind: 'complete',
+        turnTiming: { startedAt: result.startedAt, completedAt: result.completedAt, finishReason: reason } });
+});
+
+it.each(['ask_user_question', 'AskUserQuestion'])('preserves %s multi-select data from the real elicitation tool through Gateway and the Web bridge', async toolName => {
+    const questions = [{ question: 'Which paths?', header: 'Scope', multiSelect: true,
+        options: [{ label: 'A, B', description: 'Combined path' }, { label: 'C', description: 'Another path' }] }];
+    const answers = { 'Which paths?': ['A, B', 'C', 'Custom, answer'] };
+    const output = await createAskUserQuestionTool().execute({ questions }, {
+        turnId: 'question-turn', elicitation: new InMemoryElicitationChannel(answers),
+    });
+    const events = mapAgentEvent({ type: 'tool_result', sessionId: 'question-session', turnId: 'question-turn', result: {
+        type: 'success', toolName, toolCallId: 'question-call', content: output.content, data: output.data,
+        startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:00:01Z',
+    } }, 'question-run');
+    const frame = events.flatMap(event => gatewayEventToFrames(event, 'question-session', 'pilotdeck')).find(frame => frame.kind === 'tool_result');
+    expect(frame).toMatchObject({ toolId: 'question-call', isError: false, toolUseResult: { questions, answers } });
+});
+
+it.each(['generate_image', 'edit_image', 'save_generated_image'])('preserves %s image identity through the subagent gateway and bridge while the parent is running', toolName => {
+    const imageGeneration = { imageId: 'image-id', sessionId: '/project::sub::child', path: '/managed/image.png',
+        width: 24, height: 16, mimeType: 'image/png', purpose: 'deliverable' };
+    const events = mapAgentEvent({ type: 'subagent_tool_result', sessionId: 'web:parent', turnId: 'parent-turn',
+        subagentId: 'child', subagentType: 'general-purpose', result: { type: 'success', toolName, toolCallId: 'draw',
+            content: [{ type: 'text', text: 'Image attached' }], data: { imageGeneration, diagnostic: 'x'.repeat(120000) }, startedAt: '', completedAt: '' } }, 'parent-run');
+    const frames = events.flatMap(event => gatewayEventToFrames(event, 'web:parent', 'pilotdeck'));
+    const result = frames.find(frame => frame.kind === 'tool_result' && frame.isSubagentDetail);
+    expect(result).toMatchObject({ toolId: 'draw', isError: false, subagentId: 'child', runId: 'parent-run',
+        toolUseResult: { imageGeneration, diagnostic: { truncated: true } } });
+    expect(result.toolUseResult.imageGeneration.sessionId).not.toBe('web:parent');
+});
+it.each(['generate_video', 'save_generated_video'])('preserves %s video identity through the subagent gateway and bridge while the parent is running', toolName => {
+    const videoGeneration = { videoId: 'video-id', sessionId: '/project::sub::child', path: '/managed/video.mp4',
+        width: 24, height: 16, mimeType: 'video/mp4', purpose: 'deliverable' };
+    const events = mapAgentEvent({ type: 'subagent_tool_result', sessionId: 'web:parent', turnId: 'parent-turn',
+        subagentId: 'child', subagentType: 'general-purpose', result: { type: 'success', toolName, toolCallId: 'draw',
+            content: [{ type: 'text', text: 'Video attached' }], data: { videoGeneration, diagnostic: 'x'.repeat(120000) }, startedAt: '', completedAt: '' } }, 'parent-run');
+    const frames = events.flatMap(event => gatewayEventToFrames(event, 'web:parent', 'pilotdeck'));
+    const result = frames.find(frame => frame.kind === 'tool_result' && frame.isSubagentDetail);
+    expect(result).toMatchObject({ toolId: 'draw', isError: false, subagentId: 'child', runId: 'parent-run',
+        toolUseResult: { videoGeneration, diagnostic: { truncated: true } } });
+    expect(result.toolUseResult.videoGeneration.sessionId).not.toBe('web:parent');
+});
+
+it('projects root and child file preparation as ephemeral metadata before actual tool dispatch', () => {
+    let now = 0;
+    const tracker = new FileInputProgress('run', () => now);
+    for (const child of [undefined, 'child']) {
+        const raw = event => ({ type: child ? 'subagent_model_event' : 'model_event', sessionId: 's', turnId: 't',
+            ...(child ? { subagentId: child, subagentType: 'worker' } : {}), event });
+        const frames = tracker.accept(raw({ type: 'tool_call_start', id: 'write', name: 'write_file' }))
+            .flatMap(event => gatewayEventToFrames(event, 's', 'pilotdeck'));
+        now += 200;
+        frames.push(...tracker.accept(raw({ type: 'tool_call_delta', id: 'write', delta: '{"file_path":"src/app.ts","content":"PRIVATE_CONTENT' }))
+            .flatMap(event => gatewayEventToFrames(event, 's', 'pilotdeck')));
+        expect(frames.at(-1)).toMatchObject({ kind: 'agent_activity', phase: 'file_input', state: 'running',
+            toolId: 'write', fileInputProgress: { filePath: 'src/app.ts', receivedBytes: expect.any(Number) },
+            ...(child ? { subagentId: child, isSubagentDetail: true } : {}) });
+        expect(frames.some(frame => frame.kind === 'tool_use')).toBe(false);
+        expect(JSON.stringify(frames)).not.toContain('PRIVATE_CONTENT');
+    }
+    expect(tracker.finish().flatMap(event => gatewayEventToFrames(event, 's', 'pilotdeck')))
+        .toEqual([expect.objectContaining({ state: 'cancelled' }), expect.objectContaining({ state: 'cancelled' })]);
+});
 
 describe('model block identity', () => {
     it('preserves absolute snapshots and explicit end boundaries for parent and child streams', () => {

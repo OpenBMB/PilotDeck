@@ -41,12 +41,18 @@ router.get('/:sessionId/messages', async (req, res) => {
       ? parseInt(limitParam, 10)
       : null;
     const offset = parseInt(req.query.offset || '0', 10);
+    const includeModelContext = req.query.includeModelContext === 'true' || req.query.includeModelContext === 'summary';
 
     const result = await withPilotDeckGatewayReadRetry((gateway) => gateway.readSessionMessages({
       sessionKey: sessionId,
       projectKey: projectPath,
+      ...(includeModelContext ? { includeModelContext: true } : {}),
       limit: limit ?? undefined,
-      cursor: offset > 0 ? String(offset) : undefined,
+      ...(req.query.direction === 'backward' ? {
+        direction: 'backward',
+        cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
+        includeFromId: typeof req.query.includeFromId === 'string' ? req.query.includeFromId : undefined,
+      } : { cursor: offset > 0 ? String(offset) : undefined }),
       ...(typeof req.query.sessionKind === 'string' && req.query.sessionKind
         ? { sessionKind: req.query.sessionKind }
         : {}),
@@ -64,11 +70,15 @@ router.get('/:sessionId/messages', async (req, res) => {
 
     return res.json({
       messages,
+      ...(req.query.includeModelContext === 'true' ? { modelContext: result.modelContext ?? null } : {}),
+      ...(req.query.includeModelContext === 'summary' ? { contextBreakdown: result.modelContext?.breakdown ?? null } : {}),
       ...(result.stream ? { stream: { active: result.stream.active, runId: result.stream.runId,
         messages: result.stream.events.flatMap(event => gatewayEventToFrames(event, sessionId, 'pilotdeck')),
       } } : {}),
       total: totalKnown,
       hasMore,
+      ...(result.historyReset ? { historyReset: true } : {}),
+      ...(typeof result.nextCursor === 'string' ? { nextCursor: result.nextCursor } : {}),
       offset,
       limit,
       ...(result.tokenUsage ? { tokenUsage: result.tokenUsage } : {}),
@@ -182,6 +192,7 @@ function mapWebMessageToNormalized(message, sessionId) {
   const base = {
     id: message.id,
     ...(message.blockId ? { blockId: message.blockId } : {}),
+    ...(message.turnTiming ? { turnTiming: message.turnTiming } : {}),
     ...(message.timeline ? { timeline: message.timeline, isFinal: true } : {}),
     sessionId,
     timestamp: message.createdAt,
@@ -235,7 +246,7 @@ function mapWebMessageToNormalized(message, sessionId) {
       const planPayload = message.payload && typeof message.payload === 'object'
           ? message.payload
           : {};
-      const searchPayload = isSearchToolName(message.toolName) && message.payload && typeof message.payload === 'object'
+      const toolPayload = (isSearchToolName(message.toolName) || ['ask_user_question', 'AskUserQuestion', 'generate_image', 'edit_image', 'save_generated_image', 'generate_video', 'save_generated_video'].includes(message.toolName)) && message.payload && typeof message.payload === 'object'
           ? message.payload
           : null;
       return createNormalizedMessage({
@@ -261,7 +272,7 @@ function mapWebMessageToNormalized(message, sessionId) {
             planTitle: planPayload.planTitle,
             planSummary: planPayload.planSummary,
         } : {}),
-        ...(searchPayload ? { toolUseResult: searchPayload } : {}),
+        ...(toolPayload ? { toolUseResult: toolPayload } : {}),
       });
     }
     case 'permission_request':

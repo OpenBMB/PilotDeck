@@ -1,3 +1,5 @@
+import { withCommandMutation } from "./filesystem/coordinateMutation.js";
+import { operationContext } from "../../session/checkpoints/WorkspaceCoordinator.js";
 import { createServer, type AddressInfo, type Server, type Socket } from "node:net";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -185,13 +187,8 @@ export function createExecuteCodeTool(
     execute: async (input, context) => {
       const startedAt = Date.now();
       // Python may write directly without calling any write-capable helper.
-      const finishCommand = await context.fileHistory?.trackCommand?.();
-      let result: ExecuteCodeOutput;
-      try {
-        result = await runExecuteCode(input, context, startedAt, { allowedTools, webSearchEnabled });
-      } finally {
-        await finishCommand?.();
-      }
+      const result = await withCommandMutation(context,
+        () => runExecuteCode(input, context, startedAt, { allowedTools, webSearchEnabled }));
       return {
         content: [{ type: "text", text: formatExecuteCodeResult(result) }],
         data: result,
@@ -405,9 +402,14 @@ async function runExecuteCode(
     );
     await writeFile(path.join(tempRoot, "script.py"), input.code, "utf8");
 
+    // Socket callbacks do not inherit the script's async context. Bind nested
+    // tool dispatch explicitly so it re-enters the script's mutation lease.
+    const mutationContext = operationContext.getStore();
     server = createRpcServer({
       context,
-      executeTool,
+      executeTool: (call, overrides) => mutationContext
+        ? operationContext.run(mutationContext, () => executeTool(call, overrides))
+        : executeTool(call, overrides),
       maxToolCalls,
       toolCallLog,
       nextToolCall: () => {

@@ -13,6 +13,7 @@ import {
   resolveCatalogProviderDefaultUrl,
 } from '../../../src/model/config/providerCredentialScope.js';
 import { findModelReferences } from './modelReferences.js';
+import { normalizeLogRetentionDays, setRuntimeLogRetention } from '@pilotdeck/config';
 
 // Source of truth: ~/.pilotdeck/pilotdeck.yaml. The disk format and the
 // "internal" config object are the same V2 schema — no more adapter layer.
@@ -106,6 +107,7 @@ function deepMerge(base, override) {
 export function buildDefaultPilotDeckConfig() {
   return {
     schemaVersion: CONFIG_VERSION,
+    runtime: { python: { enabled: true } },
     agent: {
       model: '',
       params: {},
@@ -125,7 +127,7 @@ export function buildDefaultPilotDeckConfig() {
       heartbeatBatchSize: 30,
     },
     router: { enabled: false },
-    tools: { webSearch: { enabled: false } },
+    tools: { webSearch: { enabled: false }, imageGeneration: { enabled: false }, videoGeneration: { enabled: false } },
     alwaysOn: { projects: {} },
     cron: { enabled: true },
     adapters: {
@@ -139,8 +141,10 @@ export function buildDefaultPilotDeckConfig() {
         serverPort: 3001,
         vitePort: 5173,
         apiTimeoutMs: 120000,
+        logRetentionDays: 7,
         databasePath: path.join(PILOT_HOME_DIR, 'auth.db'),
         workspacesRoot: os.homedir(),
+        generalWorkspaceDirectory: '',
       },
       officePreview: {
         service: 'builtin',
@@ -158,6 +162,9 @@ export function buildDefaultPilotDeckConfig() {
 export function normalizePilotDeckConfig(input) {
   const source = isRecord(input) ? input : {};
   const normalized = deepMerge(buildDefaultPilotDeckConfig(), source);
+  if (isRecord(normalized.webui?.runtime)) {
+    normalized.webui.runtime.logRetentionDays = normalizeLogRetentionDays(normalized.webui.runtime.logRetentionDays);
+  }
   // A bare YAML `cron:` has the same defaults as an omitted section.
   normalized.cron ??= { enabled: true };
   // Older configured sections implied enabled. Do not let new-user defaults
@@ -510,6 +517,8 @@ export function validatePilotDeckConfig(config) {
   const errors = [];
   const warnings = [];
 
+  if (!isRecord(normalized.runtime) || !isRecord(normalized.runtime.python)
+    || typeof normalized.runtime.python.enabled !== 'boolean') errors.push('runtime.python.enabled must be a boolean');
   const providers = normalized.model?.providers;
   if (isRecord(providers)) {
     for (const [providerId, provider] of Object.entries(providers)) {
@@ -559,6 +568,11 @@ export function validatePilotDeckConfig(config) {
   const libreOfficeBinaryPath = normalized.webui?.officePreview?.binaryPath;
   if (libreOfficeBinaryPath !== undefined && typeof libreOfficeBinaryPath !== 'string') {
     errors.push('webui.officePreview.binaryPath must be a string');
+  }
+  const generalDirectory = normalized.webui?.runtime?.generalWorkspaceDirectory;
+  if (generalDirectory !== undefined && (typeof generalDirectory !== 'string'
+    || (generalDirectory.trim() && !path.isAbsolute(generalDirectory.trim()) && !/^~(?:[\\/]|$)/.test(generalDirectory.trim())))) {
+    errors.push('webui.runtime.generalWorkspaceDirectory must be an absolute path or start with ~');
   }
   return { valid: errors.length === 0, errors, warnings, config: normalized };
 }
@@ -656,6 +670,10 @@ export function buildRuntimeEnv(config) {
     HOST: process.env.HOST || String(runtime.host ?? '0.0.0.0'),
     API_TIMEOUT_MS: String(runtime.apiTimeoutMs ?? 120000),
     PILOTDECK_MEMORY_ENABLED: normalized.memory?.enabled ? '1' : '0',
+    // Always assign the empty value as well, so resetting to the default clears
+    // a previous directory during config hot reload.
+    PILOTDECK_GENERAL_WORKSPACE_DIRECTORY: runtime.generalWorkspaceDirectory?.trim() || '',
+    PILOTDECK_GENERAL_WORKSPACE_ID: runtime.generalWorkspaceId || '',
   };
 
   if (runtime.databasePath) env.DATABASE_PATH = expandTilde(runtime.databasePath);
@@ -732,6 +750,10 @@ export function buildRuntimeEnv(config) {
 
 export function applyConfigToProcessEnv(config) {
   Object.assign(process.env, buildRuntimeEnv(config));
+  const days = setRuntimeLogRetention(config?.webui?.runtime?.logRetentionDays);
+  if (process.connected && typeof process.send === 'function') {
+    process.send({ type: 'pilotdeck:log-retention', days }, () => {});
+  }
 }
 
 // ─── Memory service options ──────────────────────────────────────────────────

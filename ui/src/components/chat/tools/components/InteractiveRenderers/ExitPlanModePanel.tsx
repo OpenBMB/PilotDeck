@@ -110,10 +110,10 @@ export const ExitPlanModePanel: React.FC<PermissionPanelProps> = ({
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-lg dark:border-blue-900/70 dark:bg-neutral-900">
-      <div className="border-b border-blue-100 bg-blue-50/70 px-4 py-3 dark:border-blue-900/70 dark:bg-blue-950/25">
+    <div className="overflow-hidden rounded-2xl border border-[var(--pd-accent-border,#bfdbfe)] bg-white shadow-lg dark:border-[var(--pd-accent-border,#1e3a8a)] dark:bg-neutral-900">
+      <div className="border-b border-[var(--pd-accent-border,#dbeafe)] bg-[var(--pd-accent-soft,#eff6ff)] px-4 py-3 dark:border-[var(--pd-accent-border,#1e3a8a)] dark:bg-[var(--pd-accent-selected,#172554)]">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--pd-accent-soft,#dbeafe)] text-[var(--pd-accent-strong,#1d4ed8)] dark:bg-[var(--pd-accent-soft,#1e3a8a)] dark:text-[var(--pd-accent-strong,#93c5fd)]">
             <ClipboardList className="h-4 w-4" strokeWidth={2} />
           </div>
           <div className="min-w-0 flex-1">
@@ -153,7 +153,7 @@ export const ExitPlanModePanel: React.FC<PermissionPanelProps> = ({
           onChange={(event) => setFeedback(event.target.value)}
           rows={3}
           placeholder={t('plan.exitMode.feedbackPlaceholder')}
-          className="block w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:border-blue-700 dark:focus:ring-blue-950"
+          className="block w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition focus:border-[var(--pd-focus,#93c5fd)] focus:ring-2 focus:ring-[var(--pd-focus,#dbeafe)] dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:border-[var(--pd-focus,#1d4ed8)] dark:focus:ring-[var(--pd-focus,#172554)]"
         />
         <div className="mt-3 flex flex-wrap justify-end gap-2">
           <button
@@ -167,7 +167,7 @@ export const ExitPlanModePanel: React.FC<PermissionPanelProps> = ({
           <button
             type="button"
             onClick={handleExecute}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--pd-accent,#2563eb)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--pd-button-hover,#1d4ed8)] dark:bg-[var(--pd-accent,#3b82f6)] dark:hover:bg-[var(--pd-button-hover,#2563eb)]"
           >
             <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
             {t('plan.exitMode.executeButton')}

@@ -1,9 +1,13 @@
 import path from 'path'
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { getConnectableHost, normalizeLoopbackHost } from './shared/networkHosts.js'
-import { LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
+import { isLocalAuthDisabled } from './shared/localAuth.js'
+import { LEGACY_LIGHT_PRESETS, LIGHT_PRESETS } from '../apps/desktop/src/lightAppearance'
+import { renderLoadingHtml } from '../apps/desktop/src/appearance'
+import { startupLabels } from '../apps/desktop/src/startupPresentation'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -47,15 +51,28 @@ export default defineConfig(({ mode }) => {
     '@uiw/react-codemirror',
   ]
 
-  const disableLocalAuth =
-    env.PILOTDECK_DISABLE_LOCAL_AUTH !== '0' &&
-    env.PILOTDECK_DISABLE_LOCAL_AUTH !== 'false'
+  const disableLocalAuth = isLocalAuthDisabled(env.PILOTDECK_DISABLE_LOCAL_AUTH)
 
   return {
     define: {
+      'import.meta.env.VITE_PILOTDECK_VERSION': JSON.stringify(env.PILOTDECK_VERSION || JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).version),
+      'import.meta.env.VITE_PILOTDECK_REQUEST_HEADERS': JSON.stringify(env.PILOTDECK_REQUEST_HEADERS || 'full'),
       'import.meta.env.VITE_DISABLE_LOCAL_AUTH': JSON.stringify(disableLocalAuth ? 'true' : 'false'),
     },
     plugins: [react(), {
+      name: 'continuous-startup-shell',
+      transformIndexHtml(html, context) {
+        // Standalone component fixtures do not boot the application or dismiss
+        // its startup shell. Only the application's HTML entry owns that shell.
+        if (path.resolve(context.filename) !== path.join(__dirname, 'index.html')) return html;
+        // The same shell is painted before the application bundle is evaluated.
+        // Keep it outside React's root so phase changes never replace the frame.
+        const page = renderLoadingHtml({ language: 'en', themeMode: 'system' }, true);
+        const style = page.match(/<style>([\s\S]*?)<\/style>/)[1];
+        const body = page.match(/<body[^>]*>([\s\S]*?)<\/body>/)[1];
+        return html.replace('<div id="root"></div>', () => `<div id="pilotdeck-startup-shell"><style>${style}</style>${body}</div><div id="root"></div>`);
+      },
+    }, {
       name: 'appearance-first-paint',
       transformIndexHtml() {
         // Inline and synchronous: even a slow app bundle must not flash the
@@ -67,11 +84,11 @@ export default defineConfig(({ mode }) => {
             if (!['light', 'dark', 'system'].includes(mode)) mode = 'system';
             var dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
             document.documentElement.classList.toggle('dark', dark);
-            document.documentElement.style.backgroundColor = dark ? '#0a0a0a' : '#ffffff';
+            document.documentElement.style.backgroundColor = dark ? '#23252b' : '#ffffff';
             var preference = desktop?.lightAppearance || JSON.parse(localStorage.getItem('pilotdeck-light-appearance-v1') || 'null');
-            var presets = ${JSON.stringify(LIGHT_PRESETS)};
+            var presets = ${JSON.stringify({ ...LIGHT_PRESETS, ...LEGACY_LIGHT_PRESETS })};
             var background = preference?.preset === 'custom' ? preference.custom?.background : presets[preference?.preset]?.background;
-            document.documentElement.style.backgroundColor = dark ? '#0a0a0a' : /^#[0-9a-f]{6}$/i.test(background) ? background : '#ffffff';
+            document.documentElement.style.backgroundColor = dark ? '#23252b' : /^#[0-9a-f]{6}$/i.test(background) ? background : '#ffffff';
           } catch (_) {}
         ` }];
       },
@@ -114,28 +131,58 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
+      manifest: true,
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-            'vendor-codemirror': [
-              '@uiw/react-codemirror',
-              '@codemirror/lang-css',
-              '@codemirror/lang-html',
-              '@codemirror/lang-javascript',
-              '@codemirror/lang-json',
-              '@codemirror/lang-markdown',
-              '@codemirror/lang-python',
-              '@codemirror/theme-one-dark'
-            ],
-            'vendor-xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-clipboard', '@xterm/addon-webgl']
+          manualChunks(id) {
+            // Assign resolved package modules, including React's internal JSX
+            // implementation. Assigning only its entry facade lets an editor
+            // dependency capture that shared runtime and pull CodeMirror into startup.
+            const modulePath = id.replaceAll('\\', '/')
+            const vendorPackages = {
+              'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+              'vendor-codemirror': [
+                '@uiw/react-codemirror',
+                '@codemirror/lang-css',
+                '@codemirror/lang-html',
+                '@codemirror/lang-javascript',
+                '@codemirror/lang-json',
+                '@codemirror/lang-markdown',
+                '@codemirror/lang-python',
+                '@codemirror/theme-one-dark'
+              ],
+              'vendor-xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-clipboard', '@xterm/addon-webgl']
+            }
+            for (const [chunk, packages] of Object.entries(vendorPackages)) {
+              if (packages.some(name => modulePath.includes(`/node_modules/${name}/`))) return chunk
+            }
           }
         }
       }
     },
     test: {
-      environment: 'jsdom',
+      // Real Git integration cases share the host with large Node/jsdom graphs.
+      // Bound Windows process pressure without changing per-test assertions.
+      maxWorkers: process.platform === 'win32' ? 4 : undefined,
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: 'server',
+            environment: 'node',
+            include: ['server/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: 'client',
+            environment: 'jsdom',
+            include: ['src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+          },
+        },
+      ],
       server: {
         deps: {
           inline: ['react', 'react-dom']

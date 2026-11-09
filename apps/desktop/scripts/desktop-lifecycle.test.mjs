@@ -18,7 +18,7 @@ const { createDesktopLifecycle } = load('desktopLifecycle');
 const { buildApplicationMenu } = load('applicationMenu');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function setup({ failTray = false, platform = 'win32', stopRuntime = async () => {} } = {}) {
+function setup({ failTray = false, platform = 'win32', stopRuntime = async () => {}, shouldConfirm = () => true } = {}) {
   const state = { quitting: false, chinese: true, quits: 0, restores: 0, dialogs: [], errors: [] };
   const window = Object.assign(new EventEmitter(), {
     isFullScreen: () => false, visible: true, destroyed: false, hide() { this.visible = false; }, isDestroyed() { return this.destroyed; },
@@ -30,7 +30,7 @@ function setup({ failTray = false, platform = 'win32', stopRuntime = async () =>
   let trayController;
   const lifecycle = createDesktopLifecycle({
     platform,
-    shouldConfirm: () => true,
+    shouldConfirm,
     canHide: () => platform === 'darwin' || trayController.available(),
     getWindow: () => window,
     restoreWindow: async () => { state.restores++; window.visible = true; },
@@ -60,6 +60,21 @@ function setup({ failTray = false, platform = 'win32', stopRuntime = async () =>
     return event.prevented;
   }
   return { state, window, tray, controller, close };
+}
+
+for (const platform of ['win32', 'linux', 'darwin']) {
+  test(`${platform}: idle quit stops directly without a dialog or restoring a hidden window`, async () => {
+    let checks = 0;
+    const { state, tray, close } = setup({ platform, shouldConfirm: async () => { checks++; await tick(); return false; } });
+    close();
+    tray.menu[2].click();
+    tray.menu[2].click();
+    await tick(); await tick();
+    assert.equal(checks, 1);
+    assert.equal(state.dialogs.length, 0);
+    assert.equal(state.restores, 0);
+    assert.equal(state.quits, 1);
+  });
 }
 
 test('close keeps the window alive in the tray; all open actions restore it without quitting', async () => {

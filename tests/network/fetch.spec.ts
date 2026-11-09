@@ -35,15 +35,15 @@ test("networkFetch normalizes DNS and reset errors", () => {
   assert.equal(normalizeNetworkError(Object.assign(new Error("socket hang up"), { code: "ECONNRESET" })).code, "network_connection_reset");
 });
 
-test("networkFetch times out requests", async () => {
+test("networkFetch times out requests", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const fetchImpl: typeof fetch = async (_url, init) => new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
   });
 
-  await assert.rejects(
-    networkFetch("https://example.test", {}, { fetchImpl, timeoutMs: 1 }),
-    { code: "network_timeout" },
-  );
+  const request = networkFetch("https://example.test", {}, { fetchImpl, timeoutMs: 1 });
+  t.mock.timers.tick(1);
+  await assert.rejects(request, { code: "network_timeout" });
 });
 
 test("networkFetch honors init.signal abort reasons without options.signal", async () => {

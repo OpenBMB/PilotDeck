@@ -42,6 +42,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { promises as fsPromises } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { currentRequestContext } from '../../src/network/requestContext.js';
 
 import { installGlobalProxy } from '../../src/cli/proxy.js';
 await installGlobalProxy();
@@ -67,6 +68,7 @@ import {
 import { createNormalizedMessage } from './pilotdeck-message.js';
 import { readPermissionSettings } from './services/permissionSettings.js';
 import { createGatewayConnectionCache } from './services/gatewayConnectionCache.js';
+import { createRouterDashboard } from './services/routerDashboard.js';
 import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1037,12 +1039,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                               planSummary: event.data.planSummary,
                           }
                         : {}),
-                    ...(event.toolName === 'ask_user_question' && event.data
-                        ? { toolUseResult: event.data }
-                        : {}),
-                    ...(isSearchToolName(event.toolName) && event.data
-                        ? { toolUseResult: event.data }
-                        : {}),
+                    ...toolPresentationFields(event.toolName, event.data),
                 }),
             ];
         }
@@ -1144,6 +1141,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 createNormalizedMessage({
                     ...base,
                     kind: 'complete',
+                    ...(event.startedAt && event.completedAt ? { turnTiming: { startedAt: event.startedAt, completedAt: event.completedAt, finishReason: event.finishReason } } : {}),
                     exitCode: 0,
                     success: true,
                     finishReason: event.finishReason,
@@ -1181,6 +1179,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 }),
             ];
         case 'agent_status': {
+            if (event.event === 'file_input_progress') {
+                const detail = event.detail || {};
+                return [createNormalizedMessage({ ...base, kind: 'agent_activity',
+                    id: detail.activityId, activityId: detail.activityId, phase: 'file_input', state: detail.state,
+                    toolId: detail.toolCallId, toolName: detail.toolName,
+                    fileInputProgress: { receivedBytes: detail.receivedBytes, filePath: detail.filePath },
+                    ...(detail.subagentId ? { subagentId: detail.subagentId, isSubagentDetail: true } : {}),
+                })];
+            }
             const subagentFrames = createSubagentStatusFrames(event, base);
             if (subagentFrames && subagentFrames.length > 0) return subagentFrames;
 
@@ -1408,6 +1415,12 @@ function createSubagentStatusFrames(event, base) {
     return frames;
 }
 
+function toolPresentationFields(toolName, data) {
+    return data && (isSearchToolName(toolName) || ['ask_user_question', 'AskUserQuestion', 'generate_image', 'edit_image', 'save_generated_image', 'generate_video', 'save_generated_video'].includes(toolName))
+        ? { toolUseResult: data }
+        : {};
+}
+
 function createSubagentDetailFrames(event, base, detail) {
     const subagentId = String(detail.subagentId || '');
     if (!subagentId) return null;
@@ -1469,6 +1482,7 @@ function createSubagentDetailFrames(event, base, detail) {
                 content: detail.content || detail.preview || '',
                 isError: detail.ok === false,
                 ...(detail.errorCode ? { errorCode: detail.errorCode } : {}),
+                ...toolPresentationFields(detail.toolName, detail.data),
             })];
         }
         case 'subagent_model_error':
@@ -1556,8 +1570,8 @@ function createBridgeFailureStatusEvent({ event, message, userHint, scope = 'tur
     };
 }
 
-function sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider) {
-    for (const frame of gatewayEventToFrames(statusEvent, sessionKey, provider)) {
+function sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider, runId) {
+    for (const frame of gatewayEventToFrames({ ...statusEvent, runId }, sessionKey, provider)) {
         writer.send(frame);
     }
 }
@@ -1594,13 +1608,17 @@ export async function runChatViaGateway(
     provider = 'pilotdeck',
     hooks = {},
 ) {
+    // HTTP handlers carry authenticated attribution in ALS; queued WebSocket
+    // messages carry their own snapshot. Never mix a queued sender with the
+    // request that happened to trigger dispatch, and only serialize wire fields.
+    const sourceContext = options.requestContext ?? currentRequestContext();
+    const requestContext = Object.fromEntries(
+        ['userId', 'deviceId', 'clientVersion', 'parentRequestId']
+            .filter(key => sourceContext[key] !== undefined)
+            .map(key => [key, sourceContext[key]]),
+    );
     const projectKey = options.projectPath || options.cwd || GENERAL_HOME;
     const isGeneralConversation = path.resolve(projectKey) === path.resolve(GENERAL_HOME);
-    // Never trust a browser-provided cwd for General. Its transcript identity
-    // stays under PILOT_HOME, but every turn executes in the managed workspace.
-    const workspaceCwd = isGeneralConversation
-        ? await ensureGeneralWorkspaceDirectory(process.env)
-        : options.workspaceCwd;
     const channelKey = 'web';
 
     const incoming = options.sessionId || options.sessionKey;
@@ -1663,6 +1681,14 @@ export async function runChatViaGateway(
             return { sessionKey, runId, inputAccepted, sawTurnCompleted, sawGatewayError: true };
         }
 
+        // Resolve preflight resources after announcing the session and inside
+        // the terminal-error boundary, so a workspace failure cannot leave a
+        // new conversation permanently waiting for input acceptance.
+        // General always executes in its managed workspace, ignoring browser cwd.
+        const workspaceCwd = isGeneralConversation
+            ? await ensureGeneralWorkspaceDirectory(process.env)
+            : options.workspaceCwd;
+
         const stream = gw.submitTurn({
             sessionKey,
             channelKey,
@@ -1672,6 +1698,7 @@ export async function runChatViaGateway(
             mode: resolvedMode,
             runId,
             ...(Array.isArray(options?.uploadedAttachments) ? { uploadedAttachments: options.uploadedAttachments } : {}),
+            ...(Object.keys(requestContext).length > 0 ? { requestContext } : {}),
             ...(options?.modelOverride ? { modelOverride: options.modelOverride } : {}),
             ...(options?.modelSelection ? { modelSelection: options.modelSelection } : {}),
             ...(basePermissionMode ? { basePermissionMode } : {}),
@@ -1801,7 +1828,7 @@ export async function runChatViaGateway(
                 detail: statusEvent.detail,
             });
             state.hasVisibleFailureStatus = true;
-            sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider);
+            sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider, runId);
         }
     } catch (error) {
         turnFinishReason = 'gateway_bridge_error';
@@ -1842,7 +1869,7 @@ export async function runChatViaGateway(
             });
         }
         state.hasVisibleFailureStatus = true;
-        sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider);
+        sendBridgeStatusEvent(writer, statusEvent, sessionKey, provider, runId);
     } finally {
         if (state.pendingGatewayRunId === runId) {
             setPendingGatewayRun(state, undefined);
@@ -2552,857 +2579,8 @@ export function getActiveSessionIdsViaGateway() {
         .map((state) => state.sessionKey);
 }
 
-/**
- * Read persisted router stats from `~/.pilotdeck/router/stats.json`.
- * Falls back to the legacy `~/.pilotdeck/router-stats.json` path.
- *
- * Both the gateway server and this bridge run in different processes;
- * we no longer have an in-memory accessor (`getLocalGatewayRouterStats`
- * was tied to the bridge owning the gateway). The gateway server's
- * `TokenStatsCollector` periodically flushes to disk — this function
- * is the bridge's read-only window into that file.
- *
- * @returns {Map<string, {aggregate: object, records: object[]}>}
- */
-/**
- * Build a sessionId->projectPath lookup from the filesystem.
- * Scans project chat directories under ~/.pilotdeck/projects/ and maps
- * each session filename back to the actual project path (resolved via
- * the .cwd marker or well-known directory names).
- *
- * @returns {{ sessionIndex: Map<string,string>, dirToPath: Map<string,string> }}
- */
-function _buildSessionProjectIndex() {
-    const sessionIndex = new Map();
-    const dirToPath = new Map();
-    try {
-        const projectsDir = path.join(GENERAL_HOME, 'projects');
-        const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-        for (const d of dirs) {
-            if (!d.isDirectory()) continue;
-            // Resolve actual project path from .cwd marker (handles lossy encoding)
-            const cwdFile = path.join(projectsDir, d.name, '.cwd');
-            try {
-                const realPath = fs.readFileSync(cwdFile, 'utf-8').trim();
-                if (realPath) dirToPath.set(d.name, realPath);
-            } catch { /* no .cwd — will use fallback below */ }
-
-            const chatsDir = path.join(projectsDir, d.name, 'chats');
-            let files;
-            try { files = fs.readdirSync(chatsDir); } catch { continue; }
-            for (const f of files) {
-                if (!f.endsWith('.jsonl')) continue;
-                const sessionId = f.slice(0, -6);
-                sessionIndex.set(sessionId, d.name);
-            }
-        }
-    } catch { /* projects dir may not exist yet */ }
-    return { sessionIndex, dirToPath };
-}
-
-function loadPersistedStatsFromDisk() {
-    const result = new Map();
-    try {
-        // Prefer new JSONL format, fall back to legacy JSON.
-        const jsonlPath = path.join(GENERAL_HOME, 'router', 'stats.jsonl');
-        const jsonPath = path.join(GENERAL_HOME, 'router', 'stats.json');
-        const legacyPath = path.join(GENERAL_HOME, 'router-stats.json');
-
-        let records;
-        if (fs.existsSync(jsonlPath)) {
-            records = _loadRecordsFromJsonl(jsonlPath);
-        } else {
-            records = _loadRecordsFromJson(jsonPath, legacyPath);
-        }
-        if (!records || records.length === 0) return result;
-
-        // Build a filesystem-based sessionId→projectDirName index for
-        // backward compatibility (records written before projectPath existed).
-        const { sessionIndex: fsIndex, dirToPath } = _buildSessionProjectIndex();
-        const generalProjectDirName = createProjectId(GENERAL_HOME);
-
-        const resolveProjectPath = (dirName) => {
-            if (dirName === generalProjectDirName) return GENERAL_HOME;
-            const fromCwd = dirToPath.get(dirName);
-            if (fromCwd) return fromCwd;
-            const repoProjectDirName = createProjectId(REPO_ROOT);
-            if (dirName === repoProjectDirName) return REPO_ROOT;
-            return GENERAL_HOME;
-        };
-
-        const byProject = new Map();
-
-        for (const rec of records) {
-            let projectKey = rec.projectPath;
-            if (!projectKey) {
-                const sessionId = rec.sessionId;
-                if (sessionId) {
-                    const safeId = sanitizeSessionIdForPath(sessionId);
-                    const dirName = fsIndex.get(safeId) || fsIndex.get(sessionId);
-                    if (dirName) {
-                        projectKey = resolveProjectPath(dirName);
-                    }
-                }
-            }
-            if (!projectKey) projectKey = GENERAL_HOME;
-
-            if (!byProject.has(projectKey)) {
-                byProject.set(projectKey, []);
-            }
-            byProject.get(projectKey).push(rec);
-        }
-
-        for (const [projectKey, projRecords] of byProject.entries()) {
-            projRecords.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || ''));
-            result.set(projectKey, {
-                aggregate: {},
-                records: projRecords.slice(-1000),
-            });
-        }
-    } catch (err) {
-        if (err?.code !== 'ENOENT') {
-            console.warn('[router-dashboard] failed to load router stats:', err?.message || err);
-        }
-    }
-    return result;
-}
-
-function _loadRecordsFromJsonl(filePath) {
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    const records = [];
-    for (const line of raw.split('\n')) {
-        if (!line) continue;
-        try {
-            const rec = JSON.parse(line);
-            if (rec?.sessionId && rec?.startedAt) records.push(rec);
-        } catch { /* skip malformed */ }
-    }
-    return records;
-}
-
-function _loadRecordsFromJson(jsonPath, legacyPath) {
-    const statsPath = fs.existsSync(jsonPath) ? jsonPath : legacyPath;
-    const raw = fs.readFileSync(statsPath, 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (!parsed?.sessions || typeof parsed.sessions !== 'object') return [];
-    const records = [];
-    for (const sess of Object.values(parsed.sessions)) {
-        if (!sess || !Array.isArray(sess.requestLog)) continue;
-        for (const rec of sess.requestLog) {
-            if (rec?.sessionId && rec?.startedAt) records.push(rec);
-        }
-    }
-    return records;
-}
-
-/**
- * Read the first user prompt from a session transcript file to use as
- * a human-readable title. Cached for the lifetime of the process.
- */
-const _sessionTitleCache = new Map();
-const DOCUMENT_SELECTION_PROMPT_MARKER = '[Document selections quoted by user:]';
-
-function _stripDocumentSelectionPromptBlock(text) {
-    if (typeof text !== 'string') return '';
-    const markerIndex = text.indexOf(DOCUMENT_SELECTION_PROMPT_MARKER);
-    return markerIndex >= 0 ? text.slice(0, markerIndex).trimEnd() : text;
-}
-
-function _formatPromptTitle(text) {
-    const trimmed = _stripDocumentSelectionPromptBlock(text).trim();
-    if (!trimmed) return null;
-    return trimmed.length > 80 ? trimmed.slice(0, 77) + '…' : trimmed;
-}
-
-function lookupSessionTitle(sessionId, projectKey) {
-    if (_sessionTitleCache.has(sessionId)) return _sessionTitleCache.get(sessionId);
-    const title = _readFirstPrompt(sessionId, projectKey);
-    _sessionTitleCache.set(sessionId, title);
-    return title;
-}
-
-function _readFirstPrompt(sessionId, projectKey) {
-    const pilotHome = GENERAL_HOME;
-    // Sessions are stored on disk under a sanitized filename (raw sessionId
-    // may contain /, :, = which would split into nested dirs). We try
-    // both the sanitized and raw form so this also resolves any legacy files
-    // that pre-date the sanitize fix.
-    const safeId = sanitizeSessionIdForPath(sessionId);
-    const fileVariants = safeId === sessionId ? [sessionId] : [safeId, sessionId];
-    const candidates = [];
-    if (projectKey) {
-        for (const id of fileVariants) {
-            candidates.push(path.join(pilotHome, 'projects', createProjectId(projectKey), 'chats', `${id}.jsonl`));
-        }
-    }
-    // Also check the general workspace (sessions may live there)
-    for (const id of fileVariants) {
-        const generalChatPath = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats', `${id}.jsonl`);
-        if (!candidates.includes(generalChatPath)) candidates.push(generalChatPath);
-    }
-    try {
-        const projectsDir = path.join(pilotHome, 'projects');
-        const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-        for (const d of dirs) {
-            if (!d.isDirectory()) continue;
-            for (const id of fileVariants) {
-                const p = path.join(projectsDir, d.name, 'chats', `${id}.jsonl`);
-                if (!candidates.includes(p)) candidates.push(p);
-            }
-        }
-    } catch { /* ignore */ }
-
-    for (const filePath of candidates) {
-        try {
-            const fd = fs.openSync(filePath, 'r');
-            try {
-                const buf = Buffer.alloc(16384);
-                const bytesRead = fs.readSync(fd, buf, 0, 16384, 0);
-                const head = buf.toString('utf-8', 0, bytesRead);
-                const firstLine = head.split('\n').find(l => l.includes('"type":"accepted_input"'));
-                if (firstLine) {
-                    const parsed = JSON.parse(firstLine);
-                    const text = parsed.messages
-                        ?.flatMap(m => m.content ?? [])
-                        .find(b => b.type === 'text')?.text;
-                    if (text?.trim()) {
-                        const title = _formatPromptTitle(text);
-                        if (title) return title;
-                    }
-                }
-            } finally {
-                fs.closeSync(fd);
-            }
-        } catch { /* file not found or parse error — try next */ }
-    }
-    return null;
-}
-
-/**
- * Extract all user queries from a session's transcript JSONL file.
- * Returns up to `limit` trimmed strings (truncated at 120 chars).
- * Cache is invalidated when the transcript file changes (mtime check).
- */
-const _userQueriesCache = new Map();
-
-function extractUserQueries(sessionId, projectKey, limit = 20) {
-    const cacheKey = `${sessionId}::${projectKey || ''}`;
-    const cached = _userQueriesCache.get(cacheKey);
-    if (cached) {
-        const currentMtime = _getTranscriptMtime(sessionId, projectKey);
-        if (currentMtime && currentMtime === cached.mtime) return cached.queries;
-    }
-
-    const queries = _readUserQueriesFromTranscript(sessionId, projectKey, limit);
-    const mtime = _getTranscriptMtime(sessionId, projectKey);
-    _userQueriesCache.set(cacheKey, { queries, mtime });
-    return queries;
-}
-
-function _getTranscriptMtime(sessionId, projectKey) {
-    const pilotHome = GENERAL_HOME;
-    const safeId = sanitizeSessionIdForPath(sessionId);
-    const fileVariants = safeId === sessionId ? [sessionId] : [safeId, sessionId];
-    const candidates = [];
-    if (projectKey) {
-        for (const id of fileVariants) {
-            candidates.push(path.join(pilotHome, 'projects', createProjectId(projectKey), 'chats', `${id}.jsonl`));
-        }
-    }
-    try {
-        const projectsDir = path.join(pilotHome, 'projects');
-        const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-        for (const d of dirs) {
-            if (!d.isDirectory()) continue;
-            for (const id of fileVariants) {
-                const p = path.join(projectsDir, d.name, 'chats', `${id}.jsonl`);
-                if (!candidates.includes(p)) candidates.push(p);
-            }
-        }
-    } catch { /* ignore */ }
-    for (const filePath of candidates) {
-        try {
-            return fs.statSync(filePath).mtimeMs;
-        } catch { /* next */ }
-    }
-    return null;
-}
-
-function _readUserQueriesFromTranscript(sessionId, projectKey, limit) {
-    const pilotHome = GENERAL_HOME;
-    const safeId = sanitizeSessionIdForPath(sessionId);
-    const fileVariants = safeId === sessionId ? [sessionId] : [safeId, sessionId];
-    const candidates = [];
-    if (projectKey) {
-        for (const id of fileVariants) {
-            candidates.push(path.join(pilotHome, 'projects', createProjectId(projectKey), 'chats', `${id}.jsonl`));
-        }
-    }
-    for (const id of fileVariants) {
-        const generalChatPath = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats', `${id}.jsonl`);
-        if (!candidates.includes(generalChatPath)) candidates.push(generalChatPath);
-    }
-    try {
-        const projectsDir = path.join(pilotHome, 'projects');
-        const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-        for (const d of dirs) {
-            if (!d.isDirectory()) continue;
-            for (const id of fileVariants) {
-                const p = path.join(projectsDir, d.name, 'chats', `${id}.jsonl`);
-                if (!candidates.includes(p)) candidates.push(p);
-            }
-        }
-    } catch { /* ignore */ }
-
-    for (const filePath of candidates) {
-        try {
-            const raw = fs.readFileSync(filePath, 'utf-8');
-            const queries = [];
-            for (const line of raw.split('\n')) {
-                if (!line.trim()) continue;
-                try {
-                    const entry = JSON.parse(line);
-                    if (entry.type !== 'accepted_input') continue;
-                    const text = entry.messages
-                        ?.flatMap(m => m.content ?? [])
-                        .find(b => b.type === 'text')?.text;
-                    if (!text?.trim()) continue;
-                    const trimmed = text.trim();
-                    if (trimmed.length < 2) continue;
-                    queries.push(trimmed.length > 120 ? trimmed.slice(0, 117) + '…' : trimmed);
-                    if (queries.length >= limit) break;
-                } catch { /* skip malformed lines */ }
-            }
-            if (queries.length > 0) return queries;
-        } catch { /* file not found — try next */ }
-    }
-    return [];
-}
-
-/**
- * Extract per-turn structure from a session transcript.
- * Returns an array of turn objects:
- *   { tools: string[][], modelCalls: number }
- *
- * - tools: one entry per assistant_message that has tool_call blocks
- *   e.g. [["glob"], ["read_file", "read_file"], ["edit_file"]]
- * - modelCalls: total assistant_messages in the turn (including the
- *   final text-only response)
- *
- * Continuation #N shows the tools from model call #N-1 that triggered it.
- */
-const _toolSequenceCache = new Map();
-
-function _extractToolSequence(sessionId, projectKey) {
-    const cacheKey = `${sessionId}::${projectKey || ''}::tools`;
-    const cached = _toolSequenceCache.get(cacheKey);
-    if (cached) {
-        const currentMtime = _getTranscriptMtime(sessionId, projectKey);
-        if (currentMtime && currentMtime === cached.mtime) return cached.result;
-    }
-
-    const result = _readToolSequenceFromTranscript(sessionId, projectKey);
-    const mtime = _getTranscriptMtime(sessionId, projectKey);
-    _toolSequenceCache.set(cacheKey, { result, mtime });
-    return result;
-}
-
-function _readToolSequenceFromTranscript(sessionId, projectKey) {
-    const pilotHome = GENERAL_HOME;
-    const safeId = sanitizeSessionIdForPath(sessionId);
-    const fileVariants = safeId === sessionId ? [sessionId] : [safeId, sessionId];
-    const candidates = [];
-    if (projectKey) {
-        for (const id of fileVariants) {
-            candidates.push(path.join(pilotHome, 'projects', createProjectId(projectKey), 'chats', `${id}.jsonl`));
-        }
-    }
-    for (const id of fileVariants) {
-        const generalChatPath = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats', `${id}.jsonl`);
-        if (!candidates.includes(generalChatPath)) candidates.push(generalChatPath);
-    }
-    try {
-        const projectsDir = path.join(pilotHome, 'projects');
-        const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-        for (const d of dirs) {
-            if (!d.isDirectory()) continue;
-            for (const id of fileVariants) {
-                const p = path.join(projectsDir, d.name, 'chats', `${id}.jsonl`);
-                if (!candidates.includes(p)) candidates.push(p);
-            }
-        }
-    } catch { /* ignore */ }
-
-    for (const filePath of candidates) {
-        try {
-            const raw = fs.readFileSync(filePath, 'utf-8');
-            const turns = [];
-            let currentTurn = null;
-
-            for (const line of raw.split('\n')) {
-                if (!line.trim()) continue;
-                try {
-                    const entry = JSON.parse(line);
-                    if (entry.type === 'accepted_input') {
-                        currentTurn = { tools: [], modelCalls: 0 };
-                        turns.push(currentTurn);
-                    } else if (entry.type === 'assistant_message' && currentTurn) {
-                        currentTurn.modelCalls++;
-                        const content = entry.message?.content ?? [];
-                        const toolNames = content
-                            .filter(b => b.type === 'tool_call' || b.type === 'tool_use')
-                            .map(b => b.name)
-                            .filter(Boolean);
-                        if (toolNames.length > 0) {
-                            currentTurn.tools.push(toolNames);
-                        }
-                    }
-                } catch { /* skip */ }
-            }
-            if (turns.length > 0) return turns;
-        } catch { /* file not found */ }
-    }
-    return [];
-}
-
-/**
- * Assign user queries and tool names to requestLog entries.
- *
- * Primary method: group by `turnId` from router stats (each user turn
- * shares one turnId; all continuations within that turn have the same
- * turnId). The first request per turnId gets the user query; subsequent
- * requests become tool continuations with tool names from the transcript.
- *
- * Fallback: when turnId is absent (older stats without the field), uses
- * transcript model-call counts to partition entries.
- */
-/**
- * Extract subagent prompts from a session transcript.
- * Returns a Map<turnId, promptPreview[]> for assigning prompts to subagent entries.
- */
-const _subagentPromptCache = new Map();
-
-function _extractSubagentPrompts(sessionId, projectKey) {
-    const cacheKey = `${sessionId}::${projectKey || ''}::subprompts`;
-    const cached = _subagentPromptCache.get(cacheKey);
-    if (cached) {
-        const currentMtime = _getTranscriptMtime(sessionId, projectKey);
-        if (currentMtime && currentMtime === cached.mtime) return cached.result;
-    }
-    const result = _readSubagentPromptsFromTranscript(sessionId, projectKey);
-    const mtime = _getTranscriptMtime(sessionId, projectKey);
-    _subagentPromptCache.set(cacheKey, { result, mtime });
-    return result;
-}
-
-function _readSubagentPromptsFromTranscript(sessionId, projectKey) {
-    const pilotHome = GENERAL_HOME;
-    const safeId = sanitizeSessionIdForPath(sessionId);
-    const fileVariants = safeId === sessionId ? [sessionId] : [safeId, sessionId];
-    const candidates = [];
-    if (projectKey) {
-        for (const id of fileVariants) {
-            candidates.push(path.join(pilotHome, 'projects', createProjectId(projectKey), 'chats', `${id}.jsonl`));
-        }
-    }
-    for (const id of fileVariants) {
-        const generalChatPath = path.join(pilotHome, 'projects', createProjectId(pilotHome), 'chats', `${id}.jsonl`);
-        if (!candidates.includes(generalChatPath)) candidates.push(generalChatPath);
-    }
-    try {
-        const projectsDir = path.join(pilotHome, 'projects');
-        const dirs = fs.readdirSync(projectsDir, { withFileTypes: true });
-        for (const d of dirs) {
-            if (!d.isDirectory()) continue;
-            for (const id of fileVariants) {
-                const p = path.join(projectsDir, d.name, 'chats', `${id}.jsonl`);
-                if (!candidates.includes(p)) candidates.push(p);
-            }
-        }
-    } catch { /* ignore */ }
-
-    const promptsByTurn = new Map();
-    for (const filePath of candidates) {
-        try {
-            const raw = fs.readFileSync(filePath, 'utf-8');
-            for (const line of raw.split('\n')) {
-                if (!line.trim()) continue;
-                try {
-                    const entry = JSON.parse(line);
-                    if (entry.type === 'subagent_started' && entry.turnId && entry.promptPreview) {
-                        const list = promptsByTurn.get(entry.turnId) || [];
-                        const preview = entry.promptPreview.length > 80
-                            ? entry.promptPreview.slice(0, 80) + '…'
-                            : entry.promptPreview;
-                        list.push(preview);
-                        promptsByTurn.set(entry.turnId, list);
-                    }
-                } catch { /* skip */ }
-            }
-            if (promptsByTurn.size > 0) return promptsByTurn;
-        } catch { /* file not found */ }
-    }
-    return promptsByTurn;
-}
-
-function _assignQueriesToRequestLog(sessionEntry) {
-    const log = sessionEntry.routing?.requestLog;
-    const queries = sessionEntry.userQueries;
-    if (!log || log.length === 0 || !queries || queries.length === 0) return;
-
-    const turnStructure = _extractToolSequence(sessionEntry.sessionId, sessionEntry._projectKey);
-    const subagentPrompts = _extractSubagentPrompts(sessionEntry.sessionId, sessionEntry._projectKey);
-    const hasTurnIds = log.some(e => e.turnId);
-
-    if (hasTurnIds) {
-        _assignByTurnId(log, queries, turnStructure, subagentPrompts);
-    } else {
-        const mainEntries = log.filter(e => e.role === 'main');
-        if (mainEntries.length === 0) return;
-        _assignByModelCallCount(mainEntries, queries, turnStructure);
-    }
-}
-
-function _assignByTurnId(allEntries, queries, turnStructure, subagentPrompts) {
-    let turnIndex = 0;
-    let currentTurnId = null;
-
-    for (let i = 0; i < allEntries.length; i++) {
-        const entry = allEntries[i];
-        if (entry.turnId !== currentTurnId) {
-            currentTurnId = entry.turnId;
-            if (entry.role === 'main') {
-                entry.query = queries[Math.min(turnIndex, queries.length - 1)];
-            }
-            turnIndex++;
-        } else {
-            if (entry.role === 'main') {
-                entry._savedTier = entry.tier;
-                entry.role = 'sub';
-                delete entry.tier;
-            }
-        }
-    }
-
-    const turnIds = [...new Set(allEntries.map(e => e.turnId).filter(Boolean))];
-    for (let tIdx = 0; tIdx < turnIds.length; tIdx++) {
-        const turnId = turnIds[tIdx];
-        const turnEntries = allEntries.filter(e => e.turnId === turnId);
-        const turnTools = turnStructure[tIdx]?.tools || [];
-        const prompts = subagentPrompts?.get(turnId);
-        let toolIdx = 0;
-        let promptIdx = 0;
-
-        for (let j = 1; j < turnEntries.length; j++) {
-            const entry = turnEntries[j];
-            if (entry.query === 'sub-agent') {
-                if (prompts && promptIdx < prompts.length) {
-                    entry.query = prompts[promptIdx];
-                    entry.isSubagentDispatch = true;
-                    if (entry._savedTier) { entry.tier = entry._savedTier; }
-                    delete entry._savedTier;
-                    promptIdx++;
-                }
-            } else if (!entry.query) {
-                if (toolIdx < turnTools.length) {
-                    const names = turnTools[toolIdx];
-                    const isAgentCall = names.some(n => n === 'agent' || n === 'sessions_spawn' || n === 'dispatch_agent');
-                    if (isAgentCall && prompts && promptIdx < prompts.length) {
-                        entry.query = prompts[promptIdx];
-                        entry.isSubagentDispatch = true;
-                        if (entry._savedTier) { entry.tier = entry._savedTier; }
-                        delete entry._savedTier;
-                        promptIdx++;
-                    } else {
-                        entry.query = '→ ' + [...new Set(names)].join(', ');
-                    }
-                }
-                toolIdx++;
-            }
-            delete entry._savedTier;
-        }
-    }
-}
-
-function _assignByModelCallCount(mainEntries, queries, turnStructure) {
-    let turnIndex = 0;
-    let posInTurn = 0;
-
-    for (let i = 0; i < mainEntries.length; i++) {
-        const turnInfo = turnStructure[turnIndex];
-        const turnModelCalls = turnInfo ? turnInfo.modelCalls : 0;
-
-        if (posInTurn === 0) {
-            mainEntries[i].query = queries[Math.min(turnIndex, queries.length - 1)];
-            posInTurn++;
-        } else {
-            mainEntries[i].role = 'sub';
-            delete mainEntries[i].tier;
-            const continuationIdx = posInTurn - 1;
-            const turnTools = turnInfo?.tools;
-            if (turnTools && continuationIdx < turnTools.length) {
-                const names = turnTools[continuationIdx];
-                mainEntries[i].query = '→ ' + [...new Set(names)].join(', ');
-            }
-            posInTurn++;
-        }
-
-        if (turnModelCalls > 0 && posInTurn >= turnModelCalls) {
-            turnIndex++;
-            posInTurn = 0;
-        }
-    }
-}
-
-/**
- * Build a `DashboardData` payload from persisted router stats. Shape
- * mirrors what `ui/src/hooks/useRoutingDashboard.ts` expects so the V2
- * Dashboard tab renders without changing any frontend code.
- */
-export function getRouterDashboardData() {
-    const statsByProject = loadPersistedStatsFromDisk();
-
-    const projects = [];
-    const overall = makeBucket();
-    const overallByTier = {};
-    const overallByRole = {};
-    let overallSessionCount = 0;
-
-    for (const [projectKey, snapshot] of statsByProject.entries()) {
-        const records = Array.isArray(snapshot.records) ? snapshot.records : [];
-        const sessionMap = new Map();
-        for (const record of records) {
-            if (record.sessionId && record.sessionId.includes('::sub::')) continue;
-            let sessionEntry = sessionMap.get(record.sessionId);
-            if (!sessionEntry) {
-                sessionEntry = {
-                    sessionId: record.sessionId,
-                    _projectKey: projectKey,
-                    title: lookupSessionTitle(record.sessionId, projectKey) || record.sessionId,
-                    provider: record.provider || 'pilotdeck',
-                    lastActivity: record.endedAt,
-                    userQueries: extractUserQueries(record.sessionId, projectKey),
-                    routing: {
-                        total: makeBucket(),
-                        byTier: {},
-                        byScenario: {},
-                        byRole: {},
-                        byModel: {},
-                        requestLog: [],
-                        firstSeenAt: Date.parse(record.startedAt) || 0,
-                        lastActiveAt: Date.parse(record.endedAt) || 0,
-                    },
-                };
-                sessionMap.set(record.sessionId, sessionEntry);
-            }
-            const logRole = record.role === 'subagent' ? 'sub' : 'main';
-            sessionEntry.routing.requestLog.push({
-                ts: Date.parse(record.startedAt) || 0,
-                turnId: record.turnId || undefined,
-                role: logRole,
-                tier: record.tier || record.scenarioType || undefined,
-                model: `${record.provider || 'unknown'}/${record.model || 'unknown'}`,
-                ...(record.role === 'subagent' ? { query: 'sub-agent' } : {}),
-                tokens: (record.usage?.totalTokens ?? (record.usage?.inputTokens || 0) + (record.usage?.outputTokens || 0)),
-                cost: record.cost?.total || 0,
-                baselineCost: record.baselineCost ?? (record.cost?.total || 0),
-                savedCost: (record.baselineCost ?? (record.cost?.total || 0)) - (record.cost?.total || 0),
-            });
-            mergeRecordIntoSession(sessionEntry.routing, record);
-            const ended = Date.parse(record.endedAt) || 0;
-            if (ended > (sessionEntry.routing.lastActiveAt || 0)) {
-                sessionEntry.routing.lastActiveAt = ended;
-                sessionEntry.lastActivity = record.endedAt;
-            }
-        }
-
-        for (const sessionEntry of sessionMap.values()) {
-            _assignQueriesToRequestLog(sessionEntry);
-            delete sessionEntry._projectKey;
-        }
-
-        const sessions = [...sessionMap.values()];
-        const aggregated = {
-            total: makeBucket(),
-            byTier: {},
-            byRole: {},
-            sessionCount: sessions.length,
-            routedSessionCount: sessions.length,
-        };
-        for (const session of sessions) {
-            addBuckets(aggregated.total, session.routing.total);
-            for (const [tier, bucket] of Object.entries(session.routing.byTier)) {
-                aggregated.byTier[tier] = aggregated.byTier[tier] || makeBucket();
-                addBuckets(aggregated.byTier[tier], bucket);
-            }
-            for (const [role, bucket] of Object.entries(session.routing.byRole)) {
-                aggregated.byRole[role] = aggregated.byRole[role] || makeBucket();
-                addBuckets(aggregated.byRole[role], bucket);
-            }
-        }
-
-        addBuckets(overall, aggregated.total);
-        for (const [tier, bucket] of Object.entries(aggregated.byTier)) {
-            overallByTier[tier] = overallByTier[tier] || makeBucket();
-            addBuckets(overallByTier[tier], bucket);
-        }
-        for (const [role, bucket] of Object.entries(aggregated.byRole)) {
-            overallByRole[role] = overallByRole[role] || makeBucket();
-            addBuckets(overallByRole[role], bucket);
-        }
-        overallSessionCount += sessions.length;
-
-        projects.push({
-            name: deriveProjectName(projectKey),
-            displayName: deriveProjectDisplayName(projectKey),
-            fullPath: projectKey,
-            sessions,
-            aggregated,
-        });
-    }
-
-    return {
-        projects,
-        overall: {
-            total: overall,
-            byTier: overallByTier,
-            byRole: overallByRole,
-            projectCount: projects.length,
-            sessionCount: overallSessionCount,
-        },
-        unmatchedSessions: [],
-    };
-}
-
-function makeBucket() {
-    return {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        totalTokens: 0,
-        requestCount: 0,
-        estimatedCost: 0,
-        baselineCost: 0,
-        savedCost: 0,
-    };
-}
-
-function addBuckets(target, source) {
-    target.inputTokens += source.inputTokens || 0;
-    target.outputTokens += source.outputTokens || 0;
-    target.cacheReadTokens += source.cacheReadTokens || 0;
-    target.totalTokens += source.totalTokens || 0;
-    target.requestCount += source.requestCount || 0;
-    target.estimatedCost += source.estimatedCost || 0;
-    if (typeof target.baselineCost !== 'number') target.baselineCost = 0;
-    if (typeof target.savedCost !== 'number') target.savedCost = 0;
-    target.baselineCost += source.baselineCost || 0;
-    target.savedCost += source.savedCost || 0;
-}
-
-function mergeRecordIntoSession(routing, record) {
-    const usage = record.usage || {};
-    const cost = record.cost || {};
-    const actualCost = cost.total || 0;
-    const baseline = record.baselineCost ?? actualCost;
-    const bucket = {
-        inputTokens: usage.inputTokens || 0,
-        outputTokens: usage.outputTokens || 0,
-        cacheReadTokens: usage.cacheReadTokens || 0,
-        totalTokens:
-            usage.totalTokens ??
-            (usage.inputTokens || 0) + (usage.outputTokens || 0),
-        requestCount: 1,
-        estimatedCost: actualCost,
-        baselineCost: baseline,
-        savedCost: baseline - actualCost,
-    };
-    addBuckets(routing.total, bucket);
-
-    const tierKey = record.tier || record.scenarioType || 'default';
-    routing.byTier[tierKey] = routing.byTier[tierKey] || makeBucket();
-    addBuckets(routing.byTier[tierKey], bucket);
-
-    const scenarioKey = record.scenarioType || 'default';
-    routing.byScenario[scenarioKey] = routing.byScenario[scenarioKey] || makeBucket();
-    addBuckets(routing.byScenario[scenarioKey], bucket);
-
-    const roleKey = record.resolvedFrom === 'subagent' ? 'sub' : 'main';
-    routing.byRole[roleKey] = routing.byRole[roleKey] || makeBucket();
-    addBuckets(routing.byRole[roleKey], bucket);
-
-    const modelKey = `${record.provider || 'unknown'}/${record.model || 'unknown'}`;
-    routing.byModel[modelKey] = routing.byModel[modelKey] || makeBucket();
-    addBuckets(routing.byModel[modelKey], bucket);
-}
-
-function isGeneralProject(projectKey) {
-    return path.resolve(projectKey) === path.resolve(GENERAL_HOME);
-}
-
-function deriveProjectName(projectKey) {
-    if (isGeneralProject(projectKey)) return 'general';
-    return projectKey
-        .replace(/^\/+/, '')
-        .replace(/[^A-Za-z0-9._-]+/g, '-');
-}
-
-function deriveProjectDisplayName(projectKey) {
-    if (isGeneralProject(projectKey)) return 'general';
-    const parts = projectKey.split('/').filter(Boolean);
-    return parts.length > 0 ? parts[parts.length - 1] : projectKey;
-}
-
-/**
- * Per-session stats payload for `/api/ccr/stats/sessions/:id`. Returns
- * `null` when no router activity has been observed for the session yet.
- */
-export function getRouterSessionStats(sessionId) {
-    const dashboard = getRouterDashboardData();
-    for (const project of dashboard.projects) {
-        const session = project.sessions.find((s) => s.sessionId === sessionId);
-        if (session) {
-            return {
-                sessionId,
-                projectName: project.name,
-                routing: session.routing,
-            };
-        }
-    }
-    return null;
-}
-
-/**
- * Lifetime aggregate suitable for `/api/ccr/stats/summary`.
- */
-export function getRouterStatsSummary() {
-    const data = getRouterDashboardData();
-    const byScenario = {};
-    const byProvider = {};
-    const byTier = data.overall.byTier;
-    for (const project of data.projects) {
-        for (const session of project.sessions) {
-            for (const [scenario, bucket] of Object.entries(session.routing.byScenario)) {
-                byScenario[scenario] = byScenario[scenario] || makeBucket();
-                addBuckets(byScenario[scenario], bucket);
-            }
-            for (const [model, bucket] of Object.entries(session.routing.byModel)) {
-                const provider = model.includes('/') ? model.split('/', 1)[0] : model;
-                byProvider[provider] = byProvider[provider] || makeBucket();
-                addBuckets(byProvider[provider], bucket);
-            }
-        }
-    }
-    return {
-        lifetime: {
-            total: data.overall.total,
-            byScenario,
-            byProvider,
-            byTier,
-        },
-        lastUpdatedAt: new Date().toISOString(),
-    };
-}
+export const { getRouterDashboardData, getRouterSessionStats, getRouterStatsSummary } =
+    createRouterDashboard({ pilotHome: GENERAL_HOME, repoRoot: REPO_ROOT });
 
 export function isTerminalAlwaysOnTurnEvent(event) {
     return event?.type === 'turn_completed'

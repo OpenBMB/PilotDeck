@@ -91,7 +91,9 @@ test("official OpenAI Responses routes use the provider input-token endpoint", a
   assert.equal(requestedBody?.instructions, "Use the project conventions.");
   const firstInput = (requestedBody?.input as Array<{ content: Array<{ type: string }> }> | undefined)?.[0];
   assert.equal(firstInput?.content[0]?.type, "input_file");
-  assert.equal((requestedBody?.tools as Array<Record<string, unknown>>)[0]?.strict, true);
+  // Counting must use the same non-strict tool schemas as real Responses calls;
+  // optional fields and open objects retain their original semantics.
+  assert.equal((requestedBody?.tools as Array<Record<string, unknown>>)[0]?.strict, false);
   assert.equal(requestedBody?.stream, undefined);
   assert.equal(requestedBody?.max_output_tokens, undefined);
 });

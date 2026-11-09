@@ -31,7 +31,7 @@ test("project files do not follow symlinks outside the project", async (t) => {
   const outside = await mkdtemp(join(tmpdir(), "pilotdeck-project-outside-"));
   t.after(() => Promise.all([rm(root, { recursive: true, force: true }), rm(outside, { recursive: true, force: true })]));
   await writeFile(join(outside, "secret.txt"), "secret");
-  await symlink(outside, join(root, "external"));
+  await symlink(outside, join(root, "external"), process.platform === 'win32' ? 'junction' : 'dir');
   const result = await listProjectFiles({ projectKey: root });
   assert.equal(result.items.some((item) => item.relativePath.includes("secret")), false);
 });

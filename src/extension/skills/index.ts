@@ -24,6 +24,8 @@ export type {
   SkillAddressInput,
   SkillCreateInput,
   SkillCreateResult,
+  SkillSetEnabledInput,
+  SkillSetEnabledResult,
   SkillDeleteInput,
   SkillDeleteResult,
   SkillImportInput,

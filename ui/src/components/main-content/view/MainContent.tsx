@@ -14,7 +14,7 @@ import {
   Radio,
   type LucideIcon,
 } from "lucide-react";
-import ChatInterfaceV2 from "../../chat-v2/ChatInterfaceV2";
+import ChatInterface from "../../chat/view/ChatInterface";
 import PluginTabContent from "../../plugins/view/PluginTabContent";
 import { cn } from "../../../lib/utils.js";
 import type { MainContentProps } from "../types/types";
@@ -40,19 +40,19 @@ import ErrorBoundary from "./ErrorBoundary";
 import ToolSidePanel from "./subcomponents/ToolSidePanel";
 import { ChatReviewProvider } from "../../chat-review/ChatReviewContext";
 import ChatReviewSidePanel from "../../chat-review/ChatReviewSidePanel";
-import type { WorkspaceUploadController } from "../../main-content-v2/useWorkspaceUpload";
+import type { WorkspaceUploadController } from "../../file-tree/hooks/useWorkspaceUpload";
 
-const AlwaysOnV2 = React.lazy(() => import("../../main-content-v2/AlwaysOnV2"));
-const CronV2 = React.lazy(() => import("../../main-content-v2/CronV2"));
-const FilesV2 = React.lazy(() => import("../../main-content-v2/FilesV2"));
-const ShellV2 = React.lazy(() => import("../../main-content-v2/ShellV2"));
-const GitV2 = React.lazy(() => import("../../main-content-v2/GitV2"));
-const DashboardV2 = React.lazy(
-  () => import("../../main-content-v2/DashboardV2"),
+const AlwaysOnPanel = React.lazy(() => import("../../always-on/view/AlwaysOnPanel"));
+const CronPanel = React.lazy(() => import("../../cron/view/CronPanel"));
+const FilesPanel = React.lazy(() => import("../../file-tree/view/FilesPanel"));
+const ShellWorkspace = React.lazy(() => import("../../shell/view/ShellWorkspace"));
+const GitWorkspace = React.lazy(() => import("../../git-panel/view/GitWorkspace"));
+const Dashboard = React.lazy(
+  () => import("../../dashboard/view/Dashboard"),
 );
-const TasksV2 = React.lazy(() => import("../../main-content-v2/TasksV2"));
-const MemoryPanel = React.lazy(() => import("./memory/MemoryPanel"));
-const SkillsV2 = React.lazy(() => import("../../main-content-v2/SkillsV2"));
+const TasksPanel = React.lazy(() => import("../../task-master/view/TasksPanel"));
+const MemoryPanel = React.lazy(() => import("../../memory/view/MemoryPanel"));
+const SkillsPanel = React.lazy(() => import("../../skills/view/SkillsPanel"));
 
 function TabSkeleton() {
   return (
@@ -219,7 +219,6 @@ function MainContent({
   onAlwaysOnSubTabChange,
   ws,
   sendMessage,
-  latestMessage,
   isMobile,
   onMenuClick,
   isLoading,
@@ -242,6 +241,7 @@ function MainContent({
   onShowSettings,
   onSelectProjectByName,
   externalMessageUpdate,
+  externalMessageUpdateTarget,
   misroutedFileFromUrl,
   onMisroutedFileUrlHandled,
 }: MainContentProps) {
@@ -561,7 +561,6 @@ function MainContent({
           onAlwaysOnSubTabChange={onAlwaysOnSubTabChange}
           ws={ws}
           sendMessage={sendMessage}
-          latestMessage={latestMessage}
           handleFileOpen={openFileInWorkspace}
           onInputFocusChange={onInputFocusChange}
           onSessionActive={onSessionActive}
@@ -581,6 +580,7 @@ function MainContent({
           onSelectSession={onSelectSession}
           onShowSettings={onShowSettings}
           externalMessageUpdate={externalMessageUpdate}
+          externalMessageUpdateTarget={externalMessageUpdateTarget}
           autoExpandTools={autoExpandTools}
           showThinking={showThinking}
           inlineThinking={inlineThinking}
@@ -630,7 +630,7 @@ function MainContent({
   );
 }
 
-// V2 split body: chat is the persistent primary surface, Files is a dedicated
+// Split body: chat is the persistent primary surface, Files is a dedicated
 // workbench, and the management dashboards open in a resizable side panel.
 type SplitBodyProps = {
   workspaceUpload: WorkspaceUploadController;
@@ -646,7 +646,6 @@ type SplitBodyProps = {
   onAlwaysOnSubTabChange: MainContentProps["onAlwaysOnSubTabChange"];
   ws: any;
   sendMessage: any;
-  latestMessage: any;
   handleFileOpen: (
     filePath: string,
     diffInfo?: CodeEditorDiffInfo | null,
@@ -674,6 +673,7 @@ type SplitBodyProps = {
   onSelectSession: MainContentProps["onSelectSession"];
   onShowSettings: any;
   externalMessageUpdate: any;
+  externalMessageUpdateTarget?: MainContentProps['externalMessageUpdateTarget'];
   autoExpandTools: any;
   showThinking: any;
   inlineThinking: any;
@@ -711,7 +711,6 @@ function SplitBody(props: SplitBodyProps) {
     onAlwaysOnSubTabChange,
     ws,
     sendMessage,
-    latestMessage,
     handleFileOpen,
     onInputFocusChange,
     onSessionActive,
@@ -731,6 +730,7 @@ function SplitBody(props: SplitBodyProps) {
     onSelectSession,
     onShowSettings,
     externalMessageUpdate,
+    externalMessageUpdateTarget,
     autoExpandTools,
     showThinking,
     inlineThinking,
@@ -1082,7 +1082,7 @@ function SplitBody(props: SplitBodyProps) {
   const renderTool = () => {
     if (activeTab === "shell") {
       return (
-        <ShellV2
+        <ShellWorkspace
           selectedProject={selectedProject}
           selectedSession={selectedSession}
           isActive
@@ -1091,12 +1091,12 @@ function SplitBody(props: SplitBodyProps) {
     }
     if (activeTab === "git") {
       return (
-        <GitV2 selectedProject={selectedProject} onFileOpen={handleFileOpen} />
+        <GitWorkspace selectedProject={selectedProject} onFileOpen={handleFileOpen} />
       );
     }
     if (activeTab === "always-on") {
       return (
-        <AlwaysOnV2
+        <AlwaysOnPanel
           selectedProject={selectedProject}
           subTab={alwaysOnSubTab}
           onSubTabChange={onAlwaysOnSubTabChange ?? (() => undefined)}
@@ -1106,10 +1106,10 @@ function SplitBody(props: SplitBodyProps) {
         />
       );
     }
-    if (activeTab === "cron") return <CronV2 />;
+    if (activeTab === "cron") return <CronPanel />;
     if (activeTab === "dashboard")
       return (
-        <DashboardV2
+        <Dashboard
           projectFilter={selectedProject?.name}
           projectFullPath={selectedProject?.fullPath}
           onSelectProject={onSelectProjectByName}
@@ -1120,13 +1120,13 @@ function SplitBody(props: SplitBodyProps) {
       return <MemoryPanel selectedProject={selectedProject} />;
     if (activeTab === "skills")
       return (
-        <SkillsV2
+        <SkillsPanel
           selectedProject={selectedProject}
           projects={projects}
           compact
         />
       );
-    if (renderTasksAsTool) return <TasksV2 isVisible />;
+    if (renderTasksAsTool) return <TasksPanel isVisible />;
     if (isPlugin) {
       return (
         <PluginTabContent
@@ -1301,7 +1301,7 @@ function SplitBody(props: SplitBodyProps) {
       {isFiles && showChat && !editorExpanded && isMobile && !hasEditor ? (
         <div className="pd-workspace-body flex h-full w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-neutral-950">
           <Suspense fallback={<TabSkeleton />}>
-            <FilesV2
+            <FilesPanel
               key={selectedProject?.name ?? ""}
               selectedProject={selectedProject}
               workspaceUpload={workspaceUpload}
@@ -1404,7 +1404,7 @@ function SplitBody(props: SplitBodyProps) {
               />
             ) : null}
             <Suspense fallback={<TabSkeleton />}>
-              <FilesV2
+              <FilesPanel
                 key={selectedProject?.name ?? ""}
                 selectedProject={selectedProject}
                 workspaceUpload={workspaceUpload}
@@ -1581,12 +1581,11 @@ function SplitBody(props: SplitBodyProps) {
             </header>
           ) : null}
           <ErrorBoundary showDetails>
-            <ChatInterfaceV2
+            <ChatInterface
               selectedProject={selectedProject}
               selectedSession={selectedSession}
               ws={ws}
               sendMessage={sendMessage}
-              latestMessage={latestMessage}
               onFileOpen={handleFileOpen}
               onInputFocusChange={onInputFocusChange}
               onSessionActive={onSessionActive}
@@ -1604,6 +1603,7 @@ function SplitBody(props: SplitBodyProps) {
               autoScrollToBottom={autoScrollToBottom}
               sendByCtrlEnter={sendByCtrlEnter}
               externalMessageUpdate={externalMessageUpdate}
+              externalMessageUpdateTarget={externalMessageUpdateTarget}
               onShowAllTasks={tasksEnabled ? () => setActiveTab("tasks") : null}
               forceWelcome={false}
               onExitWelcome={isFiles ? undefined : () => setActiveTab("chat")}

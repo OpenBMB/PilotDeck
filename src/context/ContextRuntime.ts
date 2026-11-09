@@ -4,6 +4,7 @@ import type {
   ContextCaptureTurnInput,
   ContextDiagnostic,
   ContextPrepareInput,
+  ContextPreparation,
   ContextRecoveryDecision,
   ContextRecoveryInput,
   ContextToolResultInput,
@@ -30,6 +31,8 @@ export type AgentContextCaptureTurnInput = ContextCaptureTurnInput;
 
 export type AgentContextRuntime = {
   prepareForModel(input: AgentContextPrepareInput): Promise<AgentPreparedContext>;
+  /** Optional staged preparation; legacy runtimes retain prepareForModel semantics. */
+  prepareForModelAttempt?(input: AgentContextPrepareInput): Promise<ContextPreparation>;
   /**
    * Optional. Real implementations (e.g. `DefaultContextRuntime`) provide
    * this; minimal runtimes (`NullContextRuntime`) leave it undefined and the

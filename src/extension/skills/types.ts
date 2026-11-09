@@ -19,7 +19,7 @@ export type SkillScope = "builtin" | "user" | "project";
  * Mirrors what the UI needs to render a sidebar row: name +
  * description for display, slug for routing, mtime for sort. The
  * absolute path is included so the UI can show it in the detail
- * header — it's the same field SkillsV2.tsx already binds to.
+ * header — it's the same field SkillsPanel.tsx already binds to.
  */
 export type SkillSummary = {
   slug: string;
@@ -33,6 +33,8 @@ export type SkillSummary = {
   scope: SkillScope;
   /** Built-in skills are immutable; user/project skills remain editable. */
   readonly: boolean;
+  /** Defaults to true; preferences live outside release payloads. */
+  enabled?: boolean;
   /** Higher-priority scope currently shadowing this entry, when any. */
   overriddenBy?: "user" | "project";
   /** True when this entry shadows a bundled skill with the same slug. */
@@ -115,6 +117,9 @@ export type SkillCreateResult = {
   skillPath: string;
   skill: SkillSummary | null;
 };
+
+export type SkillSetEnabledInput = SkillAddressInput & { enabled: boolean };
+export type SkillSetEnabledResult = { ok: true; enabled: boolean };
 
 export type SkillDeleteInput = SkillAddressInput;
 export type SkillDeleteResult = {

@@ -5,6 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "dependencies": {
+    "@pilotdeck/config": "file:../../../packages/config",
     "@google/genai": "^2.10.0",
     "@larksuiteoapi/node-sdk": "^1.65.0",
     "@modelcontextprotocol/sdk": "^1.29.0",

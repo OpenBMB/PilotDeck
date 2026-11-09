@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 const SETTINGS_SUCCESS_EVENT = "pilotdeck:settings-success";
 const SETTINGS_SAVE_SUCCESS_EVENT = "pilotdeck:settings-save-success";
 const TOAST_DURATION_MS = 2400;
 const pendingSaveMessages: string[] = [];
 
-export function showSettingsSuccess(message = "配置更改已保存") {
+export function showSettingsSuccess(message?: string) {
   window.dispatchEvent(
     new CustomEvent(SETTINGS_SUCCESS_EVENT, {
       detail: { message },
@@ -33,6 +34,7 @@ export function SettingsSuccessToastProvider({
 }: {
   children: ReactNode;
 }) {
+  const { t } = useTranslation('settings');
   const [message, setMessage] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
 
@@ -47,11 +49,11 @@ export function SettingsSuccessToastProvider({
     };
     const onSuccess = (event: Event) => {
       const detail = (event as CustomEvent<{ message?: string }>).detail;
-      display(detail?.message || "配置更改已保存");
+      display(detail?.message || t('saveStatus.success'));
     };
     const onSaveSuccess = (event: Event) => {
       const detail = (event as CustomEvent<{ message?: string }>).detail;
-      display(detail?.message || "配置更改已保存");
+      display(detail?.message || t('saveStatus.success'));
     };
 
     window.addEventListener(SETTINGS_SUCCESS_EVENT, onSuccess);
@@ -59,8 +61,11 @@ export function SettingsSuccessToastProvider({
     return () => {
       window.removeEventListener(SETTINGS_SUCCESS_EVENT, onSuccess);
       window.removeEventListener(SETTINGS_SAVE_SUCCESS_EVENT, onSaveSuccess);
-      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
+  }, [t]);
+
+  useEffect(() => () => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
   }, []);
 
   return (

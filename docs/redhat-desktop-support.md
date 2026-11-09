@@ -5,7 +5,7 @@ existing Ubuntu DEBs. The RPM build baseline is Rocky Linux 9 (glibc 2.34), with
 native architecture-matched CI runners. The target family is RHEL 9+, Rocky Linux
 9+, AlmaLinux 9+, and Fedora desktops. RHEL 8 and older are outside this baseline.
 A build baseline does not certify every distribution or desktop environment;
-current hands-on results are recorded below.
+verify each supported release on its target desktop.
 
 ## Build and installation
 
@@ -54,36 +54,11 @@ installs on that baseline, and executes the bundled native modules and updater.
 The same RPM job starts the installed server and Electron window under X11 and
 Wayland on Rocky Linux 9 before uploading the installer. Linux CI exposes only
 DEB and RPM jobs for x64 and ARM64. Daily Release requires both RPMs and both
-RPM feeds before publishing. Fedora desktop behavior is covered by the local
-validation below.
+RPM feeds before publishing. Native desktop acceptance is still needed for
+each supported distribution.
 The Wayland test installs Weston from EPEL after baseline package verification;
 this test-tool repository is not required by the PilotDeck RPM itself.
 
-## Local validation
-
-On 2026-10-04, both RPMs were built from the working changes based on
-`d2110278bc06938afedac78a9a50305d32e4b720` and installed on Rocky Linux 9.
-ARM64 built natively; x64 built and ran native-module checks under QEMU on the
-ARM64 host. Both installed payloads passed SQLite, bcrypt, sharp, PTY, launcher,
-icon, package-marker and packaged-updater checks on the glibc 2.34 baseline.
-
-The ARM64 RPM also passed installation and X11/Wayland startup on a real
-Fedora 44 ARM64 VM. Its GNOME session passed Chinese onboarding and menus,
-light/dark switching, sidebar resizing, native fullscreen, minimize/restore,
-and a local simulated-model streaming conversation with history after reload.
-The packaged updater's dnf command accepted the already-installed test RPM;
-a download/PolicyKit/version-upgrade cycle remains unverified.
-
-The default x64 Electron graphical smoke failed in QEMU with a GPU subprocess
-trap. A diagnostic X11 run with `--no-zygote --in-process-gpu` then passed
-window creation and bundled-server startup. These are test-only emulation
-switches; a native x64 graphical result is still required. The new CI workflow
-includes native x64 and ARM64 display checks, but has not run from this local
-branch. RHEL/AlmaLinux desktops, GNOME tray hosting and external model providers
-remain untested.
-
-The local record `artifacts/rpm-support/validation.md` contains package hashes,
-logs and screenshots. These local artifacts are ignored by Git.
 
 References: [electron-builder Linux targets](https://www.electron.build/v26/docs/linux/),
 [RpmUpdater](https://www.electron.build/v26/docs/api/electron-updater.class.rpmupdater/).

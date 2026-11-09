@@ -1,8 +1,11 @@
+import { videoApiBaseUrl } from "../../../src/pilot/config/videoGenerationConfig.js";
+import { imageApiBaseUrl } from "../../../src/pilot/config/imageGenerationConfig.js";
 import { customSearchRequest, customSearchResults } from "../../../src/pilot/config/customSearch.js";
 import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
 import { getWebSearchProviderConfig, migrateWebSearchProviderConfigs, resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
 import express from 'express';
+import { mergeRequestHeaders, requestContextHeaders } from '../../../src/network/requestContext.js';
 import { createConnectionTestTasks } from '../services/connectionTestTasks.js';
 import fsPromises from 'fs/promises';
 import path from 'path';
@@ -68,6 +71,14 @@ async function notifyGatewayConfigReload() {
 }
 
 const router = express.Router();
+
+router.get('/python-runtime', async (_req, res) => {
+  try {
+    const gateway = await getPilotDeckGateway();
+    if (!gateway?.getPythonRuntimeStatus) return res.status(503).json({ error: 'Python runtime status is unavailable' });
+    res.json(await gateway.getPythonRuntimeStatus());
+  } catch { res.status(503).json({ error: 'Python runtime status is unavailable' }); }
+});
 
 const MASKED_SECRET = '********';
 
@@ -278,6 +289,22 @@ function formatWebSearchApiError(response, raw) {
   ].join(', ');
   const detail = message?.trim() || (!response.ok && response.statusText) || 'Search provider error';
   return context ? `${context}: ${detail}` : detail;
+}
+
+function validateMaskedMediaKeyReuse(nextConfig, previousConfig) {
+  for (const [section, normalize, label] of [
+    ['imageGeneration', imageApiBaseUrl, 'image'],
+    ['videoGeneration', videoApiBaseUrl, 'video'],
+  ]) {
+    const next = nextConfig?.tools?.[section];
+    if (next?.apiKey !== MASKED_SECRET) continue;
+    const previous = previousConfig?.tools?.[section];
+    try {
+      if (previous?.apiKey && previous.apiKey !== MASKED_SECRET && normalize(next.baseUrl) === normalize(previous.baseUrl)) continue;
+    } catch {}
+    return `Enter the ${label} API key again after changing its API address.`;
+  }
+  return null;
 }
 
 function validateMaskedWebSearchKeyReuse(nextConfig, previousConfig) {
@@ -669,7 +696,7 @@ function isNetworkTimeout(error) {
 async function fetchWithEndpointFallback(urls, options, isExpectedOkBody = null) {
   let lastResult = null;
   for (const url of urls) {
-    const response = await networkFetch(url, options, {
+    const response = await networkFetch(url, { ...options, headers: mergeRequestHeaders(requestContextHeaders({ purpose: 'model-discovery' }), options.headers) }, {
       signal: options?.signal,
       fetchImpl: fetch,
       retry: {
@@ -845,6 +872,7 @@ router.get('/office-preview/status', async (req, res) => {
     ]);
     res.json({
       service: configuredPreview.service,
+      platform: process.platform,
       configuredBinaryPath: configuredPreview.binaryPath,
       libreOffice: {
         ...libreOffice,
@@ -928,7 +956,7 @@ router.put('/', async (req, res) => {
       if (maskedProviderKeyError) {
         return res.status(400).json({ error: maskedProviderKeyError });
       }
-      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.rawYaml ?? {});
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.rawYaml ?? {}) || validateMaskedMediaKeyReuse(renamedConfig, diskRecord.rawYaml ?? {});
       if (maskedKeyError) {
         return res.status(400).json({ error: maskedKeyError });
       }
@@ -996,7 +1024,7 @@ router.put('/', async (req, res) => {
       if (maskedProviderKeyError) {
         return res.status(400).json({ error: maskedProviderKeyError });
       }
-      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.config);
+      const maskedKeyError = validateMaskedWebSearchKeyReuse(renamedConfig, diskRecord.config) || validateMaskedMediaKeyReuse(renamedConfig, diskRecord.config);
       if (maskedKeyError) {
         return res.status(400).json({ error: maskedKeyError });
       }

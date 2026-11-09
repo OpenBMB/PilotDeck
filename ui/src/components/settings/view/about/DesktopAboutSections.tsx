@@ -4,6 +4,7 @@ import { desktopUpdates, type DesktopUpdateState } from "../../../../utils/deskt
 import { SettingsCard } from "../../shared/view";
 import type { AboutSectionsProps } from ".";
 import "./DesktopAboutSections.css";
+import UninstallSection from './UninstallSection';
 
 const busyStates = new Set(["checking", "downloading", "paused", "cancelling", "verifying", "installing", "recovering"]);
 type UpdateAction = "start" | "check" | "cancel" | "pause" | "resume";
@@ -103,6 +104,7 @@ export default function DesktopAboutSections({ versionInfo, checkingVersion, onC
 
   return (
     <div className="space-y-8">
+      <UninstallSection />
       <SettingsCard className="desktop-update-card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">

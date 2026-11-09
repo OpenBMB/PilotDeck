@@ -1,33 +1,36 @@
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageSquare } from 'lucide-react';
+import { startupLabels, startupVisualProgress, type StartupTiming } from '../../../../../apps/desktop/src/startupPresentation';
+import StartupFrame from './StartupFrame';
+import { hasStartupShell, updateStartupShell } from '../startupShell';
 
-const loadingDotAnimationDelays = ['0s', '0.1s', '0.2s'];
-
-export default function AuthLoadingScreen() {
-  const { t } = useTranslation('common');
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="text-center">
-        <div className="mb-4 flex justify-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary shadow-sm">
-            <MessageSquare className="h-8 w-8 text-primary-foreground" />
-          </div>
-        </div>
-
-        <h1 className="mb-2 text-2xl font-bold text-foreground">PilotDeck</h1>
-
-        <div className="flex items-center justify-center space-x-2">
-          {loadingDotAnimationDelays.map((delay) => (
-            <div
-              key={delay}
-              className="h-2 w-2 animate-bounce rounded-full bg-blue-500"
-              style={{ animationDelay: delay }}
-            />
-          ))}
-        </div>
-
-        <p className="mt-2 text-muted-foreground">{t('common:uiText.loading')}</p>
+export default function AuthLoadingScreen({ gateway = false, finishing = false, complete = false, leaving = false }: { gateway?: boolean; finishing?: boolean; complete?: boolean; leaving?: boolean }) {
+  const { i18n } = useTranslation();
+  const [status, setStatus] = useState(() => window.pilotdeckDesktop?.getRuntimeStatus?.());
+  const [now, setNow] = useState(Date.now);
+  const persistent = hasStartupShell();
+  useEffect(() => window.pilotdeckDesktop?.onRuntimeStatus(setStatus), []);
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 400); return () => clearInterval(timer); }, []);
+  const labels = startupLabels(i18n.resolvedLanguage || i18n.language);
+  const previous = window.__pilotdeckStartupState;
+  const phase = finishing || complete ? 'ready' : gateway ? status?.phase === 'ready' ? 'ready' : 'gateway' : status?.phase || previous?.phase || 'starting';
+  const live = status?.phase === phase ? status : undefined;
+  const earlier = previous && !previous.completed && (!live?.startedAt || live.startedAt === previous.startedAt) ? previous : undefined;
+  const progress = Math.max(finishing ? 96 : gateway ? 78 : 8, live?.progress || 0, earlier?.progress || 0);
+  const timing: StartupTiming = { phase, progress, completed: complete,
+    startedAt: live?.startedAt || earlier?.startedAt || now,
+    phaseStartedAt: live?.phaseStartedAt || (earlier?.phase === phase ? earlier.phaseStartedAt : now) || now };
+  if (previous) window.__pilotdeckStartupState = timing;
+  useLayoutEffect(() => {
+    if (persistent) updateStartupShell(timing, i18n.resolvedLanguage || i18n.language, leaving);
+  }, [persistent, phase, progress, complete, leaving, timing.startedAt, timing.phaseStartedAt, i18n.resolvedLanguage, i18n.language]);
+  if (persistent) return null;
+  return <StartupFrame complete={complete} leaving={leaving}>
+    <div role="status">
+      <div role="progressbar" aria-label="PilotDeck" aria-valuemin={0} aria-valuemax={100} aria-valuenow={complete ? 100 : progress} className="pd-startup-track">
+        <div className="pd-startup-bar" style={{ width: startupVisualProgress(timing, now) + '%' }} />
       </div>
+      <p className="pd-startup-message">{labels[phase as keyof typeof labels] || labels.starting}</p>
     </div>
-  );
+  </StartupFrame>;
 }

@@ -5,6 +5,8 @@
  * parent's `agent` tool call is forwarded. No parent assistant messages
  * (thinking, text, or sibling tool_calls) are included, so the child model
  * cannot infer or attempt tasks belonging to other sibling subagents.
+ * The host may subsequently append an attachment index; parent conversation
+ * messages and sibling instructions are still not inherited.
  */
 
 import type { CanonicalMessage } from "../../model/index.js";

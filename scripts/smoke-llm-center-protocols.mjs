@@ -8,7 +8,7 @@ if (!RUN) {
 }
 
 const apiKey = requiredEnv("PILOTDECK_LLM_CENTER_API_KEY");
-const baseUrl = stripTrailingSlash(process.env.PILOTDECK_LLM_CENTER_BASE_URL || "https://llm-center.ali.modelbest.cn/llm");
+const baseUrl = stripTrailingSlash(requiredEnv("PILOTDECK_LLM_CENTER_BASE_URL"));
 const contextProbeChars = Number.parseInt(process.env.PILOTDECK_LLM_CENTER_CONTEXT_PROBE_CHARS || "150000", 10);
 
 const cases = [

@@ -12,6 +12,7 @@ const toMessageKeyPart = (value: unknown): string | null => {
 export const getIntrinsicMessageKey = (message: ChatMessage): string | null => {
   const candidates = [
     message.renderKey,
+    message.isCompactBoundary ? message.compactionId : undefined,
     message.id,
     message.messageId,
     message.toolId,

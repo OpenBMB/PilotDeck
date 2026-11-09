@@ -29,7 +29,7 @@
   ${If} ${isUpdated}
   ${AndIf} $R2 != $INSTDIR
     DetailPrint "Update destination differs from the installed location: $R2"
-    MessageBox MB_OK|MB_ICONSTOP "The update destination does not match the current installation. The existing version was kept. Please run the installer manually." /SD IDOK
+    MessageBox MB_OK|MB_ICONSTOP "$(PD_InvalidUpdateLocation)" /SD IDOK
     SetErrorLevel 1
     Quit
   ${EndIf}
@@ -73,7 +73,7 @@
   ${If} ${Errors}
   ${OrIf} $R0 != 0
     !insertmacro PilotDeckDiscard
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Unable to remove the previous version. Installation stopped; see details below." /SD IDOK
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(PD_UnableRemove)" /SD IDOK
     SetErrorLevel 2
     Quit
   ${EndIf}
@@ -121,7 +121,7 @@
   StrCpy $PilotDeckPhase "commit"
   GetDlgItem $0 $HWNDPARENT 2
   EnableWindow $0 0
-  DetailPrint "Files ready. Replacing installation and updating registration..."
+  DetailPrint "$(PD_FilesReady)"
   !insertmacro PilotDeckReplaceOldVersion
   ; The upstream uninstaller uses R8; restore the language before committing.
   StrCpy $R8 "en"
@@ -133,7 +133,7 @@
   Pop $R9
   ${If} $R9 != 0
     SetDetailsView show
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Unable to complete installation. See details below and run the installer again." /SD IDOK
+    MessageBox MB_OK|MB_ICONEXCLAMATION "$(PD_UnableComplete)" /SD IDOK
     SetErrorLevel 1
     Quit
   ${EndIf}

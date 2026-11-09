@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PilotDeckConfig, V2Provider } from "../../modelPool/types";
 import { patch } from "../../modelPool/utils/patch";
+import { MODEL_RETRY_DEFAULTS } from "../../../../../../../src/model/config/retryDefaults";
 
 type RetryDraft = Required<NonNullable<V2Provider["retry"]>> & {
   judgeTimeoutMs: number;
@@ -15,11 +16,7 @@ type AdvancedRetrySectionProps = {
 };
 
 const RETRY_DEFAULTS: RetryDraft = {
-  requestMaxRetries: 2,
-  streamMaxRetries: 3,
-  streamIdleTimeoutMs: 30_000,
-  baseDelayMs: 1_000,
-  maxDelayMs: 60_000,
+  ...MODEL_RETRY_DEFAULTS,
   judgeTimeoutMs: 15_000,
 };
 

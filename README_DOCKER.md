@@ -9,6 +9,8 @@ PilotDeck runs as two cooperating Node.js processes in the container:
 
 The Docker Compose setup persists the full `PILOT_HOME` directory, including generated config, auth DB, permissions, sessions/projects, memory, skills/plugins, and router stats.
 
+Login is required by default for REST and WebSocket access, including the `/shell` terminal. On first launch, create the owner account over a trusted connection before exposing the service. Do not set `PILOTDECK_DISABLE_LOCAL_AUTH=1/true` or `VITE_IS_PLATFORM=true` on publicly accessible deployments: these options bypass local authentication. Existing deployments with an automatically created `local` user must set a known password for that user (or back up the auth database and set up the account again) before upgrading to avoid being locked out.
+
 ## Quick Start with Docker Compose
 
 ### Prerequisites

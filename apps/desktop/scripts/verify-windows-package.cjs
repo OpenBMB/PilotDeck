@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { createRequire } = require('node:module');
 const { execFileSync } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
@@ -15,6 +16,9 @@ assert.equal(process.platform, 'win32');
 assert.equal(process.arch, expectedArch);
 assert.equal(fs.realpathSync(process.execPath), fs.realpathSync(path.join(resources, 'node/node.exe')));
 assert.ok(fs.statSync(path.join(resources, 'app.asar')).size > 0);
+const visualElements = fs.readFileSync(path.join(appRoot, 'PilotDeck.VisualElementsManifest.xml'), 'utf8');
+assert.match(visualElements, /BackgroundColor="#0B2353"/);
+assert.ok(fs.statSync(path.join(resources, 'icons/icon.png')).size > 0);
 for (const file of ['PilotDeck.exe', 'resources/node/node.exe', 'resources/git/cmd/git.exe', 'resources/runtime/resources/cua-driver/cua-driver.exe']) {
   assert.equal(executableArchitecture(path.join(appRoot, file)), expectedArch, file);
 }
@@ -23,6 +27,17 @@ assert.match(execFileSync(path.join(resources, 'git/cmd/git.exe'), ['--version']
 assert.match(execFileSync(path.join(resources, 'git/bin/bash.exe'), ['--noprofile', '--norc', '-c', 'printf pilotdeck-bash-ok'], { encoding: 'utf8', timeout: 30_000 }), /pilotdeck-bash-ok/);
 
 const runtimeRequire = createRequire(path.join(resources, 'runtime/package.json'));
+const processUtils = path.join(resources, 'runtime/ui/server/utils');
+const processHostHash = createHash('sha256').update(fs.readFileSync(path.join(processUtils, 'processHost.cs'))).digest('hex').slice(0, 20);
+const bundledProcessHost = path.join(processUtils, `process-host-${processHostHash}.exe`);
+assert.ok(fs.existsSync(bundledProcessHost) && fs.statSync(bundledProcessHost).size > 0,
+  'Windows packages must include the native process helper matching their runtime source');
+const processHost = runtimeRequire(path.join(processUtils, 'nativeProcessHost.cjs')).nativeProcessHost();
+assert.ok(processHost && fs.realpathSync(processHost) === fs.realpathSync(bundledProcessHost),
+  'Windows packages must bundle the native process helper; startup must not depend on PowerShell or runtime compilation');
+const processIdentity = runtimeRequire(path.join(processUtils, 'processIdentity.cjs')).getProcessIdentity(process.pid);
+assert.equal(processIdentity?.pid, process.pid);
+assert.ok(processIdentity?.birth, 'the packaged helper must query real Windows process creation time');
 const Database = runtimeRequire('better-sqlite3');
 const db = new Database(':memory:');
 try { assert.equal(db.prepare('SELECT 42 AS value').get().value, 42); }
@@ -31,6 +46,10 @@ const bcrypt = runtimeRequire('bcrypt');
 assert.equal(bcrypt.compareSync('windows-smoke', bcrypt.hashSync('windows-smoke', 4)), true);
 
 async function main() {
+  const { getCurrentFuseWire, FuseV1Options } = createRequire(require.resolve('electron-builder'))('@electron/fuses');
+  const fuses = await getCurrentFuseWire(path.join(appRoot, 'PilotDeck.exe'));
+  assert.equal(String.fromCharCode(fuses[FuseV1Options.EnableNodeOptionsEnvironmentVariable]), '0',
+    'Packaged Electron must ignore global NODE_OPTIONS before JavaScript startup');
   const runtime = path.join(resources, 'runtime');
   const installer = path.join(runtime, 'scripts/install-asr.mjs');
   assert.ok(fs.statSync(installer).size > 0, 'packaged FunASR installer must be present');

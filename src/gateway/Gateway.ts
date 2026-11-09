@@ -4,7 +4,7 @@ import type { SessionInfo } from "../session/index.js";
 import { listProjectSessions } from "../session/index.js";
 import { InProcessGateway } from "./client/InProcessGateway.js";
 import { SessionRouter, type GatewaySessionFactory, type SessionRouterOptions } from "./SessionRouter.js";
-import type { Gateway, GatewayCronController, GatewayServerInfo } from "./protocol/types.js";
+import type { Gateway, GatewayCronController, GatewayServerInfo, GatewayTurnOptions } from "./protocol/types.js";
 
 export type GatewayProjectStorageOptions = {
   projectRoot: string;
@@ -87,5 +87,5 @@ function toGatewaySessionInfo(session: SessionInfo): SessionInfo {
   return session;
 }
 
-export type { Gateway, GatewayServerInfo };
+export type { Gateway, GatewayServerInfo, GatewayTurnOptions };
 export { InProcessGateway, SessionRouter };

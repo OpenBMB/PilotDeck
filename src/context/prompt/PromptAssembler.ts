@@ -1,12 +1,16 @@
 import type { CanonicalToolSchema } from "../../model/index.js";
+import { pythonRuntimeContext, type PythonRuntimeStatus } from '../../runtime/pythonRuntime.js';
 import type {
   ContributedCommand,
   ContributedSkill,
   ExtensionResolver,
   McpServerInstruction,
+  PromptContributions,
 } from "../extension/ExtensionResolver.js";
+import { toolGuidance } from "./toolGuidance.js";
 
 export type PromptAssemblerInput = {
+  pythonRuntime?: PythonRuntimeStatus;
   cwd: string;
   provider: string;
   model: string;
@@ -35,11 +39,10 @@ export type PromptAssemblerResult = {
 };
 
 /**
- * Build the system prompt for a turn. Mirrors legacy `fetchSystemPromptParts`
- * information slots (tool catalog / cwd / git / env / mcp instructions /
- * commands / skills) but uses PilotDeck-authored copy.
+ * Build the stable instruction prefix from one request's capabilities.
+ * Dynamic retrieval context belongs in request messages, not this prefix.
  *
- * Sections (review decision 2026-05):
+ * Sections:
  *   1 default_system_prompt   — product identity + tool catalog + permission mode
  *                                + additional working directories + mcp instructions
  *   2 user_context            — cwd + env summary + active model
@@ -50,8 +53,14 @@ export type PromptAssemblerResult = {
 export class PromptAssembler {
   constructor(private readonly extension: ExtensionResolver) {}
 
-  assemble(input: PromptAssemblerInput): PromptAssemblerResult {
-    const sections = this.buildSections(input);
+  /** Freeze extension metadata for route projections of one request candidate. */
+  prepare(input: PromptAssemblerInput): (target: Pick<PromptAssemblerInput, "provider" | "model">) => PromptAssemblerResult {
+    const contributions = input.customSystemPrompt !== undefined ? undefined : structuredClone(this.resolveContributions());
+    return target => this.assemble({ ...input, ...target }, contributions);
+  }
+
+  assemble(input: PromptAssemblerInput, contributions?: PromptContributions): PromptAssemblerResult {
+    const sections = this.buildSections(input, contributions);
     const parts: string[] = [];
     const useCustom = input.customSystemPrompt !== undefined;
 
@@ -77,34 +86,31 @@ export class PromptAssembler {
     return { parts, joined, sections };
   }
 
-  private buildSections(input: PromptAssemblerInput): PromptAssemblerSections {
-    return {
-      defaultSystemPrompt: this.buildDefaultSystemPrompt(input),
-      userContext: this.buildUserContext(input),
-      systemContext: this.buildSystemContext(input),
+  private resolveContributions(): PromptContributions {
+    return this.extension.getPromptContributions?.() ?? {
+      commands: this.extension.listCommands(), skills: this.extension.listSkills(),
+      mcpInstructions: this.extension.listMcpInstructions(),
     };
   }
 
-  private buildDefaultSystemPrompt(input: PromptAssemblerInput): string[] {
-    const hasWebSearch = input.tools.some((tool) => tool.name === "web_search");
-    const hasWebFetch = input.tools.some((tool) => tool.name === "web_fetch");
-    const documentationLookupPolicy = hasWebSearch
-      ? "When implementing code against an API, SDK, framework, CLI, config schema, or file format whose usage is not clear from local source, installed types, examples, or project docs, search for official documentation before writing or changing code. Prefer versioned official docs and existing in-repo call sites. Use web_search for discovery and web_fetch for the relevant docs page. Do not guess unfamiliar signatures, options, or output shapes when a quick lookup can resolve them. If network tools are unavailable or denied, state the uncertainty and proceed conservatively."
-      : hasWebFetch
-        ? "When implementing code against an API, SDK, framework, CLI, config schema, or file format whose usage is not clear, prefer installed types, local source, examples, and project docs. If a relevant official documentation URL is already known, use web_fetch to inspect it. Otherwise state the uncertainty and proceed conservatively."
-        : "When implementing code against an API, SDK, framework, CLI, config schema, or file format whose usage is not clear, prefer installed types, local source, examples, and project docs. State any remaining uncertainty and proceed conservatively.";
+  private buildSections(input: PromptAssemblerInput, snapshot?: PromptContributions): PromptAssemblerSections {
+    if (input.customSystemPrompt !== undefined) {
+      return { defaultSystemPrompt: [], userContext: this.buildUserContext(input), systemContext: [] };
+    }
+    const contributions = snapshot ?? this.resolveContributions();
+    return {
+      defaultSystemPrompt: this.buildDefaultSystemPrompt(input, contributions),
+      userContext: this.buildUserContext(input),
+      systemContext: this.buildSystemContext(input, contributions),
+    };
+  }
+
+  private buildDefaultSystemPrompt(input: PromptAssemblerInput, contributions: PromptContributions): string[] {
     const lines: string[] = [
       "You are PilotDeck, an AI agent runtime. You execute tasks across CLI, TUI, web, and chat channels by calling structured tools and reasoning over their results.",
       "Operate decisively: prefer using available tools to gather facts before answering, prefer concise replies, and surface uncertainty when present.",
       "",
-      "Documentation lookup policy:",
-      documentationLookupPolicy,
-      "",
-      "Parallel delegation policy:",
-      "When the agent tool is available and the task contains two or more independent, repetitive, or separable workstreams, prefer launching multiple subagents in the same assistant message instead of waiting for one to finish before starting the next. Good parallel candidates include inspecting multiple files/modules, researching independent APIs, checking several artifacts, or comparing alternatives. Do not parallelize tasks that write to the same files, depend on another subagent's output, require shared ordering, or need user approval between steps. Give each subagent a self-contained prompt, distinct scope, and expected output. After all sibling results return, synthesize them yourself and decide the next step.",
-      "",
-      "Reusable script workflow:",
-      "When code is more than a tiny one-off command, or you expect to rerun it with changed parameters, write it to a workspace file first with write_file, then run it with bash. Prefer scripts with CLI arguments, environment variables, or a small config section so parameters can be adjusted with edit_file or command args. Do not pack large Python/JS/shell programs into bash heredocs or long `python -c` / `node -e` strings. After each run, inspect output and edit the saved script instead of regenerating a new inline command.",
+      ...toolGuidance(input.tools),
     ];
 
     const permissionLine = formatPermissionMode(input.permissionMode);
@@ -125,8 +131,7 @@ export class PromptAssembler {
       }
     }
 
-    const mcpInstructions = this.extension.listMcpInstructions();
-    const mcpBlock = formatMcpInstructions(mcpInstructions);
+    const mcpBlock = formatMcpInstructions(contributions.mcpInstructions);
     if (mcpBlock) {
       lines.push("");
       lines.push("Connected MCP server instructions:");
@@ -148,11 +153,13 @@ export class PromptAssembler {
     }
     lines.push(`platform: ${process.platform}`);
     lines.push(`node: ${process.version}`);
+    const python = pythonRuntimeContext(input.pythonRuntime);
+    if (python) lines.push(`<python-runtime>\n${python}\n</python-runtime>`);
     lines.push("</user-context>");
     return [lines.join("\n")];
   }
 
-  private buildSystemContext(input: PromptAssemblerInput): string[] {
+  private buildSystemContext(input: PromptAssemblerInput, contributions: PromptContributions): string[] {
     const sections: string[] = [];
     const now = (input.now ?? (() => new Date()))();
     const dayOnly = now.toISOString().slice(0, 10);
@@ -160,14 +167,14 @@ export class PromptAssembler {
     const envLines = [`<environment>`, `now: ${dayOnly}`, `</environment>`];
     sections.push(envLines.join("\n"));
 
-    const commands = this.extension.listCommands();
+    const commands = contributions.commands;
     if (commands.length > 0) {
       sections.push(formatCommands(commands));
     }
 
-    const skills = this.extension.listSkills();
+    const skills = contributions.skills;
     if (skills.length > 0) {
-      sections.push(formatSkills(skills));
+      sections.push(formatSkills(skills, input.tools));
     }
 
     return sections;
@@ -227,7 +234,7 @@ function escapeXmlAttr(value: string): string {
 
 function formatCommands(commands: ContributedCommand[]): string {
   const lines = ["<available-commands>"];
-  for (const command of commands) {
+  for (const command of [...commands].sort((a, b) => a.name.localeCompare(b.name) || (a.namespace ?? "").localeCompare(b.namespace ?? ""))) {
     const description = command.description ? ` — ${command.description}` : "";
     const hint = command.argumentHint ? ` ${command.argumentHint}` : "";
     lines.push(`- /${command.name}${hint}${description}`);
@@ -236,14 +243,18 @@ function formatCommands(commands: ContributedCommand[]): string {
   return lines.join("\n");
 }
 
-function formatSkills(skills: ContributedSkill[]): string {
+function formatSkills(skills: ContributedSkill[], tools: CanonicalToolSchema[]): string {
+  const reader = tools.some(tool => tool.name === "read_skill") ? "read_skill"
+    : tools.some(tool => tool.name === "read_file") ? "read_file" : undefined;
   const lines = [
     "<available-skills>",
-    "Use the read_skill tool to load the full content of any skill listed below. Each entry includes the exact SKILL.md selected by the runtime.",
+    reader
+      ? `Use the ${reader} tool to load the full content of a listed skill before following it. Each entry includes the exact SKILL.md selected by the runtime.`
+      : "These entries are reference metadata; their full instructions are not loaded and no skill-reading tool is available. Do not claim to have read or applied them.",
     "Resolve relative references, scripts, and assets against the directory containing that SKILL.md.",
     "Do not search the user's home directory to rediscover a skill or infer runtime/cache paths; use the listed file and paths or commands returned by the skill.",
   ];
-  for (const skill of skills) {
+  for (const skill of [...skills].sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path))) {
     const description = skill.description ? ` — ${skill.description}` : "";
     lines.push(`- ${skill.name}${description} (file: ${skill.path})`);
   }

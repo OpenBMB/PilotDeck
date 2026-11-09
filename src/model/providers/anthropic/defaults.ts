@@ -9,7 +9,7 @@ export const ANTHROPIC_DEFAULT_CAPABILITIES: ModelCapabilities = {
   supportsJsonSchema: true,
   supportsSystemPrompt: true,
   supportsPromptCache: true,
-  maxContextTokens: 200000,
+  maxContextTokens: 262_144,
   maxOutputTokens: 32_768,
 };
 

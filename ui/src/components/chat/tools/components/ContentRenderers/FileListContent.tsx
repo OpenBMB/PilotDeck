@@ -59,7 +59,7 @@ export const FileListContent: React.FC<FileListContentProps> = ({
             <span key={index} className="inline-flex items-center">
               <button
                 onClick={handleClick}
-                className="font-mono text-[11px] text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+                className="font-mono text-[11px] text-[var(--pd-accent-strong,#2563eb)] transition-colors hover:text-[var(--pd-accent-strong,#1d4ed8)] hover:underline dark:text-[var(--pd-accent-strong,#60a5fa)] dark:hover:text-[var(--pd-accent-strong,#93c5fd)]"
                 title={filePath}
               >
                 {fileName}

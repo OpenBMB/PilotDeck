@@ -1,3 +1,4 @@
+import multimodalGenerationIcon from "../assets/nav/multimodal-generation.svg?raw";
 import type { SettingsMenuKey } from "../types";
 import aboutIcon from "../assets/nav/about.svg?raw";
 import advancedIcon from "../assets/nav/advanced.svg?raw";
@@ -28,6 +29,7 @@ export const SETTINGS_NAV_ICONS: Partial<Record<SettingsMenuKey, string>> = {
   agentMemory: agentMemoryIcon,
   agentResident: agentResidentIcon,
   agentSearch: agentSearchIcon,
+  multimodalGeneration: multimodalGenerationIcon,
   agentSchedule: agentScheduleIcon,
   integrations: integrationsIcon,
   mcpServers: mcpIcon,

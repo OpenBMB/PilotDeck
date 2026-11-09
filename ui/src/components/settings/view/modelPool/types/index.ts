@@ -15,6 +15,7 @@ export type V2Provider = {
 };
 
 export type PilotDeckConfig = {
+  runtime?: { python?: { enabled?: boolean } };
   agent?: {
     model?: string;
     maxContextTokens?: number;
@@ -65,6 +66,8 @@ export type PilotDeckConfig = {
     maxConcurrentRuns?: number;
   } | null;
   tools?: {
+    videoGeneration?: import("../../../../../../../src/pilot/config/videoGenerationConfig.js").VideoGenerationConfig;
+    imageGeneration?: import("../../../../../../../src/pilot/config/imageGenerationConfig.js").ImageGenerationConfig;
     webSearch?: import("../../../../../../../src/pilot/config/webSearchConfig.js").WebSearchConfig;
   };
   gateway?: {
@@ -81,8 +84,11 @@ export type PilotDeckConfig = {
       serverPort?: number;
       vitePort?: number;
       apiTimeoutMs?: number;
+      logRetentionDays?: number;
       databasePath?: string;
       workspacesRoot?: string;
+      generalWorkspaceDirectory?: string;
+      generalWorkspaceId?: string;
     };
     officePreview?: {
       service?: "builtin" | "libreoffice" | string;

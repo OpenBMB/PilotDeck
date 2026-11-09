@@ -321,13 +321,14 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       defaultOpen: false,
       contentType: 'todo-list',
       getContentProps: (input) => ({
-        todos: parseTodoMarkdown(input.markdown)
+        todos: Array.isArray(input.todos) ? input.todos : parseTodoMarkdown(input.markdown)
       })
     },
     result: {
+      hideOnSuccess: true,
       type: 'collapsible',
       contentType: 'success-message',
-      getMessage: () => 'Todo list updated'
+      getMessage: () => t('common:uiText.todoListUpdated')
     }
   },
 
@@ -338,13 +339,14 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       defaultOpen: false,
       contentType: 'todo-list',
       getContentProps: (input) => ({
-        todos: parseTodoMarkdown(input.markdown)
+        todos: Array.isArray(input.todos) ? input.todos : parseTodoMarkdown(input.markdown)
       })
     },
     result: {
+      hideOnSuccess: true,
       type: 'collapsible',
       contentType: 'success-message',
-      getMessage: () => 'Todo list updated'
+      getMessage: () => t('common:uiText.todoListUpdated')
     }
   },
 
@@ -356,7 +358,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-500 dark:text-gray-400',
-        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-[var(--pd-accent-border,#8b5cf6)]'
       }
     },
     result: {
@@ -489,8 +491,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-700 dark:text-gray-300',
-        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
-        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-[var(--pd-accent-border,#8b5cf6)]',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-[var(--pd-accent-strong,#a78bfa)]'
       }
     },
     result: {
@@ -512,8 +514,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-700 dark:text-gray-300',
-        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
-        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-[var(--pd-accent-border,#8b5cf6)]',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-[var(--pd-accent-strong,#a78bfa)]'
       }
     },
     result: {
@@ -529,8 +531,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-500 dark:text-gray-400',
-        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
-        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-[var(--pd-accent-border,#8b5cf6)]',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-[var(--pd-accent-strong,#a78bfa)]'
       }
     },
     result: {
@@ -552,8 +554,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
       action: 'none',
       colorScheme: {
         primary: 'text-gray-700 dark:text-gray-300',
-        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-violet-500',
-        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-violet-400'
+        border: 'border-[var(--pd-accent,#a78bfa)] dark:border-[var(--pd-accent-border,#8b5cf6)]',
+        icon: 'text-[var(--pd-accent,#8b5cf6)] dark:text-[var(--pd-accent-strong,#a78bfa)]'
       }
     },
     result: {
@@ -614,8 +616,8 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         };
       },
       colorScheme: {
-        border: 'border-[var(--pd-accent,#a855f7)] dark:border-purple-400',
-        icon: 'text-[var(--pd-accent,#a855f7)] dark:text-purple-400'
+        border: 'border-[var(--pd-accent,#a855f7)] dark:border-[var(--pd-accent-border,#c084fc)]',
+        icon: 'text-[var(--pd-accent,#a855f7)] dark:text-[var(--pd-accent-strong,#c084fc)]'
       }
     },
     result: {
@@ -666,7 +668,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         const questions = Array.isArray(input.questions) ? input.questions : [];
         const count = questions.length;
         const resultAnswers = helpers?.toolResult?.toolUseResult?.answers;
-        const answers = input.answers || resultAnswers;
+        const answers = { ...(input.answers || {}), ...(resultAnswers || {}) };
         const hasAnswers =
           answers &&
           typeof answers === 'object' &&
@@ -687,7 +689,7 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         const resultAnswers = helpers?.toolResult?.toolUseResult?.answers;
         return {
           questions: input.questions,
-          answers: input.answers || resultAnswers || {},
+          answers: { ...(input.answers || {}), ...(resultAnswers || {}) },
         };
       },
     },

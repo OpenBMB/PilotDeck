@@ -6,12 +6,14 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const ts = require('typescript');
+const { copyDesktopFixtureDependencies } = require('./desktop-fixture-dependencies.cjs');
 
 if (!['win32', 'darwin'].includes(process.platform) && !(process.platform === 'linux' && process.argv.slice(2).length && process.argv.slice(2).every(arg => arg === 'notification-badge'))) {
   throw new Error('Run lifecycle checks on Windows/macOS, or notification-badge under a Linux display server.');
 }
 async function verify(scenario) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotdeck-tray-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), process.platform === 'win32'
+    ? 'pilotdeck-tray-test-用户 with spaces & (app)-' : 'pilotdeck-tray-test-'));
   try {
     const desktop = path.resolve(__dirname, '..');
     const runtime = path.join(root, 'runtime');
@@ -30,9 +32,7 @@ async function verify(scenario) {
       const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
       fs.writeFileSync(path.join(root, 'dist', file.replace(/\.ts$/, '.js')), compiled);
     }
-    for (const file of ['processTree.js', 'processIdentity.cjs', 'processScope.cjs', 'processGuardian.cjs', 'processJobHost.cjs', 'processJob.ps1']) {
-      fs.copyFileSync(path.resolve(desktop, '../../ui/server/utils', file), path.join(utils, file));
-    }
+    copyDesktopFixtureDependencies(root, runtime);
     const treeFile = path.join(utils, 'processTree.js');
     fs.writeFileSync(treeFile, fs.readFileSync(treeFile, 'utf8').replace(
       'export const spawnManaged = scopes.spawnManaged;',
@@ -48,16 +48,23 @@ async function verify(scenario) {
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID, String(process.pid));
       const task = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {stdio:'ignore'});
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID + '.task', String(task.pid));
-      if (process.env.PILOTDECK_TEST_SCENARIO === 'startup-quit') await new Promise(resolve => setTimeout(resolve, 700));
+      // Never become ready: Quit must cancel the pending readiness wait.
+      if (process.env.PILOTDECK_TEST_SCENARIO === 'startup-quit') await new Promise(() => {});
       process.send({type:'pilotdeck:configuration-state',configuration:{state:'ready'}});
       http.createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><title>Tray test</title><p>Isolated runtime</p>'); }).listen(Number(process.env.SERVER_PORT), '127.0.0.1');
     `);
     fs.mkdirSync(path.join(runtime, 'dist', 'src', 'cli'), { recursive: true });
     fs.writeFileSync(path.join(runtime, 'dist', 'src', 'cli', 'pilotdeck.js'), `
-      import net from 'node:net';
+      import http from 'node:http';
       import fs from 'node:fs';
+      import path from 'node:path';
+      fs.writeFileSync(path.join(process.env.PILOT_HOME, 'server-token'), 'fixture-token');
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID + '.gateway', String(process.pid));
-      net.createServer(socket => socket.end()).listen(Number(process.env.PILOTDECK_GATEWAY_PORT), '127.0.0.1');
+      http.createServer((req, res) => {
+        if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401); res.end(); return; }
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({activeTaskCount: process.env.PILOTDECK_TEST_SCENARIO === 'idle-quit' ? 0 : 1}));
+      }).listen(Number(process.env.PILOTDECK_GATEWAY_PORT), '127.0.0.1');
     `);
     const services = path.join(runtime, 'ui', 'server', 'services');
     fs.mkdirSync(services, { recursive: true });
@@ -67,6 +74,8 @@ async function verify(scenario) {
     for (const file of ['releaseService.js', 'desktopReleaseService.js']) {
       fs.copyFileSync(path.resolve(desktop, '../../ui/server/services', file), path.join(services, file));
     }
+    fs.mkdirSync(path.join(runtime, 'ui', 'shared'), { recursive: true });
+    fs.copyFileSync(path.resolve(desktop, '../../ui/shared/releaseArtifacts.js'), path.join(runtime, 'ui', 'shared', 'releaseArtifacts.js'));
     const env = {
       ...process.env,
       PILOTDECK_TRAY_TEST_UPDATER: path.dirname(require.resolve('electron-updater/package.json')),
@@ -105,7 +114,7 @@ async function verify(scenario) {
 }
 (async () => {
   const scenarios = process.argv.slice(2);
-  for (const scenario of scenarios.length ? scenarios : ['normal', 'notification-badge', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
+  for (const scenario of scenarios.length ? scenarios : ['idle-quit', 'normal', 'notification-badge', 'slow-quit', 'startup-quit', 'stop-failure', 'update', 'update-recovery', ...(process.platform === 'darwin' ? ['shutdown'] : [])]) {
     await verify(scenario);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

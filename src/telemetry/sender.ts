@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, openSync, readSync, closeSync, fstatSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
   AnalyticsEvent,
@@ -25,13 +25,14 @@ export class TelemetrySender {
 
   private timer: NodeJS.Timeout | undefined;
   private flushing = false;
+  private restored = false;
 
   constructor(
     private config: TelemetryConfig,
     deps: TelemetrySenderDeps = {},
   ) {
     this.fetchImpl = deps.fetchImpl ?? fetch;
-    this.restoreQueue();
+    if (this.config.enabled) { this.restoreQueue(); this.restored = true; }
     if (this.config.enabled) {
       this.timer = setInterval(() => {
         void this.flush();
@@ -44,6 +45,7 @@ export class TelemetrySender {
     if (this.config.enabled === enabled) return;
     this.config = { ...this.config, enabled };
     if (enabled) {
+      if (!this.restored) { this.restoreQueue(); this.restored = true; }
       if (!this.timer) {
         this.timer = setInterval(() => {
           void this.flush();
@@ -114,7 +116,7 @@ export class TelemetrySender {
       this.timer = undefined;
     }
     await this.flush();
-    this.persistQueue();
+    if (this.restored) this.persistQueue();
   }
 
   snapshot(): TelemetrySenderMetrics {
@@ -141,10 +143,19 @@ export class TelemetrySender {
   }
 
   private restoreQueue(): void {
+    let handle: number | undefined;
     try {
-      const raw = readFileSync(this.config.queueFilePath, "utf8");
+      handle = openSync(this.config.queueFilePath, 'r');
+      const size = fstatSync(handle).size;
+      const length = Math.min(size, 16 * 1024 * 1024, this.config.maxQueueSize * 8192);
+      const buffer = Buffer.alloc(length), offset = size - length;
+      const bytes = readSync(handle, buffer, 0, length, offset);
+      let raw = buffer.toString('utf8', 0, bytes);
+      if (offset > 0) raw = raw.slice(raw.indexOf('\n') + 1);
       const lines = raw.split("\n").map((line) => line.trim()).filter(Boolean);
-      for (const line of lines) {
+      this.metrics.dropped += Math.max(0, lines.length - this.config.maxQueueSize);
+      for (const line of lines.slice(-this.config.maxQueueSize)) {
+        if (line.length > 65_536) { this.metrics.dropped += 1; continue; }
         try {
           const parsed = JSON.parse(line) as AnalyticsEventEnvelope;
           if (parsed?.event?.eventId) {
@@ -161,7 +172,7 @@ export class TelemetrySender {
       // Keep the queue file on disk; it will be overwritten on clean shutdown.
     } catch {
       // noop: file might not exist or malformed lines were ignored.
-    }
+    } finally { if (handle !== undefined) closeSync(handle); }
   }
 
   private persistQueue(): void {

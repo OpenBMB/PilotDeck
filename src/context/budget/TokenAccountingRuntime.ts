@@ -12,7 +12,7 @@ import {
 } from "../../model/index.js";
 import { buildOpenAIResponsesRequest } from "../../model/providers/openai-responses/request.js";
 import { buildProviderHeaders } from "../../model/streaming/streamModel.js";
-import { TokenBudgetManager, type TokenBudgetSnapshot } from "./TokenBudgetManager.js";
+import { TokenBudgetManager, type TokenBudgetSnapshot, type ContextBreakdown } from "./TokenBudgetManager.js";
 
 export type TokenCountSource = "provider" | "calibrated" | "local";
 
@@ -168,10 +168,16 @@ export class TokenAccountingRuntime {
   }
 
   estimateRequestInput(request: CanonicalModelRequest): number {
-    const messages = this.tokenBudget.estimateMessagesTokens(request.messages);
-    const system = request.systemPrompt ? this.tokenBudget.estimateTextTokens(request.systemPrompt) : 0;
-    const tools = estimateToolSchemas(this.tokenBudget, request.tools ?? []);
-    return messages + system + tools;
+    const parts = this.estimateRequestBreakdown(request);
+    return parts.messageTokens + parts.systemTokens + parts.toolsTokens;
+  }
+
+  estimateRequestBreakdown(request: CanonicalModelRequest): ContextBreakdown {
+    return {
+      messageTokens: this.tokenBudget.estimateMessagesTokens(request.messages),
+      systemTokens: request.systemPrompt ? this.tokenBudget.estimateTextTokens(request.systemPrompt) : 0,
+      toolsTokens: estimateToolSchemas(this.tokenBudget, request.tools ?? []),
+    };
   }
 
   private async countWithProvider(
@@ -237,7 +243,7 @@ export class TokenAccountingRuntime {
     try {
       const response = await this.transport(joinUrl(options.useOriginBase ? providerOriginUrl(provider.url) : provider.url, path), {
         method: "POST",
-        headers: buildProviderHeaders(provider),
+        headers: buildProviderHeaders(provider, undefined, { purpose: "token-count" }),
         body: JSON.stringify(body),
         signal: controller.signal,
       });
