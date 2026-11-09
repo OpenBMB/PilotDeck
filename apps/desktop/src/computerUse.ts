@@ -210,6 +210,7 @@ export class ComputerUseController {
       if (this.child !== child || child.exitCode !== null) throw new Error(this.state.error || 'Driver exited during startup');
       const ready = await endpointReady(this.endpoint);
       signal.throwIfAborted();
+      if (this.child !== child || child.exitCode !== null) throw new Error(this.state.error || 'Driver exited during startup');
       if (ready) return;
       await new Promise(resolve => setTimeout(resolve, 100));
     }
