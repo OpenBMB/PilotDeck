@@ -147,10 +147,16 @@ test('thinking keeps its reading position through tools and remains available in
   await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
   expect(await top(viewport(page))).toBeLessThanOrEqual(outerTop + 1);
   await page.evaluate(() => { window.streamFixture.finishTool(); window.streamFixture.text('Final answer.'); window.streamFixture.complete(); });
-  await expect(page.locator('[data-turn-process-header] button').last()).toHaveAttribute('aria-expanded', 'true');
+  const turn = page.locator('[data-turn-process-header] button').last();
+  await expect(turn).toHaveAttribute('aria-expanded', 'false');
+  await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+  await turn.click();
   const completedProcess = page.locator('[data-process-block] > button');
+  await expect(completedProcess).toHaveAttribute('aria-expanded', 'false');
+  await completedProcess.click();
   await expect(completedProcess).toHaveAttribute('aria-expanded', 'true');
   await expect(thinking).toBeVisible();
+  expect(Math.abs(await top(thinking) - readingTop)).toBeLessThan(2);
   await expect(thinking).toContainText('Thinking line 45');
   await page.screenshot({ path: test.info().outputPath('thinking-reading-position.png') });
 });
@@ -236,7 +242,7 @@ test('automatic layout shrink and growth keep following without reader input', a
   expect(await page.evaluate(() => window.unwantedPauses)).toEqual([]);
 });
 
-test('manually opened tools keep their parents open and hold the reader through new replies', async ({ page }) => {
+test('tool groups fold on new replies and retain inspected details and reader position when reopened', async ({ page }) => {
   await open(page);
   await page.evaluate(() => { window.streamFixture.beginTurn();
     window.streamFixture.tool('inspect', 'read_file', { file_path: 'example.ts' });
@@ -248,12 +254,20 @@ test('manually opened tools keep their parents open and hold the reader through 
   await page.waitForTimeout(300);
   const readingY = await tool.evaluate(node => node.getBoundingClientRect().top);
   await page.evaluate(() => window.streamFixture.text('A long follow-up response.\n\n'.repeat(70)));
+  await expect(group).toHaveAttribute('aria-expanded', 'false');
+  const body = page.locator('[data-process-block] > .chat-process-disclosure');
+  await expect(body).toHaveAttribute('aria-hidden', 'true');
+  await expect.poll(() => body.evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(1);
+  await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+  await group.click();
   await expect(group).toHaveAttribute('aria-expanded', 'true');
   await expect(tool).toHaveAttribute('aria-expanded', 'true');
   await page.waitForTimeout(700);
   expect(Math.abs(await tool.evaluate(node => node.getBoundingClientRect().top) - readingY)).toBeLessThan(2);
   await page.evaluate(() => window.streamFixture.complete(5000));
-  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'true');
+  const turn = page.locator('[data-turn-process-header] button');
+  await expect(turn).toHaveAttribute('aria-expanded', 'false');
+  await turn.click();
   await expect(group).toHaveAttribute('aria-expanded', 'true');
   await expect(tool).toHaveAttribute('aria-expanded', 'true');
   await page.getByRole('button', { name: 'Back to latest' }).click();
