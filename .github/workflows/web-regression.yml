@@ -92,6 +92,7 @@ jobs:
           node --test --test-timeout 60000
           dist/tests/tool/execution-contracts.spec.js
           dist/tests/tool/scheduler-ordering.spec.js
+          dist/tests/tool/task-preview-modes.spec.js
           dist/tests/tool/task-preview.spec.js
           dist/tests/tool/task-preview-lifecycle.spec.js
           dist/tests/context/prompt-web-preview.spec.js

@@ -15,10 +15,12 @@ Tests: [runtime](../../tests/task/background-task-runtime.spec.ts), [process/out
 
 `task_preview({ taskId, url, expectedText })` checks an already-running task in the
 calling session and workspace. Use the exact page URL from `task_output` and a
-distinctive marker from its initial HTML. It requires HTTP 200, `text/html`, and
-the marker within 512 KiB, with a five-second deadline and caller cancellation.
-Only explicit-port HTTP loopback URLs are accepted; credentials, fragments and
-redirects are rejected. Requests bypass ambient proxies, and localhost is pinned
+project-specific marker from its initial HTML, matched exactly including case and
+whitespace; avoid scaffold default titles. It requires HTTP 200, `text/html`, and
+the marker within 512 KiB. A single five-second deadline covers both IPv4/IPv6
+attempts and callers can cancel. Only explicit nonzero, non-default-port HTTP
+loopback URLs are accepted; credentials, fragments, redirects and compressed
+responses are rejected. Requests bypass ambient proxies, and localhost is pinned
 to IPv4 loopback, retrying `[::1]` only if that connection is refused.
 IPv6 services can also use `[::1]` explicitly.
 
@@ -31,3 +33,7 @@ The URL belongs to the executing Gateway; remote/Docker clients need their own
 forwarding. No client URL is guessed, service is stopped, or persistent deployment
 is created. Leave requested previews running until the user stops them or the
 owning runtime shuts down. Historical checks are point-in-time evidence only.
+
+Ask and Plan may inspect an existing owned preview, but must not start services.
+Implementation handoff guidance is omitted in those modes. Preview calls/results
+receive the same compaction protection as the other task tools.

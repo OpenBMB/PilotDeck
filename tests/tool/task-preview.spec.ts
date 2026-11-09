@@ -159,3 +159,31 @@ test("a server that never responds is bounded by the readiness deadline", { time
     await assert.rejects(tool.execute({ taskId: "preview-task", url: origin, expectedText: "Expected app" }, context), /timed out after 5 seconds/);
   } finally { await close(server); }
 });
+
+test("response failures identify status, type, redirects and unsupported encoding", async () => {
+  const server = createServer((req, res) => {
+    res.writeHead(req.url === "/redirect" ? 302 : req.url === "/error" ? 503 : 200,
+      req.url === "/json" ? { "content-type": "application/json" } : req.url === "/gzip" ? { "content-type": "text/html", "content-encoding": "gzip" } : { "content-type": "text/html" });
+    res.end("Expected app");
+  });
+  const origin = await listen(server);
+  try {
+    const { tool } = fixture();
+    for (const [route, message] of [["/json", /Expected text\/html, received application\/json \(HTTP 200\)/], ["/error", /Expected HTTP 200, received 503/], ["/redirect", /HTTP 302 redirect/], ["/gzip", /Unsupported content-encoding: gzip/]] as const) {
+      await assert.rejects(tool.execute({ taskId: "preview-task", url: origin + route, expectedText: "Expected app" }, context), message);
+    }
+  } finally { await close(server); }
+});
+
+test("already cancelled calls retain the structured cancellation code", async () => {
+  const { tool } = fixture();
+  await assert.rejects(tool.execute({ taskId: "preview-task", url: "http://localhost:12345", expectedText: "Expected app" }, { ...context, abortSignal: AbortSignal.abort() }),
+    (error: unknown) => (error as { code: string }).code === "tool_aborted");
+});
+
+test("default port and wildcard addresses explain the supported URL contract", async () => {
+  const { tool } = fixture();
+  for (const url of ["http://127.0.0.1:80", "http://0.0.0.0:3000"]) {
+    await assert.rejects(tool.execute({ taskId: "preview-task", url, expectedText: "App" }, context), /non-default port.*same port on localhost/);
+  }
+});
