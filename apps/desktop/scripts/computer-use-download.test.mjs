@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -13,6 +14,53 @@ function target(t) {
   return { directory, archive: join(directory, 'driver.tar.gz') };
 }
 const url = 'https://example.test/driver.tar.gz';
+
+async function proxyFixture(t) {
+  let tunnels = 0;
+  const origin = http.createServer((_req, res) => res.end('synthetic driver archive'));
+  const proxy = http.createServer();
+  const sockets = new Set();
+  proxy.on('connect', (req, client, head) => {
+    tunnels++;
+    assert.equal(req.url, 'driver.invalid:80');
+    const upstream = net.connect(origin.address().port, '127.0.0.1', () => {
+      client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+      upstream.write(head); upstream.pipe(client); client.pipe(upstream);
+    });
+    for (const socket of [client, upstream]) {
+      sockets.add(socket); socket.on('error', () => socket.destroy());
+      socket.on('close', () => sockets.delete(socket));
+    }
+  });
+  await Promise.all([origin, proxy].map(server => new Promise(resolve => server.listen(0, '127.0.0.1', resolve))));
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy();
+    await Promise.all([origin, proxy].map(server => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); })));
+  });
+  return { proxyUrl: `http://127.0.0.1:${proxy.address().port}`, originUrl: `http://127.0.0.1:${origin.address().port}/archive`, tunnels: () => tunnels };
+}
+
+for (const name of ['PILOTDECK_PROXY', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']) {
+  test(`downloads through ${name} instead of resolving a proxy-only destination directly`, async t => {
+    const { archive } = target(t);
+    const proxy = await proxyFixture(t);
+    await downloadDriverArchive('http://driver.invalid/archive', archive, {
+      env: { [name]: proxy.proxyUrl }, wait: async () => {},
+    });
+    assert.equal(readFileSync(archive, 'utf8'), 'synthetic driver archive');
+    assert.equal(proxy.tunnels(), 1);
+  });
+}
+
+test('honors NO_PROXY for a direct archive download', async t => {
+  const { archive } = target(t);
+  const proxy = await proxyFixture(t);
+  await downloadDriverArchive(proxy.originUrl, archive, {
+    env: { HTTPS_PROXY: proxy.proxyUrl, NO_PROXY: '127.0.0.1' },
+  });
+  assert.equal(readFileSync(archive, 'utf8'), 'synthetic driver archive');
+  assert.equal(proxy.tunnels(), 0);
+});
 for (const status of [408, 425, 429, 500, 502, 503, 504]) {
   test(`retries transient HTTP ${status} and replaces the archive with the completed response`, async t => {
     const { archive } = target(t);

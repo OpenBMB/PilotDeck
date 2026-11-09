@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import { computerUseDirectory, computerUseMcpConfigPath } from './computerUsePaths.js';
 import { MAC_HOST_ID, macAppForBinary, resolveMacRuntime } from '../../../scripts/lib/mac-computer-use.mjs';
 import { probeMacPermissions } from './macComputerUsePermissions.js';
@@ -41,6 +42,7 @@ export class StandaloneComputerUseController {
     this.mcpConfigPath = computerUseMcpConfigPath(env);
     this.settingsPath = path.join(this.directory, 'settings.json');
     this.serial = Promise.resolve(); this.child = null; this.stopping = false; this.checkedAt = 0;
+    this.startupAbort = null;
     fs.mkdirSync(this.directory, { recursive: true, mode: 0o700 });
     let enabled = false;
     try { enabled = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8')).enabled === true; } catch { /* off by default */ }
@@ -74,6 +76,7 @@ export class StandaloneComputerUseController {
 
   setEnabled(enabled) {
     if (typeof enabled !== 'boolean') return Promise.reject(new Error('enabled must be a boolean'));
+    if (!enabled) this.startupAbort?.abort();
     return this.enqueue(async () => {
       this.writeJson(this.settingsPath, { enabled }); this.state.enabled = enabled;
       if (!enabled) { this.publish(false); this.stopPermissionRequests(); await this.stopOwnedChild(); if (this.managed) this.renewEndpoint(); }
@@ -110,7 +113,7 @@ export class StandaloneComputerUseController {
   }
 
   async stop() {
-    this.stopping = true; clearTimeout(this.monitorTimer); await this.serial.catch(() => undefined);
+    this.stopping = true; this.startupAbort?.abort(); clearTimeout(this.monitorTimer); await this.serial.catch(() => undefined);
     this.publish(false); this.stopPermissionRequests(); await this.stopOwnedChild();
     if (this.instanceDirectory) fs.rmSync(this.instanceDirectory, { recursive: true, force: true });
   }
@@ -229,13 +232,14 @@ export class StandaloneComputerUseController {
     return env;
   }
 
-  command(args) {
+  command(args, { timeout = 30_000 } = {}) {
     if (this.endpoint && ['status', 'call', 'stop'].includes(args[0])) args = [...args, '--socket', this.endpoint];
-    return this.execute(this.binary, args, { env: this.environment(), timeout: 30_000, maxBuffer: 2 * 1024 * 1024, windowsHide: true });
+    return this.execute(this.binary, args, { env: this.environment(), timeout, signal: this.startupAbort?.signal,
+      maxBuffer: 2 * 1024 * 1024, windowsHide: true });
   }
 
-  async daemonIsRunning() {
-    try { return /daemon is running/.test((await this.command(['status'])).stdout); }
+  async daemonIsRunning(timeout = this.platform === 'darwin' ? 30_000 : 3000) {
+    try { return /daemon is running/.test((await this.command(['status'], { timeout })).stdout); }
     catch (error) {
       // The public CLI exits 1 for an absent daemon; this is expected before
       // first enable, not a startup failure. Preserve other execution errors.
@@ -245,6 +249,8 @@ export class StandaloneComputerUseController {
   }
 
   async inspect(allowStart) {
+    const startup = allowStart && this.platform !== 'darwin' ? new AbortController() : null;
+    this.startupAbort = startup;
     try {
       delete this.state.error;
       if (this.platform === 'darwin' && this.managed) return await this.inspectManagedMac(allowStart);
@@ -252,17 +258,27 @@ export class StandaloneComputerUseController {
         this.state.phase = this.state.enabled ? 'error' : 'disabled';
         this.publish(false); return this.snapshot();
       }
-      const version = (await this.command(['--version'])).stdout.trim().split(/\s+/)[1];
+      const version = (await this.command(['--version'], { timeout: this.platform === 'darwin' ? 30_000 : 10_000 })).stdout.trim().split(/\s+/)[1];
       this.state.version = version;
       if (version !== this.expectedVersion) throw new Error(`Driver ${this.expectedVersion} is required; found ${version}.`);
       let running = await this.daemonIsRunning();
       if (!running && this.state.enabled && allowStart) {
+        this.state.phase = 'starting';
         await this.startNativeService();
+        const child = this.child;
         const deadline = Date.now() + 15_000;
+        const checkStartup = () => {
+          startup?.signal.throwIfAborted();
+          if (this.platform !== 'darwin' && (!child || this.child !== child || child.exitCode !== null || this.state.phase === 'error')) {
+            throw new Error(this.state.error || 'Driver exited during startup. Recheck to reconnect.');
+          }
+        };
         while (Date.now() < deadline) {
-          running = await this.daemonIsRunning();
+          checkStartup();
+          running = await this.daemonIsRunning(this.platform === 'darwin' ? 30_000 : Math.min(1000, Math.max(1, deadline - Date.now())));
+          checkStartup();
           if (running) break;
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await delay(150, undefined, { signal: startup?.signal });
         }
       }
       if (this.platform === 'darwin') {
@@ -297,8 +313,10 @@ export class StandaloneComputerUseController {
       }
       this.publish(['ready', 'partial'].includes(this.state.phase));
     } catch (error) {
-      this.publish(false); this.state.phase = this.state.enabled ? 'error' : 'disabled'; this.state.error = error.message;
-    } finally { this.checkedAt = Date.now(); }
+      this.publish(false);
+      if (this.platform !== 'darwin') await this.stopOwnedChild();
+      this.state.phase = this.state.enabled ? 'error' : 'disabled'; this.state.error = error.message;
+    } finally { if (this.startupAbort === startup) this.startupAbort = null; this.checkedAt = Date.now(); }
     return this.snapshot();
   }
 
@@ -325,7 +343,10 @@ export class StandaloneComputerUseController {
       this.child = child;
       child.stdin?.on('error', () => undefined);
       child.stderr?.on('data', data => this.log(`[computer-use] ${String(data).trimEnd()}`));
-      child.on('error', error => { this.state.phase = 'error'; this.state.error = error.message; this.publish(false); });
+      child.on('error', error => {
+        if (this.child !== child) return;
+        this.state.phase = 'error'; this.state.error = error.message; this.publish(false);
+      });
       child.on('exit', () => {
         if (this.child !== child) return;
         this.child = null;

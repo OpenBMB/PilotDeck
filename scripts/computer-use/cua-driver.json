@@ -1,27 +1,27 @@
 {
-  "version": "0.34.1",
+  "version": "0.44.0",
   "repository": "trycua/cua",
-  "tag": "cua-driver-rs-v0.34.1",
+  "tag": "cua-driver-rs-v0.44.0",
   "assets": {
     "darwin": {
-      "name": "cua-driver-rs-0.34.1-darwin-universal-binary.tar.gz",
-      "sha256": "52de49b5046df19245ad02ff9aa89ce9caf69e84988e1d0fac677611dd83e48c"
+      "name": "cua-driver-rs-0.44.0-darwin-universal-binary.tar.gz",
+      "sha256": "4ad632365a32ce26f2c40bd3bc80ef76ecaf544eaeb0e47c805379a4f33ea7c3"
     },
     "linux-x64": {
-      "name": "cua-driver-rs-0.34.1-linux-x86_64-binary.tar.gz",
-      "sha256": "a41fe2bdcbeea4501dc594c074f16b0975728e0cc7b08b90acea8564d48fafee"
+      "name": "cua-driver-rs-0.44.0-linux-x86_64-binary.tar.gz",
+      "sha256": "9d87c18e983eca8e2c2448149d943e0e1dd2a6d86bdd108560c5f3bc64e62f29"
     },
     "linux-arm64": {
-      "name": "cua-driver-rs-0.34.1-linux-arm64-binary.tar.gz",
-      "sha256": "1c839d35401bbdea20f3e1cf50ace926ef17be6f32cea7e821b02b263c4933dc"
+      "name": "cua-driver-rs-0.44.0-linux-arm64-binary.tar.gz",
+      "sha256": "ff2c83ea6dfff11130bb0928aa06c41c45316f6eb201a414f0595e4d05616ce0"
     },
     "win32-x64": {
-      "name": "cua-driver-rs-0.34.1-windows-x86_64-binary.zip",
-      "sha256": "021bc2e5330c80a6c5e2c347c305fafbd4defe195d6282e0d20436f2f13c19bb"
+      "name": "cua-driver-rs-0.44.0-windows-x86_64-binary.zip",
+      "sha256": "5df5acb74ed09d7cc60de61bca3bc380abd9718494200d5f1b5c5795ed298e9b"
     },
     "win32-arm64": {
-      "name": "cua-driver-rs-0.34.1-windows-arm64-binary.zip",
-      "sha256": "21820a2ae20cb4bb998a340ff87c11007b9eb5cec8d1b8338c7b0d6dc88b01a6"
+      "name": "cua-driver-rs-0.44.0-windows-arm64-binary.zip",
+      "sha256": "b058b2a00d5de81e9e16f3429866221fb32d22e1e4ec35114da4567256e1b02d"
     }
   }
 }

@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
+import { EnvHttpProxyAgent, fetch as proxyFetch } from 'undici';
 import { writeIcns } from './lib/app-icons.mjs';
 import { MAC_HOST_ID, MAC_DEV_HOST_ID } from './lib/mac-computer-use.mjs';
 
@@ -25,10 +26,22 @@ const retryableStatuses = new Set([408, 425, 429, 500, 502, 503, 504]);
 const retryableTransport = error => ['AbortError', 'TimeoutError'].includes(error?.name)
   || /^(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|UND_ERR_(?:SOCKET|CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT))$/.test(error?.cause?.code || error?.code || '');
 
-export async function downloadDriverArchive(url, archive, { fetchImpl = fetch, wait = delay } = {}) {
+export async function downloadDriverArchive(url, archive, { fetchImpl, wait = delay, env = process.env } = {}) {
+  // Preparation runs before the Web server installs its global proxy. Node 22
+  // does not honor these variables itself; keep this dispatcher download-local.
+  const proxy = env.PILOTDECK_PROXY || env.https_proxy || env.HTTPS_PROXY || env.http_proxy || env.HTTP_PROXY;
+  const dispatcher = proxy ? new EnvHttpProxyAgent({ httpProxy: proxy, httpsProxy: proxy,
+    noProxy: env.no_proxy || env.NO_PROXY || '' }) : undefined;
+  // Use the matching fetch implementation: undici 8 dispatchers cannot serve
+  // Node 22's built-in undici 6 request handlers.
+  try { await downloadArchive(url, archive, { fetchImpl: fetchImpl ?? (dispatcher ? proxyFetch : fetch), wait, dispatcher }); }
+  finally { await dispatcher?.destroy(); }
+}
+
+async function downloadArchive(url, archive, { fetchImpl, wait, dispatcher }) {
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const response = await fetchImpl(url, { signal: AbortSignal.timeout(5 * 60_000) });
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(5 * 60_000), ...(dispatcher ? { dispatcher } : {}) });
       if (!response.ok || !response.body) {
         await response.body?.cancel().catch(() => {});
         throw Object.assign(new Error(`Driver download failed: HTTP ${response.status}`), {
@@ -130,7 +143,7 @@ export async function prepareComputerUse({ destination = resolve(scripts, '../re
       const base = env.PILOTDECK_CUA_BASE_URL || env.PILOTDECK_DESKTOP_CUA_BASE_URL || `https://github.com/${driverPin.repository}/releases/download/${driverPin.tag}`;
       const url = `${base.replace(/\/$/, '')}/${asset.name}`;
       console.log(`[computer-use] downloading ${url}`);
-      await downloadDriverArchive(url, archive);
+      await downloadDriverArchive(url, archive, { env });
     }
     verifyDriverArchive(readFileSync(archive), asset);
     const extracted = join(temporary, 'extracted'); mkdirSync(extracted);
