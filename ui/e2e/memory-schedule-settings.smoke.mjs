@@ -107,13 +107,13 @@ export async function verifyMemoryScheduleSettings({ browser, base, output, case
    await page.getByRole('menuitem', { name: /Memory|记忆/ }).click();
    const memory = page.frameLocator('iframe');
    await expect(memory.locator('#pilotdeck-memory-controls')).toBeAttached({timeout:30000});
-   const memoryTokens = await memory.locator('html').evaluate(el => ['--bg','--accent'].map(key => getComputedStyle(el).getPropertyValue(key).trim()));
    const hostTokens = await page.evaluate(async ({ preset, mode }) => {
     const { deriveAppearanceColors, normalizeLightAppearance } = await import('/src/lib/lightAppearance.ts');
     const colors = deriveAppearanceColors(normalizeLightAppearance({ preset }), mode === 'dark');
     return [colors.surface, colors.accent];
    }, { preset, mode });
-   expect(memoryTokens).toEqual(hostTokens);
+   await expect.poll(() => memory.locator('html').evaluate(el => ['--bg','--accent']
+    .map(key => getComputedStyle(el).getPropertyValue(key).trim()))).toEqual(hostTokens);
    await memory.locator('[data-page=trace]').click();
    const choice = memory.locator('#recallCaseSelect');
    await expect(choice).toBeVisible(); await expect(choice).toHaveCSS('appearance', 'base-select');
