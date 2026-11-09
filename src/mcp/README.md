@@ -16,6 +16,10 @@ On macOS, grant Accessibility and Screen Recording to the exact `PilotDeck Compu
 
 The native controller owns each instance's Driver, private connection and lifecycle. Disabling the instance revokes its generated MCP configuration and stops owned processes. Generated connection files are host-managed, and project/plugin configuration cannot replace the reserved `pilotdeck-computer-use` service.
 
+Standalone Windows/Linux startup checks the owned child before publishing tools, bounds each readiness probe to one second within its 15-second wait, and stops an unready child on failure. Disable and server shutdown cancel pending startup commands and polling before waiting for process cleanup. A missing or failed Driver never publishes an MCP connection; recheck starts a new owned generation.
+
+Settings keeps Stop and disable available while enable/reconnect is pending. A completed stop supersedes older responses so a delayed enable result cannot restore a connected state in the page. The desktop host also cancels its native startup command and endpoint polling on disable or quit.
+
 An HTTPS reverse proxy requires login (`PILOTDECK_DISABLE_LOCAL_AUTH=0`), the browser-facing `Host`, and an overwritten `X-Forwarded-Proto`. Configure non-loopback proxy IPs/CIDRs through `PILOTDECK_TRUST_PROXY`. Request-origin validation uses the trusted proxy policy and the actual host.
 
 Tests: [tests/mcp](../../tests/mcp). See the [test guide](../../docs/testing.md) for runner selection.

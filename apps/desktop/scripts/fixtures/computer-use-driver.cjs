@@ -6,6 +6,11 @@ const endpoint = args[args.indexOf('--socket') + 1];
 const pidFile = args[args.indexOf('--pid-file') + 1];
 if (args.includes('--version')) { console.log('cua-driver 0.34.1'); process.exit(0); }
 if (args.includes('serve')) {
+  if (args.includes('--stall-start')) {
+    fs.writeFileSync(pidFile, String(process.pid));
+    process.stdin.resume(); process.stdin.on('end', () => process.exit(0));
+    return;
+  }
   const server = net.createServer(socket => socket.destroy());
   server.listen(endpoint, () => fs.writeFileSync(pidFile, String(process.pid)));
   process.stdin.resume();

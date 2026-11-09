@@ -111,6 +111,76 @@ describe('native computer use for Web and macOS desktop', () => {
     expect(fs.existsSync(path.dirname(endpoint))).toBe(false);
     await controller.stop(); expect(fs.existsSync(controller.instanceDirectory)).toBe(false);
   });
+  it.each(['win32', 'linux'])('reports an exited %s Driver promptly without keeping startup queued', async platform => {
+    vi.useFakeTimers();
+    const f = setup({ platform, managed: true, running: false });
+    f.spawn.mockImplementation(() => {
+      queueMicrotask(() => { f.child.exitCode = 2; f.child.emit('exit', 2); });
+      return f.child;
+    });
+    let status;
+    try {
+      const enabling = f.controller.setEnabled(true).then(value => { status = value; });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(status).toMatchObject({ phase: 'error', error: expect.stringContaining('exited') });
+      expect(f.descriptor()).toEqual({});
+      await enabling;
+    } finally { await vi.runAllTimersAsync(); await f.controller.stop(); vi.useRealTimers(); }
+  });
+  it.each(['disable', 'shutdown'])('cancels Windows startup immediately on %s', async action => {
+    vi.useFakeTimers();
+    const f = setup({ platform: 'win32', managed: true, running: false });
+    // The child is alive but never opens its named pipe.
+    f.spawn.mockImplementation(() => f.child);
+    let stopped = false;
+    try {
+      const enabling = f.controller.setEnabled(true);
+      await vi.advanceTimersByTimeAsync(300);
+      const stopping = (action === 'disable' ? f.controller.setEnabled(false) : f.controller.stop()).then(() => { stopped = true; });
+      await vi.advanceTimersByTimeAsync(300);
+      expect(stopped).toBe(true);
+      expect(f.child.exitCode).toBe(0);
+      expect(f.descriptor()).toEqual({});
+      await Promise.all([enabling, stopping]);
+    } finally { await vi.runAllTimersAsync(); await f.controller.stop(); vi.useRealTimers(); }
+  });
+  it('bounds a hung Windows readiness probe and stops the unready child', async () => {
+    vi.useFakeTimers();
+    const f = setup({ platform: 'win32', managed: true, running: false });
+    f.spawn.mockImplementation(() => f.child);
+    const execute = f.execute.getMockImplementation();
+    f.execute.mockImplementation(async (...args) => {
+      if (args[1][0] === 'status' && f.spawn.mock.calls.length) {
+        await new Promise(resolve => setTimeout(resolve, args[2].timeout));
+        throw new Error('Driver status timed out');
+      }
+      return execute(...args);
+    });
+    let status;
+    try {
+      const enabling = f.controller.setEnabled(true).then(value => { status = value; });
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(status).toMatchObject({ phase: 'error', error: 'Driver status timed out' });
+      expect(f.child.exitCode).toBe(0);
+      expect(f.descriptor()).toEqual({});
+      await enabling;
+    } finally { await vi.runAllTimersAsync(); await f.controller.stop(); vi.useRealTimers(); }
+  });
+  it('does not publish a ready connection if the Windows child exits during its readiness probe', async () => {
+    const f = setup({ platform: 'win32', managed: true, running: false });
+    const execute = f.execute.getMockImplementation();
+    f.execute.mockImplementation(async (...args) => {
+      const result = await execute(...args);
+      if (args[1][0] === 'status' && f.spawn.mock.calls.length) {
+        f.child.exitCode = 2; f.child.emit('exit', 2);
+      }
+      return result;
+    });
+    try {
+      expect(await f.controller.setEnabled(true)).toMatchObject({ phase: 'error' });
+      expect(f.descriptor()).toEqual({});
+    } finally { await f.controller.stop(); }
+  });
   it('launches its bundled macOS app with a private socket and liveness FIFO, and closes only that daemon', async () => {
     const { controller, execute, binary, descriptor } = setup({ managed: true, running: false, grants: true });
     expect(await controller.initialize()).toMatchObject({ enabled: false, available: true });
