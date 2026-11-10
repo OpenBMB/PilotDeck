@@ -62,6 +62,33 @@ test('settings inspection reads installed metadata without creating or probing a
   assert.equal(f.calls.length, calls);
 });
 
+test('cold initialization imports libraries once and still verifies the published interpreter', async t => {
+  const f = await fixture(t);
+  const ready = await f.manager.resolve();
+  assert.equal(ready.status.state, 'ready');
+  const probes = f.calls.filter(call => call.args.includes('-c'));
+  assert.equal(probes.length, 2);
+  assert.equal(probes.filter(call => call.args.at(-1)!.includes('importlib.import_module')).length, 1);
+  assert.equal(probes[1].command, ready.status.executable);
+  // A different Gateway must validate imports in an existing environment.
+  f.calls.length = 0;
+  const other = new PythonRuntimeManager({ pilotHome: f.home, env: f.env, run: f.run });
+  assert.equal((await other.resolve()).status.state, 'ready');
+  assert.equal(f.calls.length, 1);
+  assert.match(f.calls[0].args.at(-1)!, /importlib\.import_module/);
+});
+
+test('a relocation identity failure is not reported as a ready environment', async t => {
+  const f = await fixture(t);
+  const manager = new PythonRuntimeManager({ pilotHome: f.home, env: f.env, run: async (command, args) => {
+    if (args.includes('-c') && !args.at(-1)!.includes('importlib.import_module')) {
+      return JSON.stringify({ version: '0.0.0', prefix: dirname(dirname(command)) });
+    }
+    return f.run(command, args);
+  } });
+  assert.equal((await manager.resolve()).status.state, 'unavailable');
+});
+
 test('settings reports initialization in progress without waiting or starting another probe', async t => {
   const f = await fixture(t);
   let release!: () => void, entered!: () => void;

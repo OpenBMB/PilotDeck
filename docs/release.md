@@ -54,6 +54,10 @@ and explicit MCP executables/environment selections take precedence. Disabling
 deleting environments or interrupting old tasks. It is a preference, not an execution
 sandbox. An application upgrade creates a new venv; user additions are retained in
 the previous directory but are not copied automatically between Python payloads.
+The first turn validates library imports in the staging venv, then checks interpreter
+version and prefix after atomic publication without importing the same libraries
+twice. A Gateway opening an existing or concurrently published venv still performs
+the full import check. Settings metadata reads do not initialize the environment.
 
 Browser clients use the same Gateway capability and setting. Standalone Web/CLI
 deployments can prepare a matching payload and set `PILOTDECK_PYTHON_ROOT` to its

@@ -119,6 +119,7 @@ export class PythonRuntimeManager {
     if (!env.MPLBACKEND) env.MPLBACKEND = 'Agg';
     const execute = this.options.run ?? run;
     await mkdir(parent, { recursive: true });
+    let verifiedPublication = false;
     if (!(await exists(marker))) {
       const staging = await mkdtemp(join(parent, `${key}-staging-`));
       try {
@@ -131,7 +132,10 @@ export class PythonRuntimeManager {
         if (process.platform === 'win32') await copyFile(stagedPython, join(stagedBin, 'python3.exe'));
         await this.probe(execute, stagedPython, env, manifest);
         await writeFile(join(staging, '.pilotdeck-ready'), manifest.id);
-        try { await rename(staging, environment); }
+        try {
+          await rename(staging, environment);
+          verifiedPublication = true;
+        }
         catch (error) {
           // A concurrent Gateway can win publication. Never replace a completed
           // environment: it may contain user packages or serve running tasks.
@@ -141,12 +145,16 @@ export class PythonRuntimeManager {
         await rm(child(parent, relative(parent, staging)), { recursive: true, force: true });
       }
     }
-    await this.probe(execute, executable, env, manifest);
+    // The published environment already passed the full import probe in
+    // staging. Recheck relocation identity without importing heavy libraries
+    // a second time on the first turn. Existing or concurrently published
+    // environments still need the full check before they can be advertised.
+    await this.probe(execute, executable, env, manifest, !verifiedPublication);
     return snapshot(env, { enabled: true, state: 'ready', version: manifest.version, executable, environment, packages: { ...manifest.packages } });
   }
-  private async probe(execute: Run, executable: string, env: NodeJS.ProcessEnv, manifest: Manifest): Promise<void> {
+  private async probe(execute: Run, executable: string, env: NodeJS.ProcessEnv, manifest: Manifest, importModules = true): Promise<void> {
     const identity = JSON.parse(await execute(executable, ['-I', '-B', '-c',
-      `import json,sys,platform,importlib,ssl,sqlite3,pip; modules=json.loads(${JSON.stringify(JSON.stringify(manifest.modules))}); [importlib.import_module(m) for m in modules]; print(json.dumps({"version":platform.python_version(),"prefix":sys.prefix}))`], env));
+      `import json,sys,platform; ${importModules ? `import importlib,ssl,sqlite3,pip; modules=json.loads(${JSON.stringify(JSON.stringify(manifest.modules))}); [importlib.import_module(m) for m in modules]; ` : ''}print(json.dumps({"version":platform.python_version(),"prefix":sys.prefix}))`], env));
     if (identity.version !== manifest.version || await realpath(identity.prefix) !== await realpath(dirname(dirname(executable)))) throw new Error('Python environment mismatch');
   }
 }
