@@ -4,6 +4,34 @@ const viewport = page => page.locator('[data-chat-search-surface]');
 const position = locator => locator.evaluate(node => node.scrollTop);
 const remaining = locator => locator.evaluate(node => node.scrollHeight - node.clientHeight - node.scrollTop);
 
+test('portaled composer menus use the same scroll-only scrollbar behavior', async ({ page, baseURL }) => {
+  const selection = { mode: 'model', provider: 'synthetic', model: 'model-0' };
+  await page.route('**/api/**', route => route.fulfill({ json: new URL(route.request().url()).pathname === '/api/models'
+    ? { defaultSelection: selection, items: Array.from({ length: 40 }, (_, i) => ({
+      id: `synthetic/model-${i}`, provider: 'synthetic', model: `model-${i}`, displayName: `Model ${i}`, available: true, capabilities: {},
+    })) } : {} }));
+  await page.goto(new URL('/e2e/fixtures/model-selection.html', baseURL).href);
+  const trigger = page.getByRole('button', { name: 'Model 0', exact: true });
+  await trigger.click();
+  const list = page.locator('[data-model-list]');
+  const color = () => list.evaluate(node => getComputedStyle(node).scrollbarColor);
+  const hidden = 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)';
+  await expect.poll(color).toBe(hidden);
+  const width = await list.evaluate(node => node.clientWidth);
+  await list.hover();
+  expect(await color()).toBe(hidden);
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() => list.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+  await expect(list).toHaveAttribute('data-chat-scrolling', '');
+  expect(await color()).not.toBe(hidden);
+  expect(await list.evaluate(node => node.clientWidth)).toBe(width);
+  await expect.poll(color).toBe(hidden);
+  await page.keyboard.press('Escape');
+  await expect(list).toHaveCount(0);
+  await trigger.click();
+  await expect.poll(color).toBe(hidden);
+});
+
 test('chat scrollbars reveal only the scrolling viewport without changing its width', async ({ page, baseURL }) => {
   await page.route('**/api/config', route => route.fulfill({ json: {} }));
   await page.goto(new URL('/e2e/fixtures/streaming-scroll.html', baseURL).href);
