@@ -66,12 +66,18 @@ describe('reader-owned scroll following', () => {
     node.append(input, button);
     fireEvent.keyDown(input, { key: 'Home' });
     fireEvent.keyDown(button, { key: ' ' });
-    fireEvent.keyDown(node, { key: 'Home', metaKey: true });
+    fireEvent.keyDown(node, { key: 'PageDown', metaKey: true });
     fireEvent.keyDown(node, { key: 'Home', shiftKey: true });
     expect(node.scrollTop).toBe(140);
     fireEvent.keyDown(node, { key: 'End' });
     expect(node.scrollTop).toBe(800);
     expect(api.isPaused).toBe(false);
+    fireEvent.keyDown(node, { key: 'Home', ctrlKey: true });
+    expect(node.scrollTop).toBe(0);
+    fireEvent.keyDown(node, { key: 'ArrowDown', metaKey: true });
+    expect(node.scrollTop).toBe(800);
+    fireEvent.keyDown(node, { key: 'ArrowUp', metaKey: true, shiftKey: true });
+    expect(node.scrollTop).toBe(800);
   });
 
   it.each([-1, 1])('accepts code-region boundary handoff without consuming its inner scroll (%s)', direction => {

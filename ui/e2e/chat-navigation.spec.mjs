@@ -125,6 +125,14 @@ for (const history of [2, 200]) for (const running of [false, true]) {
     await chat.click({ position: { x: 65, y: 300 } });
     await page.keyboard.press('Home');
     await expect.poll(() => position(chat)).toBeLessThan(3);
+    await page.keyboard.press('Control+End');
+    await expect.poll(() => remaining(chat)).toBeLessThan(3);
+    await page.keyboard.press('Control+Home');
+    await expect.poll(() => position(chat)).toBeLessThan(3);
+    await page.keyboard.press('Meta+ArrowDown');
+    await expect.poll(() => remaining(chat)).toBeLessThan(3);
+    await page.keyboard.press('Meta+ArrowUp');
+    await expect.poll(() => position(chat)).toBeLessThan(3);
     await page.keyboard.press('ArrowDown');
     await expect.poll(() => position(chat)).toBeGreaterThan(20);
     await page.keyboard.press('PageDown');
