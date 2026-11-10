@@ -8,6 +8,7 @@ import { useScrollFollow } from '../../src/components/chat/hooks/useScrollFollow
 import { normalizedToChatMessages } from '../../src/components/chat/hooks/useChatMessages';
 import { useSessionStore } from '../../src/stores/useSessionStore';
 import '../../src/index.css';
+import '../../src/light-appearance.css';
 import i18n from '../../src/i18n/config';
 import { applyLightAppearance } from '../../src/lib/appearanceRuntime';
 import { normalizeLightAppearance } from '../../src/lib/lightAppearance';

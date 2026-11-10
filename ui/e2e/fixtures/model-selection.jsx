@@ -9,6 +9,7 @@ import { startSessionCommand, createUserTurnRunId } from '../../src/components/c
 import { globalModelSelectionStore } from '../../src/components/chat/utils/globalModelSelection';
 import i18n from '../../src/i18n/config';
 import '../../src/index.css';
+import '../../src/light-appearance.css';
 i18n.changeLanguage('en');
 const noop = () => {};
 const props = {

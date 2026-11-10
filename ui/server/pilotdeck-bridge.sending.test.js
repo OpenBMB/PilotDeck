@@ -172,6 +172,27 @@ it('assigns a real ID before startup failure without acknowledging the input', a
     expect(frames.some(frame => frame.type === 'session-input-accepted')).toBe(false);
 });
 
+it('announces a first conversation while startup is delayed and acknowledges only accepted input', async () => {
+    const startup = deferred();
+    const frames = [];
+    const gateway = {
+        async *submitTurn(input) {
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    const turn = runChatViaGateway('First message', { projectPath: '/tmp/sending-project', runId: 'delayed-start' },
+        { send: frame => frames.push(frame) }, 'pilotdeck', { getGateway: () => startup.promise });
+    const announcedSession = frames.find(frame => frame.kind === 'session_created')?.newSessionId;
+    expect(announcedSession).toMatch(/^web[:-]s_/);
+    expect(frames.some(frame => frame.type === 'session-input-accepted')).toBe(false);
+    startup.resolve(gateway);
+    const result = await turn;
+    expect(result.sessionKey).toBe(announcedSession);
+    expect(result.inputAccepted).toBe(true);
+    expect(frames.filter(frame => frame.type === 'session-input-accepted')).toHaveLength(1);
+});
+
 it('ends a General send when workspace preflight fails before input acceptance', async () => {
     const previousRoot = process.env.WORKSPACES_ROOT;
     process.env.WORKSPACES_ROOT = mock.home;

@@ -21,7 +21,7 @@ Run from the repository root unless noted.
 
 Changed/related selection follows import edges, not every dynamically read template, workflow, icon or plugin. Broaden checks for shared protocols, native resources, dependency locks and build inputs. Real browser acceptance belongs under ui/e2e/ and is separate from Vitest discovery.
 
-Run chat browser regressions with `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs`. With desktop Electron installed, set `PILOTDECK_SCROLL_ELECTRON=1` and select `streaming-scroll.spec.mjs chat-media-scroll.spec.mjs` to repeat scroll gestures, live generation/disclosure interactions and media reflow in isolated native renderer profiles. These fixtures start no application services or model providers.
+Run chat browser regressions with `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs`. With desktop Electron installed, set `PILOTDECK_SCROLL_ELECTRON=1` and select `streaming-scroll.spec.mjs chat-media-scroll.spec.mjs chat-navigation.spec.mjs` to repeat scroll gestures, keyboard navigation, live generation/disclosure interactions and media reflow in isolated native renderer profiles. These fixtures start no application services or model providers.
 
 For VM renderer tests, `PILOTDECK_SCROLL_ELECTRON_PATH` selects a guest-native Electron executable and `PILOTDECK_SCROLL_BASE_URL` selects an already-running synthetic fixture server instead of starting Vite in the guest. Serve it on a host-only interface. Linux requires a display or `xvfb-run`; media cases also require a Playwright Chromium installation. The scroll suite includes delayed native input under a busy renderer, so timer-based gesture expiry cannot silently restore an obsolete reading position.
 

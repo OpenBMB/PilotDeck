@@ -44,9 +44,8 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('search fallback rendering readiness', () => {
   it('lands before recording the reading anchor so streaming cannot undo an unfinished animation', async () => {
     const positions: number[] = [];
-    let viewport: HTMLElement;
     const view = render(<Harness pending={false} onNavigate={() => positions.push(viewport.scrollTop)} />);
-    viewport = view.getByTestId('viewport');
+    const viewport = view.getByTestId('viewport');
     Object.defineProperty(viewport, 'clientHeight', { value: 200 });
     viewport.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
     viewport.querySelector<HTMLElement>('[data-message-key]')!.getBoundingClientRect = () => ({ top: 1000, height: 40 }) as DOMRect;

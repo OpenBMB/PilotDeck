@@ -51,6 +51,7 @@ import ReplyQuoteChip from "./ReplyQuoteChip";
 import WorkspacePickerBar from "./WorkspacePickerBar";
 import { getComposerPrimaryAction } from "../utils/composerPrimaryAction";
 import { useModelMenuLayout } from "../hooks/useModelMenuLayout";
+import { useChatScrollbars } from "../hooks/useChatScrollbars";
 import DocumentReferenceChip from "./subcomponents/DocumentReferenceChip";
 import {
   buildExplicitSelection,
@@ -545,6 +546,8 @@ export default function Composer({
   onCreateWorkspaceProject,
   queueTray,
 }: ComposerProps) {
+  const scrollbarsRef = useRef<HTMLDivElement>(null);
+  useChatScrollbars(scrollbarsRef);
   const { t } = useTranslation("chat");
   const reasoningLabels = useMemo(() => new Map<number, string>([
     [0.4, t("input.models.reasoningLevels.low", { defaultValue: "Low" }) as string],
@@ -581,6 +584,10 @@ export default function Composer({
   const permissionMenu = useFloatingPanel(isPermissionMenuOpen, permissionTriggerRef, () => setIsPermissionMenuOpen(false), { width: 280 });
   const contextMenu = useFloatingPanel(isContextPopoverOpen, contextTriggerRef, () => setIsContextPopoverOpen(false), { width: 272, maxHeight: 204 });
   const fileMenu = useFloatingPanel(showFileDropdown, textareaRef, undefined, { matchComposer: true, maxHeight: 320 });
+  useChatScrollbars(addMenu.panelRef);
+  useChatScrollbars(permissionMenu.panelRef);
+  useChatScrollbars(contextMenu.panelRef);
+  useChatScrollbars(fileMenu.panelRef);
   const permissionSelectorDisabled = runMode === "plan";
   const [workspaceMenuForceOpen, setWorkspaceMenuForceOpen] = useState(false);
 
@@ -745,6 +752,8 @@ export default function Composer({
     setIsModelMenuOpen(false);
     setAdvancedModelId(null);
   });
+  useChatScrollbars(modelMenu.menuRef);
+  useChatScrollbars(modelMenu.advancedRef);
   useLayoutEffect(() => {
     if (!isModelMenuOpen) return;
     if (modelMenu.inline && advancedModel) {
@@ -783,6 +792,7 @@ export default function Composer({
 
   return (
     <div
+      ref={scrollbarsRef}
       className={cn(
         "pd-composer-surround min-w-0 shrink-0",
         chromeless ? "" : compact ? "bg-white px-3 pb-3 pt-2 dark:bg-neutral-950" : "bg-white px-6 pb-6 pt-3 dark:bg-neutral-950",

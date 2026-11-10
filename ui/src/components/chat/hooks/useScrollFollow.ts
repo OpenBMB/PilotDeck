@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { expandingDisclosure } from '../utils/disclosureInteraction';
+import { useChatScrollbars } from './useChatScrollbars';
 
 const BOTTOM_EPSILON = 2;
 const ANCHOR_EPSILON = 0.01;
@@ -33,6 +34,7 @@ export function useScrollFollow({
   canFollow?: () => boolean;
   initialPositionKey?: unknown;
 }) {
+  useChatScrollbars(containerRef);
   const [isPaused, setIsPaused] = useState(false);
   const [canReturnToLatest, setCanReturnToLatest] = useState(false);
   const [hasOverflow, setHasOverflow] = useState(false);
@@ -131,7 +133,7 @@ export function useScrollFollow({
       anchorRef.current = row && rect ? { key: row.dataset.messageKey!, offset: rect.top - top } : null;
       anchorAwaitingRowsRef.current = true;
     }
-    publishAnchorKey(row ?? null);
+    publishAnchorKey(anchorAwaitingRowsRef.current ? null : row ?? null);
   }, [containerRef, contentSelector, publishAnchorKey]);
 
   const restoreAnchor = useCallback(() => {
@@ -355,10 +357,38 @@ export function useScrollFollow({
     };
     const keyDown = (event: KeyboardEvent) => {
       const target = event.target;
-      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey)) beginUpwardInput(target);
-      else if (event.key === 'End' && sourceViewport(target) === node) scrollToBottom();
-      else if (['ArrowDown', 'PageDown', ' '].includes(event.key)) beginDownwardInput(target);
+      if (event.defaultPrevented || event.altKey) return;
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]')) return;
+      const key = event.metaKey && event.key === 'ArrowUp' ? 'Home'
+        : event.metaKey && event.key === 'ArrowDown' ? 'End' : event.key;
+      // Ctrl+Home/End and macOS Command+Up/Down are viewport navigation.
+      // Other modified shortcuts and shift selections belong to the browser.
+      if ((event.ctrlKey || event.metaKey) && key !== 'Home' && key !== 'End') return;
+      // Preserve activation and selection in controls. Only the viewport owns
+      // these keys; nested output regions retain their native scrolling.
+      if (key === ' ' && target instanceof Element && target.closest('button, a, summary, [role="button"]')) return;
+      const direction = ['ArrowUp', 'PageUp', 'Home'].includes(key) || (key === ' ' && event.shiftKey) ? -1
+        : ['ArrowDown', 'PageDown', 'End', ' '].includes(key) ? 1 : 0;
+      if (!direction || (event.shiftKey && key !== ' ')) return;
+      if (sourceViewport(target, direction) === node) {
+        event.preventDefault();
+        if (key === 'End') { scrollToBottom(); return; }
+        setPaused(true);
+        programmaticTopRef.current = null;
+        userScrollRef.current = null;
+        // Native key animations compete with measurement corrections, which
+        // can terminate Home/End halfway through a virtualized conversation.
+        // Apply one reader movement before reacquiring its visible anchor.
+        const step = key.startsWith('Arrow') ? 40 : node.clientHeight * 0.9;
+        node.scrollTop = key === 'Home' ? 0 : node.scrollTop + direction * step;
+        captureAnchor();
+        rememberMetrics();
+        if (direction > 0 && atBottom()) scrollToBottom();
+        else publish();
+        return;
+      }
+      if (direction < 0) beginUpwardInput(target);
+      else beginDownwardInput(target);
     };
     const pointerDown = (event: PointerEvent) => {
       // A click in blank content is not a scrollbar drag.

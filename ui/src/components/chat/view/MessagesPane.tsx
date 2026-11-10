@@ -1234,8 +1234,11 @@ function MessagesPane({
         ref={scrollContainerRef}
         data-chat-search-surface
         data-stream-scroll-viewport
+        tabIndex={0}
+        role="region"
+        aria-label={t('session.conversation', { defaultValue: 'Conversation' })}
         style={{ overflowAnchor: 'none' }}
-        className="chat-panel-scrollbar h-full overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-950"
+        className="chat-panel-scrollbar h-full overflow-y-auto overflow-x-hidden bg-white outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-neutral-400 dark:bg-neutral-950"
       >
       {hasSessionLoadError ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-3 px-6 py-10 text-center">

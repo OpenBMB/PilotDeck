@@ -2371,3 +2371,27 @@
 .dark .chat-markdown :not(pre) > code {
   background: #343434;
 }
+
+/* Keep scrollbar geometry stable; reveal only the viewport that is scrolling.
+   This overrides local output/composer scrollbar palettes in both themes. */
+:is([data-chat-scrollbars], [data-chat-scrollbars] *) {
+  scrollbar-color: transparent transparent !important;
+}
+:is([data-chat-scrollbars], [data-chat-scrollbars] *)::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+:is([data-chat-scrollbars], [data-chat-scrollbars] *)::-webkit-scrollbar-thumb {
+  background-color: transparent !important;
+  transition: background-color 220ms ease;
+}
+:is([data-chat-scrollbars][data-chat-scrolling], [data-chat-scrollbars] [data-chat-scrolling]) {
+  scrollbar-color: var(--pd-muted, #a3a3a3) transparent !important;
+}
+:is([data-chat-scrollbars][data-chat-scrolling], [data-chat-scrollbars] [data-chat-scrolling])::-webkit-scrollbar-thumb {
+  background-color: var(--pd-muted, #a3a3a3) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is([data-chat-scrollbars], [data-chat-scrollbars] *)::-webkit-scrollbar-thumb {
+    transition: none;
+  }
+}

@@ -573,6 +573,7 @@
     }
   },
   "session": {
+    "conversation": "对话",
     "loadFailedTitle": "无法加载此对话",
     "retryLoad": "重试",
     "continue": {
