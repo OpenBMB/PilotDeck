@@ -56,6 +56,21 @@ test('invalid and oversized diagrams retain readable source without stray error 
   expect(errors).toEqual([]);
 });
 
+for (const [name, source] of [
+  ['comments inside node metadata', 'flowchart LR\n A@{\n  shape: rect\n  %% Explain this node\n  label: "Start"\n } --> B[End]'],
+  ['quoted HTML attributes inside labels', 'flowchart LR\n A@{ shape: rect, label: "<span title="greeting">Start</span>" } --> B[End]'],
+]) {
+  test(`valid diagrams render with ${name}`, async ({ page }) => {
+    await respond(page, fenced(source));
+    await expect(diagrams(page)).toHaveCount(1);
+    await expect(diagrams(page)).toContainText('Start');
+    await expect(diagrams(page)).toContainText('End');
+    await expect(page.getByText('Unable to render this diagram. The source is shown below.', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Show source', exact: true }).click();
+    await expect(page.locator('pre code.language-mermaid')).toHaveText(source + '\n');
+  });
+}
+
 test('diagram directives cannot enable executable HTML or click callbacks', async ({ page }) => {
   await page.evaluate(() => { window.mermaidAttack = () => { window.mermaidAttackExecuted = true; }; });
   await respond(page, fenced('%%{init: {"securityLevel":"loose", "htmlLabels":true}}%%\nflowchart LR\n A["<img src=x onerror=mermaidAttack()>"] --> B[Safe]\n click B mermaidAttack'));
@@ -103,6 +118,8 @@ test('external image nodes fall back before fetching and leave other diagrams re
     `A@{ 'img': "${url}", label: "Remote" }`,
     `A@{ "\\u0069mg": "${url}", label: "Remote" }`,
     `A@{\n img: "${url}"\n label: "Remote"\n h: 60\n}`,
+    `A@{\n %% Explain this image\n img: "${url}"\n label: "Remote"\n h: 60\n}`,
+    `A@{ img: "${url}", label: "<span title="greeting">Remote</span>", h: 60 }`,
     `accTitle: An "accessible title\n A@{ img: "${url}", label: "Remote" }`,
     `accDescr: An "accessible description\n A@{ img: "${url}", label: "Remote" }`,
     `accDescr { An "accessible description }\n A@{ img: "${url}", label: "Remote" }`,
@@ -112,12 +129,12 @@ test('external image nodes fall back before fetching and leave other diagrams re
   const embedded = 'flowchart LR\n A@{ img: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", label: "Embedded", h: 32 }';
   const titledOrdinary = '---\ntitle: A "quoted title\n---\n' + flow;
   await respond(page, [...imageNodes.map(node => fenced('flowchart LR\n ' + node)), fenced(titledImage), fenced(ordinary), fenced(embedded), fenced(titledOrdinary), fenced(flow)].join('\n\n'));
-  await expect(page.getByText('Unable to render this diagram. The source is shown below.', { exact: true })).toHaveCount(8);
+  await expect(page.getByText('Unable to render this diagram. The source is shown below.', { exact: true })).toHaveCount(10);
   await expect(diagrams(page)).toHaveCount(4);
   await expect(diagrams(page).first()).toContainText('img: ordinary text }');
   await expect(diagrams(page).nth(2)).toContainText('quoted title');
   await expect(diagrams(page).last()).toContainText('用户提问');
-  await expect(page.locator('pre code.language-mermaid')).toHaveCount(8);
+  await expect(page.locator('pre code.language-mermaid')).toHaveCount(10);
   expect(requests).toEqual([]);
 });
 

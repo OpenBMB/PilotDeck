@@ -6,7 +6,7 @@ import { ThemeProvider, useTheme } from '../../../../contexts/ThemeContext';
 import { copyTextToClipboard } from '../../../../utils/clipboard';
 import { Markdown } from './Markdown';
 
-vi.mock('mermaid', () => ({ default: { initialize: vi.fn(), detectType: vi.fn(), render: vi.fn() } }));
+vi.mock('mermaid', () => ({ default: { initialize: vi.fn(), mermaidAPI: { getDiagramFromText: vi.fn() }, render: vi.fn() } }));
 vi.mock('../../../../utils/clipboard', () => ({ copyTextToClipboard: vi.fn(async () => true) }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_key: string, options: { defaultValue: string }) => options.defaultValue }),
@@ -23,7 +23,9 @@ beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('themeMode', 'light');
   vi.mocked(copyTextToClipboard).mockResolvedValue(true);
-  vi.mocked(mermaid.detectType).mockReturnValue('flowchart-v2');
+  vi.mocked(mermaid.mermaidAPI.getDiagramFromText).mockResolvedValue({
+    type: 'flowchart-v2', db: { getVertices: () => new Map() },
+  } as unknown as Awaited<ReturnType<typeof mermaid.mermaidAPI.getDiagramFromText>>);
   vi.mocked(mermaid.render).mockResolvedValue({ svg: '<svg><text>Rendered diagram</text></svg>', diagramType: 'flowchart' });
 });
 afterEach(() => { cleanup(); document.documentElement.classList.remove('dark'); });

@@ -95,12 +95,18 @@ jobs:
         if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
         run: pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs
 
-      - name: Upload chat scrolling failure evidence
+      - name: Test chat Mermaid rendering
+        if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
+        run: pnpm --dir ui exec playwright test -c e2e/mermaid.config.mjs
+
+      - name: Upload chat scrolling and diagram failure evidence
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: chat-scrolling-failure
-          path: artifacts/stream-playwright
+          path: |
+            artifacts/stream-playwright
+            artifacts/mermaid/playwright
           if-no-files-found: ignore
 
   docker:

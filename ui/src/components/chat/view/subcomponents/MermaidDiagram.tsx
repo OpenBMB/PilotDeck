@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { parse as parseYaml } from 'yaml';
 import { useTheme } from '../../../../contexts/ThemeContext';
 
 const MAX_DIAGRAM_LENGTH = 50_000;
@@ -31,19 +30,13 @@ function renderMermaid(source: string, dark: boolean): Promise<string> {
       secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges',
         'htmlLabels', 'theme', 'themeCSS', 'fontFamily', 'dompurifyConfig'],
     });
-    // Inspect the diagram body, not YAML frontmatter or init directives.
-    const diagramText = source.trimStart()
-      .replace(/^---\s*[\n\r].*?[\n\r]---\s*[\n\r]+/s, '')
-      .replace(/%%\{[\s\S]*?\}%%/g, '');
-    if (mermaid.detectType(diagramText).startsWith('flowchart')) {
+    const diagram = await mermaid.mermaidAPI.getDiagramFromText(source);
+    if (diagram.type.startsWith('flowchart')) {
       // Flowchart image nodes await network I/O inside Mermaid's global queue.
-      // Inspect their YAML attributes; skip comments, labels and accessibility text.
-      for (const match of diagramText.matchAll(/%%[^\n]*|\bacc(?:Title|Descr)\s*:[^\n]*|\baccDescr\s*\{[^}]*\}|"[^"]*"|@\{((?:"[^"]*"|[^"}])*)\}/g)) {
-        if (match[1] === undefined) continue;
-        // Mermaid turns line breaks within quoted labels into <br/> first.
-        const metadata = match[1].replace(/"[^"]*"/g, value => value.replace(/\n\s*/g, '<br/>'));
-        const attributes = parseYaml(metadata.includes('\n') ? metadata : `{${metadata}}`);
-        if (attributes?.img && !/^data:/i.test(String(attributes.img).trim())) {
+      // Inspect parsed nodes so comments and normalized labels follow Mermaid's grammar.
+      const vertices = (diagram.db as { getVertices(): Map<string, { img?: string }> }).getVertices();
+      for (const vertex of vertices.values()) {
+        if (vertex.img && !/^data:/i.test(String(vertex.img).trim())) {
           throw new Error('External images are not supported in diagrams');
         }
       }

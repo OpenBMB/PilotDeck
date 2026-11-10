@@ -25,6 +25,7 @@ pnpm --dir ui build
 ```
 
 Mermaid browser regression: `pnpm --dir ui exec playwright test --config e2e/mermaid.config.mjs`.
+Web Regression CI runs this suite for browser-affecting changes and uploads failure evidence.
 It uses synthetic chat events and a local Vite server; set `PILOTDECK_TEST_BROWSER_CHANNEL=chrome` to use an installed Chrome instead of Playwright Chromium.
 
 The import audit, `node scripts/audit-ui-reachability.mjs --exports`, reports review candidates only. Dynamic consumers and intentional test helpers need manual review before deletion. See [API references](../docs/README.md) and [test guidance](../docs/testing.md).
