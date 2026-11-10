@@ -231,7 +231,12 @@ for (const timingHost of ['status', 'user']) for (const reason of ['aborted_stre
     const notice = page.getByText('The user stopped the conversation', { exact: true });
     await expect(notice).toHaveCount(1);
     await expect(notice).toBeVisible();
-    await expect(page.locator('[data-turn-process-region]').filter({ hasText: 'Work before guidance.' })).toHaveAttribute('inert', '');
+    const beforeGuidance = page.locator('[data-turn-process-header] button').nth(-2);
+    await expect(beforeGuidance).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByText('Work before guidance.', { exact: true })).not.toBeVisible();
+    await beforeGuidance.click();
+    await expect(page.getByText('Work before guidance.', { exact: true })).toBeVisible();
+    await beforeGuidance.click();
     await header.click();
   } else {
     await expect(page.getByText('The user stopped the conversation', { exact: true })).toHaveCount(0);
