@@ -1,6 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { expandingDisclosure } from '../utils/disclosureInteraction';
+import { useChatScrollbars } from './useChatScrollbars';
 
 const BOTTOM_EPSILON = 2;
 const ANCHOR_EPSILON = 0.01;
@@ -33,6 +34,7 @@ export function useScrollFollow({
   canFollow?: () => boolean;
   initialPositionKey?: unknown;
 }) {
+  useChatScrollbars(containerRef);
   const [isPaused, setIsPaused] = useState(false);
   const [canReturnToLatest, setCanReturnToLatest] = useState(false);
   const [hasOverflow, setHasOverflow] = useState(false);
