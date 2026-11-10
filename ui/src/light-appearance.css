@@ -206,6 +206,11 @@ html[data-appearance] :is(.appearance-choice, .appearance-color-control, .genera
 html[data-appearance].dark :is(.app-main, .pd-workspace-content, .pd-workspace-body, .pd-composer-surround, .pd-composer-container, .pd-chat-canvas, .chat-panel-scrollbar, .settings-content, .workspace-header, .dock-panel.file-panel) {
   background: var(--pd-surface); color: var(--pd-ink);
 }
+html[data-appearance].dark .pd-user-message-bubble {
+  background: var(--pd-gray-4);
+  color: var(--pd-ink);
+  box-shadow: inset 0 0 0 1px var(--pd-border);
+}
 html[data-appearance].dark .pilotdeck-settings-app :is(
   [data-settings-surface=panel], .resident-project-panel, .resident-card,
   .search-card, .route-card, .integration-gateway-card,

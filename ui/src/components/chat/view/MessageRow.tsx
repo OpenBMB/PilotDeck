@@ -405,7 +405,7 @@ function MessageRow({
     return withProcessRows(
       <div className="group/user-msg flex w-full flex-col items-end">
         <div className={cn(
-          'min-w-0 max-w-[78%] overflow-hidden rounded-[22px] bg-neutral-100 px-4 py-2.5 text-[14px] leading-relaxed text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100',
+          'pd-user-message-bubble min-w-0 max-w-[78%] overflow-hidden rounded-[22px] bg-neutral-100 px-4 py-2.5 text-[14px] leading-relaxed text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100',
           isEditing && 'w-full',
         )}>
           {message.isStreaming && !formattedContent ? (
