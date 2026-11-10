@@ -21,6 +21,10 @@ Run from the repository root unless noted.
 
 Changed/related selection follows import edges, not every dynamically read template, workflow, icon or plugin. Broaden checks for shared protocols, native resources, dependency locks and build inputs. Real browser acceptance belongs under ui/e2e/ and is separate from Vitest discovery.
 
+Run chat browser regressions with `pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs`. With desktop Electron installed, set `PILOTDECK_SCROLL_ELECTRON=1` and select `streaming-scroll.spec.mjs chat-media-scroll.spec.mjs` to repeat scroll gestures, live generation/disclosure interactions and media reflow in isolated native renderer profiles. These fixtures start no application services or model providers.
+
+For VM renderer tests, `PILOTDECK_SCROLL_ELECTRON_PATH` selects a guest-native Electron executable and `PILOTDECK_SCROLL_BASE_URL` selects an already-running synthetic fixture server instead of starting Vite in the guest. Serve it on a host-only interface. Linux requires a display or `xvfb-run`; media cases also require a Playwright Chromium installation. The scroll suite includes delayed native input under a busy renderer, so timer-based gesture expiry cannot silently restore an obsolete reading position.
+
 ## Pull request CI selection
 
 Web Regression and Desktop use `apps/desktop/scripts/classify-ci-changes.mjs` to
@@ -43,6 +47,17 @@ with GHA layer caching and isolated runtime-import verification. Main pushes
 still run full Web/browser and Docker checks; manual Desktop runs and formal
 releases retain all native targets. Production signing and publication gates
 are independent of PR selection and remain mandatory.
+
+Web Regression also exercises tool input/registry/scheduling contracts, prompt
+capability and cache stability, live plugin preferences, and scoped runtime reload.
+These use synthetic tools/providers and isolated profiles; no real provider calls
+are required. UI tests cover lossless event delivery, render isolation and shared
+chat behavior, with browser acceptance validating streaming and history flows.
+
+After `pnpm --dir ui build`, run `node scripts/check-ui-build-graph.mjs` to
+verify that the startup and text-editor import graphs exclude deferred features.
+`pnpm --dir ui exec playwright test -c e2e/editor-loading.config.mjs` serves the
+production build with synthetic APIs and checks editor/PDF requests and tab state.
 
 ## Test quality and isolation
 

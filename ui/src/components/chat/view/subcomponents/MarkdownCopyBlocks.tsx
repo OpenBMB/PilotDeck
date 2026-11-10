@@ -69,7 +69,7 @@ export function MarkdownCodeBlock({ node, children, ...props }: ComponentProps<'
   const languageLabel = language || t('copyBlock.plainText', { defaultValue: 'Plain text' });
   const wrapLabel = t('copyBlock.wrap', { defaultValue: 'Wrap code' });
   const isDiagram = language?.toLowerCase() === 'mermaid' && !isStreaming;
-  const sourceBlock = <pre {...props} className={`${props.className || ''} !m-0 overflow-x-auto`}>{children}</pre>;
+  const sourceBlock = <pre {...props} data-chat-scroll-region className={`${props.className || ''} !m-0 overflow-x-auto overscroll-y-auto overscroll-x-contain`}>{children}</pre>;
   return (
     <div className="markdown-code-block not-prose my-4 min-w-0 overflow-hidden rounded-xl border" data-wrap={wrap}>
       <div className="markdown-code-header flex min-w-0 items-center justify-between gap-3 px-4 py-2.5 text-xs">

@@ -14,6 +14,7 @@ import {
   type Project,
   type ProjectSession,
   type SessionProvider,
+  type SessionMessagesUpdateTarget,
 } from '../../../types/app';
 import type { SessionStore, NormalizedMessage } from '../../../stores/useSessionStore';
 import { parseUserAttachmentNote } from '../utils/attachmentNotes';
@@ -24,6 +25,7 @@ import {
 } from '../sessionStatusProtocol';
 import { normalizedToChatMessages } from './useChatMessages';
 import { useScrollFollow, type ReadingAnchor } from './useScrollFollow';
+import { useSessionRequestScope, type HistoryRequestKind, type HistoryRequestResult } from './useSessionRequestScope';
 
 const MESSAGES_PER_PAGE = 100;
 const EMPTY_NORMALIZED_MESSAGES: NormalizedMessage[] = [];
@@ -48,6 +50,7 @@ interface UseChatSessionStateArgs {
   sendMessage: (message: unknown) => void;
   autoScrollToBottom?: boolean;
   externalMessageUpdate?: number;
+  externalMessageUpdateTarget?: SessionMessagesUpdateTarget | null;
   processingSessions?: Set<string>;
   resetStreamingState: () => void;
   pendingViewSessionRef: MutableRefObject<PendingViewSession | null>;
@@ -83,7 +86,7 @@ export function didLoadedSessionChange(
 /**
  * Whether the optimistic "pending user message" bubble should render in the
  * currently active view. The pending bubble is hook-wide singleton state on
- * `ChatInterfaceV2`; without this gate, switching sessions while it's queued
+ * `ChatInterface`; without this gate, switching sessions while it's queued
  * would prepend the optimistic text onto the WRONG session's transcript —
  * surfaced as "the latest query I just typed appears at the top of an
  * unrelated session I just opened".
@@ -268,6 +271,7 @@ export function useChatSessionState({
   sendMessage,
   autoScrollToBottom,
   externalMessageUpdate,
+  externalMessageUpdateTarget,
   processingSessions,
   resetStreamingState,
   pendingViewSessionRef,
@@ -293,7 +297,12 @@ export function useChatSessionState({
   const [totalMessages, setTotalMessages] = useState(0);
   const [canAbortSession, setCanAbortSession] = useState(false);
   const [isAborting, setIsAborting] = useState(false);
-  const [tokenBudget, setTokenBudget] = useState<Record<string, unknown> | null>(null);
+  const [tokenBudget, setTokenBudgetState] = useState<Record<string, unknown> | null>(null);
+  const tokenBudgetRevision = useRef(0);
+  const setTokenBudget = useCallback((budget: Record<string, unknown> | null) => {
+    tokenBudgetRevision.current += 1;
+    setTokenBudgetState(budget);
+  }, []);
   const [claudeStatus, setClaudeStatus] = useState<ClaudeWorkStatus | null>(null);
   const [pilotDeckStatus, setPilotDeckStatus] = useState<PilotDeckWorkStatus | null>(null);
   const [sessionLoadError, setSessionLoadError] = useState<string | null>(null);
@@ -374,9 +383,9 @@ export function useChatSessionState({
   }
 
   const activeSessionId = selSid ?? effectiveCurrentRef.current;
-  const activeScrollKey = selectedProject && activeSessionId
-    ? `${selectedProject.name}:${activeSessionId}`
-    : null;
+  const requestScope = useSessionRequestScope(selectedProject, selectedSession);
+  const activeScrollKey = requestScope?.key ?? (selectedProject && activeSessionId
+    ? `${selectedProject.name}:${activeSessionId}` : null);
   const sessionIsReadOnly = isReadOnlySession(selectedSession);
   const sessionRequestParams = useMemo(
     () => getSessionRequestParams(selectedSession),
@@ -529,48 +538,105 @@ export function useChatSessionState({
     return isScrollNearBottom(scrollTop, scrollHeight, clientHeight);
   }, []);
 
+  const requestHistory = useCallback(async (
+    kind: HistoryRequestKind,
+    extraOptions: { includeFromId?: string; afterRestore?: boolean } = {},
+  ): Promise<HistoryRequestResult> => {
+    if (!requestScope) return { status: 'stale' };
+    const isCurrent = requestScope.capture();
+    const result = await requestScope.run(kind, () => {
+      const options = { ...requestScope.options, ...extraOptions };
+      if (kind === 'refresh') return sessionStore.refreshFromServer(requestScope.sessionId, options);
+      if (kind === 'older') return sessionStore.fetchMore(requestScope.sessionId, { ...options, limit: MESSAGES_PER_PAGE });
+      return sessionStore.fetchFromServer(requestScope.sessionId, {
+        ...options, limit: kind === 'full' ? null : MESSAGES_PER_PAGE,
+        ...(kind === 'full' ? { offset: 0 } : { direction: 'backward' as const }),
+      });
+    }, JSON.stringify(extraOptions));
+    if (!isCurrent()) return { status: 'stale' };
+    if (result.status === 'success') {
+      setHasMoreMessages(result.slot.hasMore);
+      setTotalMessages(result.slot.total);
+      setAllMessagesLoaded(!result.slot.hasMore);
+      allMessagesLoadedRef.current = !result.slot.hasMore;
+      setSessionLoadError(null);
+      setHistoryLoadError(false);
+    } else if (result.status === 'error') {
+      if (kind === 'initial') setSessionLoadError(result.error.message);
+      else setHistoryLoadError(true);
+    }
+    return result;
+  }, [requestScope, sessionStore]);
+
+  const refreshSessionMessages = useCallback((options?: { afterRestore?: boolean }) => (
+    requestHistory('refresh', options)
+  ), [requestHistory]);
+
+  const retrySessionMessages = useCallback(async () => {
+    if (!requestScope) return;
+    const isCurrent = requestScope.capture();
+    setIsLoadingSessionMessages(true);
+    setSessionLoadError(null);
+    try {
+      await requestHistory('initial');
+      if (isCurrent()) {
+        historyReadyScrollKeyRef.current = activeScrollKey;
+        setHistoryReadyScrollKey(activeScrollKey);
+      }
+    } finally {
+      if (isCurrent()) setIsLoadingSessionMessages(false);
+    }
+  }, [activeScrollKey, requestHistory, requestScope]);
+
+  const loadAllMessages = useCallback(async () => {
+    if (!requestScope) return;
+    const isCurrent = requestScope.capture();
+    isLoadingMoreRef.current = true;
+    setIsLoadingAllMessages(true);
+    captureReadingAnchor();
+    try {
+      const result = await requestHistory('full');
+      if (result.status === 'error') throw result.error;
+      if (result.status === 'stale' && isCurrent() && !allMessagesLoadedRef.current) {
+        // A newer partial refresh can supersede this response. Search must get
+        // a retryable outcome instead of waiting forever for a complete history.
+        setHistoryLoadError(true);
+        throw new Error('Conversation changed while loading history. Please retry.');
+      }
+    } finally {
+      if (isCurrent()) {
+        isLoadingMoreRef.current = false;
+        setIsLoadingAllMessages(false);
+      }
+    }
+  }, [captureReadingAnchor, requestHistory, requestScope]);
+
   const loadOlderMessages = useCallback(
     async (container: HTMLDivElement) => {
       if (!container || isLoadingMoreRef.current || isLoadingMoreMessages) return false;
       if (allMessagesLoadedRef.current) return false;
-      if (!hasMoreMessages || !selectedSession || !selectedProject) return false;
+      if (!hasMoreMessages || !requestScope) return false;
 
       isLoadingMoreRef.current = true;
       setIsLoadingMoreMessages(true);
-      const requestScrollKey = activeScrollKey;
+      const isCurrent = requestScope.capture();
       captureReadingAnchor();
 
       try {
-        const slot = await sessionStore.fetchMore(selectedSession.id, {
-          provider: 'pilotdeck',
-          projectName: selectedProject.name,
-          projectPath: selectedProject.fullPath || selectedProject.path || '',
-          ...sessionRequestParams,
-          limit: MESSAGES_PER_PAGE,
-        });
-        if (activeScrollKeyRef.current !== requestScrollKey) return false;
-        if (!slot) { setHistoryLoadError(true); return false; }
-        setHasMoreMessages(slot.hasMore);
-        setTotalMessages(slot.total);
-        setAllMessagesLoaded(!slot.hasMore);
-        allMessagesLoadedRef.current = !slot.hasMore;
-        return true;
+        return (await requestHistory('older')).status === 'success';
       } finally {
-        if (activeScrollKeyRef.current === requestScrollKey) {
+        if (isCurrent()) {
           isLoadingMoreRef.current = false;
           setIsLoadingMoreMessages(false);
         }
       }
     },
     [
-      activeScrollKey,
       captureReadingAnchor,
       hasMoreMessages,
       isLoadingMoreMessages,
-      selectedProject,
-      selectedSession,
-      sessionRequestParams,
-      sessionStore,
+      requestHistory,
+      requestScope,
     ],
   );
 
@@ -703,21 +769,19 @@ export function useChatSessionState({
       setCurrentSessionId(null);
       setHasMoreMessages(false);
       setTotalMessages(0);
+      setIsLoadingSessionMessages(false);
+      setIsLoadingMoreMessages(false);
+      setIsLoadingAllMessages(false);
+      setAllMessagesLoaded(false);
+      allMessagesLoadedRef.current = false;
+      isLoadingMoreRef.current = false;
       setTokenBudget(null);
       lastLoadedSessionKeyRef.current = null;
       return;
     }
 
     const provider = 'pilotdeck';
-    const sessionKey = JSON.stringify([
-      selectedSession.id,
-      selectedProject.name,
-      provider,
-      sessionRequestParams.sessionKind ?? '',
-      sessionRequestParams.parentSessionId ?? '',
-      sessionRequestParams.relativeTranscriptPath ?? '',
-      sessionIsReadOnly ? 'readonly' : 'readwrite',
-    ]);
+    const sessionKey = requestScope!.key;
     const isEnteringSession = lastLoadedSessionKeyRef.current !== sessionKey;
     const sessionChanged = didLoadedSessionChange(lastLoadedSessionKeyRef.current, sessionKey);
     const isPendingSessionHandoff = pendingViewSessionRef.current?.sessionId === selectedSession.id;
@@ -799,32 +863,19 @@ export function useChatSessionState({
       ? pendingConversationScrollRestoreRef.current.position : undefined;
     const restoreOlderWindow = restorePosition && !(restorePosition.following
       ?? restorePosition.distanceFromBottom <= CONVERSATION_SCROLL_BOTTOM_THRESHOLD);
-    sessionStore.fetchFromServer(selectedSession.id, {
-      provider: 'pilotdeck',
-      projectName: selectedProject.name,
-      projectPath: selectedProject.fullPath || selectedProject.path || '',
-      ...sessionRequestParams,
-      limit: MESSAGES_PER_PAGE,
-      direction: 'backward',
+    const isCurrent = requestScope!.capture();
+    const budgetRevision = tokenBudgetRevision.current;
+    requestHistory('initial', {
       includeFromId: restoreOlderWindow ? restorePosition.historyStartId : undefined,
-    }).then(slot => {
-      if (activeScrollKeyRef.current !== requestScrollKey) return;
+    }).then(result => {
+      if (!isCurrent()) return;
       historyReadyScrollKeyRef.current = requestScrollKey;
       setHistoryReadyScrollKey(requestScrollKey);
-      if (slot) {
-        setHasMoreMessages(slot.hasMore);
-        setAllMessagesLoaded(!slot.hasMore);
-        allMessagesLoadedRef.current = !slot.hasMore;
-        setTotalMessages(slot.total);
-        if (slot.tokenUsage) setTokenBudget(slot.tokenUsage as Record<string, unknown>);
-        setSessionLoadError(slot.status === 'error'
-          ? slot.lastError || 'Unable to load conversation messages.'
-          : null);
+      if (result.status === 'success' && result.slot.tokenUsage && tokenBudgetRevision.current === budgetRevision) {
+        // The dedicated token request may replace this history estimate;
+        // realtime budgets and an already-resolved token request take priority.
+        setTokenBudgetState(result.slot.tokenUsage as Record<string, unknown>);
       }
-      setIsLoadingSessionMessages(false);
-    }).catch((error) => {
-      if (activeScrollKeyRef.current !== requestScrollKey) return;
-      setSessionLoadError(error instanceof Error ? error.message : 'Unable to load conversation messages.');
       setIsLoadingSessionMessages(false);
     });
   }, [
@@ -839,44 +890,33 @@ export function useChatSessionState({
     sessionIsReadOnly,
     sessionRequestParams,
     sessionStore,
+    requestScope,
+    requestHistory,
+    setTokenBudget,
   ]);
 
-  // External message update (e.g. WebSocket reconnect, background refresh)
+  // A revision belongs to the view that received it, even while streaming.
+  const consumedExternalRevision = useRef(externalMessageUpdate ?? 0);
+  const pendingExternalUpdate = useRef<typeof requestScope>(null);
   useEffect(() => {
-    if (!externalMessageUpdate || !selectedSession || !selectedProject) return;
-
-    const reloadExternalMessages = async () => {
-      try {
-        // Skip store refresh during active streaming
-        if (!isLoading) {
-          await sessionStore.refreshFromServer(selectedSession.id, {
-            provider: 'pilotdeck',
-            projectName: selectedProject.name,
-            projectPath: selectedProject.fullPath || selectedProject.path || '',
-            ...sessionRequestParams,
-          });
-
-          if (autoScrollToBottom && isNearBottom()) {
-            scheduleScrollToBottom();
-          }
-        }
-      } catch (error) {
-        console.error('Error reloading messages from external update:', error);
-      }
-    };
-
-    reloadExternalMessages();
-  }, [
-    autoScrollToBottom,
-    externalMessageUpdate,
-    isNearBottom,
-    scheduleScrollToBottom,
-    selectedProject,
-    selectedSession,
-    sessionRequestParams,
-    sessionStore,
-    isLoading,
-  ]);
+    const revision = externalMessageUpdate ?? 0;
+    if (revision !== consumedExternalRevision.current) {
+      consumedExternalRevision.current = revision;
+      const matchesTarget = !externalMessageUpdateTarget || (requestScope
+        && externalMessageUpdateTarget.projectName === requestScope.projectName
+        && externalMessageUpdateTarget.sessionId === requestScope.sessionId
+        && externalMessageUpdateTarget.relativeTranscriptPath === requestScope.options.relativeTranscriptPath);
+      pendingExternalUpdate.current = matchesTarget ? requestScope : null;
+    }
+    if (pendingExternalUpdate.current !== requestScope) pendingExternalUpdate.current = null;
+    if (!requestScope || !pendingExternalUpdate.current || isLoading || isLoadingSessionMessages) return;
+    pendingExternalUpdate.current = null;
+    const isCurrent = requestScope.capture();
+    void refreshSessionMessages().then(result => {
+      if (isCurrent() && result.status === 'success' && autoScrollToBottom && isNearBottom()) scheduleScrollToBottom();
+    });
+  }, [autoScrollToBottom, externalMessageUpdate, externalMessageUpdateTarget, isNearBottom,
+    scheduleScrollToBottom, requestScope, refreshSessionMessages, isLoading, isLoadingSessionMessages]);
 
   // Search navigation target
   useEffect(() => {
@@ -926,20 +966,9 @@ export function useChatSessionState({
       if (!allMessagesLoadedRef.current && selectedSession && selectedProject) {
         {
           try {
-            const slot = await sessionStore.fetchFromServer(selectedSession.id, {
-              provider: 'pilotdeck',
-              projectName: selectedProject.name,
-              projectPath: selectedProject.fullPath || selectedProject.path || '',
-              ...sessionRequestParams,
-              limit: null,
-              offset: 0,
-            });
+            await loadAllMessages();
             if (cancelled) return;
-            if (slot) {
-              setHasMoreMessages(false);
-              setTotalMessages(slot.total);
-              setAllMessagesLoaded(true);
-              allMessagesLoadedRef.current = true;
+            if (allMessagesLoadedRef.current) {
               await new Promise(resolve => setTimeout(resolve, 300));
             }
           } catch {
@@ -1006,33 +1035,29 @@ export function useChatSessionState({
       container?.removeEventListener('keydown', cancelOnKey);
       searchScrollActiveRef.current = false;
     };
-  }, [hasChatMessages, isLoadingSessionMessages, searchTarget, selectedProject, selectedSession, sessionRequestParams, sessionStore, setIsUserScrolledUp]);
+  }, [hasChatMessages, isLoadingSessionMessages, searchTarget, selectedProject, selectedSession, loadAllMessages, setIsUserScrolledUp]);
 
   useEffect(() => {
-    if (!selectedProject || !selectedSession?.id || selectedSession.id.startsWith('new-session-')) {
+    if (!requestScope || requestScope.sessionId.startsWith('new-session-') || requestScope.readOnly) {
       setTokenBudget(null);
       return;
     }
-    if (sessionIsReadOnly) {
-      setTokenBudget(null);
-      return;
-    }
-
+    const isCurrent = requestScope.capture();
+    const revision = tokenBudgetRevision.current;
+    const abort = new AbortController();
     const fetchInitialTokenUsage = async () => {
       try {
-        const url = `/api/projects/${selectedProject.name}/sessions/${encodeURIComponent(selectedSession.id)}/token-usage?provider=pilotdeck`;
-        const response = await authenticatedFetch(url);
-        if (response.ok) {
-          setTokenBudget(await response.json());
-        } else {
-          setTokenBudget(null);
-        }
+        const url = `/api/projects/${encodeURIComponent(requestScope.projectName)}/sessions/${encodeURIComponent(requestScope.sessionId)}/token-usage?provider=pilotdeck`;
+        const response = await authenticatedFetch(url, { signal: abort.signal });
+        const budget = response.ok ? await response.json() : null;
+        if (isCurrent() && !abort.signal.aborted && revision === tokenBudgetRevision.current) setTokenBudget(budget);
       } catch (error) {
-        console.error('Failed to fetch initial token usage:', error);
+        if (!abort.signal.aborted && isCurrent()) console.error('Failed to fetch initial token usage:', error);
       }
     };
-    fetchInitialTokenUsage();
-  }, [sessionIsReadOnly, selectedProject, selectedSession?.id]);
+    void fetchInitialTokenUsage();
+    return () => abort.abort();
+  }, [requestScope, setTokenBudget]);
 
   // Transport pages retain whole turns; DOM windowing owns rendering limits.
   const visibleMessages = chatMessages;
@@ -1098,57 +1123,6 @@ export function useChatSessionState({
     ws,
   ]);
 
-  const loadAllMessages = useCallback(async () => {
-    if (!selectedSession || !selectedProject) return;
-    if (isLoadingAllMessages) return;
-    const requestSessionId = selectedSession.id;
-    allMessagesLoadedRef.current = true;
-    isLoadingMoreRef.current = true;
-    setIsLoadingAllMessages(true);
-
-    const requestScrollKey = activeScrollKey;
-    captureReadingAnchor();
-
-    try {
-      const slot = await sessionStore.fetchFromServer(requestSessionId, {
-        provider: 'pilotdeck',
-        projectName: selectedProject.name,
-        projectPath: selectedProject.fullPath || selectedProject.path || '',
-        ...sessionRequestParams,
-        limit: null,
-        offset: 0,
-      });
-
-      if (activeScrollKeyRef.current !== requestScrollKey) return;
-
-      if (slot && slot.status !== 'error') {
-        setHasMoreMessages(slot.hasMore);
-        setTotalMessages(slot.total);
-        setAllMessagesLoaded(!slot.hasMore);
-        allMessagesLoadedRef.current = !slot.hasMore;
-      } else {
-        allMessagesLoadedRef.current = false;
-      }
-    } catch (error) {
-      if (activeScrollKeyRef.current !== requestScrollKey) return;
-      console.error('Error loading all messages:', error);
-      allMessagesLoadedRef.current = false;
-    } finally {
-      if (activeScrollKeyRef.current === requestScrollKey) {
-        isLoadingMoreRef.current = false;
-        setIsLoadingAllMessages(false);
-      }
-    }
-  }, [
-    selectedSession,
-    selectedProject,
-    isLoadingAllMessages,
-    activeScrollKey,
-    captureReadingAnchor,
-    sessionRequestParams,
-    sessionStore,
-  ]);
-
   const loadEarlierMessages = useCallback(() => {
     setHistoryLoadError(false);
     if (scrollContainerRef.current) void loadOlderMessages(scrollContainerRef.current);
@@ -1170,6 +1144,8 @@ export function useChatSessionState({
     setCurrentSessionId,
     isLoadingSessionMessages,
     sessionLoadError,
+    retrySessionMessages,
+    refreshSessionMessages,
     isLoadingMoreMessages,
     historyLoadError,
     hasMoreMessages,

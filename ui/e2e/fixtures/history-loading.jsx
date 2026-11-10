@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FindShortcutProvider } from '../../src/contexts/FindShortcutContext';
-import MessagesPane from '../../src/components/chat-v2/MessagesPaneV2';
+import MessagesPane from '../../src/components/chat/view/MessagesPane';
 import { useChatSessionState } from '../../src/components/chat/hooks/useChatSessionState';
 import { useSessionStore } from '../../src/stores/useSessionStore';
 import '../../src/index.css';

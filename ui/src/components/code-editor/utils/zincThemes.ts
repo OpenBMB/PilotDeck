@@ -4,7 +4,7 @@ import { tags as t } from '@lezer/highlight';
 import type { Extension } from '@codemirror/state';
 
 // Neutral zinc palette tuned to match Tailwind neutral-* so the CodeMirror
-// surface blends with V2 panels (neutral-950 background, neutral-800 borders).
+// surface blends with application panels (neutral-950 background, neutral-800 borders).
 const zinc = {
   bg: 'var(--pd-surface, #0a0a0a)',
   bgAlt: 'var(--pd-surface, #0a0a0a)',

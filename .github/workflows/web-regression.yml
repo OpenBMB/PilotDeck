@@ -63,6 +63,11 @@ jobs:
       - name: Build Gateway and Web UI
         run: pnpm run build:web
 
+      - name: Verify deferred editor dependencies
+        run: |
+          node --test tests/scripts/ui-build-graph.test.mjs
+          node scripts/check-ui-build-graph.mjs
+
       - name: Test CI and release workflow boundaries
         run: node --test apps/desktop/scripts/workflow-boundaries.test.mjs
 
@@ -74,7 +79,34 @@ jobs:
           dist/tests/context/token-accounting-runtime.spec.js
           dist/tests/gateway/gateway-server-port.spec.js
           dist/tests/gateway/background-runtime-reload.spec.js
+          dist/tests/gateway/extension-runtime-reload.spec.js
+          dist/tests/gateway/session-runtime-invalidation.spec.js
+          dist/tests/gateway/turn-ownership.spec.js
+          dist/tests/gateway/transport-ownership.spec.js
           dist/tests/agent/runtime-lease.spec.js
+
+      - name: Test tool, prompt and extension contracts
+        env:
+          PILOT_HOME: ${{ runner.temp }}/pilotdeck-contract-tests
+        run: >-
+          node --test --test-timeout 60000
+          dist/tests/tool/execution-contracts.spec.js
+          dist/tests/tool/scheduler-ordering.spec.js
+          dist/tests/context/prompt-preparation-contracts.spec.js
+          dist/tests/context/cache-runtime.spec.js
+          dist/tests/context/python-awareness.spec.js
+          dist/tests/extension/plugins/prompt-contributions.spec.js
+          dist/tests/agent/loop/request-preparation.spec.js
+          dist/tests/agent/loop/request-attempt.spec.js
+          dist/tests/model/request/media-preparation.spec.js
+          dist/tests/agent/sub/SubAgentSession.spec.js
+          dist/tests/mcp/live-catalog.spec.js
+          dist/tests/mcp/client/McpClient.spec.js
+          dist/tests/mcp/runtime/McpRuntime.spec.js
+          dist/tests/agent/loop/tool-failure-propagation.spec.js
+          dist/tests/router/cache-plan-routing.spec.js
+          dist/tests/router/tokenSaver.spec.js
+          dist/tests/router/scenario/subagentDetector.spec.js
 
       - name: Test Web UI and server
         # Vitest projects collect only src/ and server/ tests; browser E2E has
@@ -91,9 +123,13 @@ jobs:
         if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
         run: pnpm --dir ui exec playwright install --with-deps chromium
 
-      - name: Test chat scrolling, history, search and delayed media
+      - name: Test chat scrolling, history, search, media and settings
         if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
         run: pnpm --dir ui exec playwright test -c e2e/streaming-scroll.config.mjs
+
+      - name: Test production editor loading and state
+        if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
+        run: pnpm --dir ui exec playwright test -c e2e/editor-loading.config.mjs
 
       - name: Test chat Mermaid rendering
         if: github.event_name != 'pull_request' || needs.changes.outputs.browser == 'true'
@@ -107,6 +143,14 @@ jobs:
           path: |
             artifacts/stream-playwright
             artifacts/mermaid/playwright
+          if-no-files-found: ignore
+
+      - name: Upload editor loading failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-loading-failure
+          path: artifacts/editor-loading-playwright
           if-no-files-found: ignore
 
   docker:

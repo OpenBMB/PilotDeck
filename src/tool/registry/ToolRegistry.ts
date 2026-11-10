@@ -29,14 +29,7 @@ export class ToolRegistry {
       throw new Error(`Tool ${tool.name} conflicts with an existing alias.`);
     }
 
-    for (const alias of tool.aliases ?? []) {
-      if (this.toolsByName.has(alias)) {
-        throw new Error(`Alias ${alias} conflicts with an existing tool name.`);
-      }
-      if (this.aliases.has(alias)) {
-        throw new Error(`Alias ${alias} is already registered.`);
-      }
-    }
+    this.validateAliases(tool);
 
     this.toolsByName.set(tool.name, tool);
     this.unavailable.delete(tool.name);
@@ -146,6 +139,8 @@ export class ToolRegistry {
     if (!existing) {
       throw new Error(`Tool ${tool.name} is not registered — cannot replace.`);
     }
+    // Validate the complete replacement before changing any lookup or diagnostic.
+    this.validateAliases(tool, tool.name);
     for (const alias of existing.aliases ?? []) {
       this.aliases.delete(alias);
       this.unavailable.delete(alias);
@@ -154,6 +149,32 @@ export class ToolRegistry {
     this.unavailable.delete(tool.name);
     for (const alias of tool.aliases ?? []) {
       this.aliases.set(alias, tool.name);
+      this.unavailable.delete(alias);
+    }
+  }
+
+  /** Validate a complete owned group before publishing any names or aliases. */
+  replaceGroup(previousNames: readonly string[], tools: readonly PilotDeckToolDefinition[]): void {
+    const candidate = this.clone();
+    for (const name of previousNames) candidate.unregister(name);
+    for (const tool of tools) candidate.register(tool);
+    this.toolsByName.clear();
+    this.aliases.clear();
+    this.unavailable.clear();
+    for (const [name, tool] of candidate.toolsByName) this.toolsByName.set(name, tool);
+    for (const [alias, name] of candidate.aliases) this.aliases.set(alias, name);
+    for (const [name, diagnostic] of candidate.unavailable) this.unavailable.set(name, diagnostic);
+  }
+
+  private validateAliases(tool: PilotDeckToolDefinition, replacing?: string): void {
+    for (const alias of new Set(tool.aliases ?? [])) {
+      if (alias !== tool.name && this.toolsByName.has(alias)) {
+        throw new Error(`Alias ${alias} conflicts with an existing tool name.`);
+      }
+      const owner = this.aliases.get(alias);
+      if (owner !== undefined && owner !== replacing) {
+        throw new Error(`Alias ${alias} is already registered.`);
+      }
     }
   }
 }

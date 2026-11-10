@@ -16,6 +16,7 @@ import { ToolDiffViewer } from './components/ToolDiffViewer';
 import { ToolDetails } from './components/ToolDetails';
 import { needsLargeChangePreview } from './fileChangePreview';
 import { displayText, objectValue, resultText, shellOutput } from './toolPresentation';
+import { toolCallSummary } from './toolCallSummary';
 
 type DiffLine = { type: string; content: string; lineNum: number };
 
@@ -45,19 +46,11 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
   const isEdit = ['Edit', 'Write', 'ApplyPatch'].includes(name);
   const isRead = name === 'Read';
   const isSkill = name === 'read_skill';
-  const isSearch = ['Grep', 'Glob', 'web_search'].includes(name);
-  const isFetch = /^web[_-]?fetch$/i.test(name);
   const pending = result == null;
   const active = pending && running;
   const separateMedia = isMediaSurfaceVisible(message, running);
   const file = displayText(input.file_path || input.path);
-  const target = isShell ? displayText(input.description || input.command)
-    : isSkill ? displayText(input.skillName || input.skill_name || input.name)
-    : isEdit || isRead ? file.split('/').pop() || file
-    : displayText(input.query || input.pattern || input.url || input.description || message.toolName);
-  const action = isShell ? 'command' : isEdit ? (name === 'Write' ? 'write' : 'edit') : isRead ? 'read' : isSkill ? 'skill' : isSearch ? 'search' : isFetch ? 'fetch' : 'tool';
-  const label = isFetch && result?.isError ? t('toolDisplay.fetchFailed')
-    : t(`toolDisplay.${active ? 'running' : pending || result?.isError ? 'pending' : 'done'}.${action}`);
+  const { label, target } = toolCallSummary(message, running, t);
   const Icon = getToolIcon(name);
   const rawResult = resultText(result?.content);
   const displayError = rawResult.includes('<tool_use_error>') ? rawResult.replace(/<\/?tool_use_error>/g, '').replace(/^InputValidationError:\s*/i, '').trim() : rawResult;
@@ -83,9 +76,11 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     <div className="tool-call min-w-0" data-tool-id={message.toolId}>
       <div className="flex min-w-0 items-center gap-2 text-[13px] leading-6 text-neutral-500 dark:text-neutral-400">
         <button type="button" aria-expanded={expanded} aria-controls={contentId} aria-label={`${label} ${target}`} onClick={() => { setLocalOpen(!expanded); onOpenChange?.(!expanded); }} className="chat-process-trigger hover-brand-text group flex-1">
-          <Icon aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${active ? 'motion-safe:animate-pulse' : ''}`} strokeWidth={1.8} />
-          <span className="shrink-0">{label}</span>
-          <span className="min-w-0 truncate" title={target}>{target}</span>
+          <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+          <span className={`flex min-w-0 items-center gap-2 ${active ? 'chat-process-shimmer' : ''}`}>
+            <span className="shrink-0">{label}</span>
+            <span className="min-w-0 truncate" title={target}>{target}</span>
+          </span>
           {diff.length > 0 && !result?.isError && <span className="shrink-0 text-xs tabular-nums"><span className="text-green-600 dark:text-green-400">+{diff.filter(line => line.type === 'added').length}</span>{' '}<span className="text-red-500 dark:text-red-400">−{diff.filter(line => line.type === 'removed').length}</span></span>}
           <ChevronRight className={`h-3.5 w-3.5 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
         </button>

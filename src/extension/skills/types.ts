@@ -19,7 +19,7 @@ export type SkillScope = "builtin" | "user" | "project";
  * Mirrors what the UI needs to render a sidebar row: name +
  * description for display, slug for routing, mtime for sort. The
  * absolute path is included so the UI can show it in the detail
- * header — it's the same field SkillsV2.tsx already binds to.
+ * header — it's the same field SkillsPanel.tsx already binds to.
  */
 export type SkillSummary = {
   slug: string;

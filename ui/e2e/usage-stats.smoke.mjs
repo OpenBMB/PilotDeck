@@ -53,6 +53,21 @@ try {
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${baseUrl}/settings/usage`); await ready(page);
+  const expectCenteredBody = async () => {
+    const bounds = await page.locator('.usage-content').evaluate(node => {
+      const content = node.getBoundingClientRect(), body = node.querySelector('.usage-body').getBoundingClientRect();
+      const title = node.querySelector('h1').getBoundingClientRect();
+      const chart = node.querySelector('.usage-heatmap-layout').getBoundingClientRect();
+      const scroll = node.querySelector('.usage-heatmap-scroll').getBoundingClientRect();
+      return { content: content.left + content.width / 2, body: body.left + body.width / 2,
+        title: title.left, left: content.left, chart: chart.left + chart.width / 2,
+        scroll: scroll.left + scroll.width / 2, fits: chart.width <= scroll.width };
+    });
+    expect(Math.abs(bounds.body - bounds.content)).toBeLessThan(1);
+    expect(bounds.title).toBeCloseTo(bounds.left + 2, 0);
+    if (bounds.fits) expect(Math.abs(bounds.chart - bounds.scroll)).toBeLessThan(1);
+  };
+  await expectCenteredBody();
   const headingStyle = element => {
     const style = getComputedStyle(element);
     return Object.fromEntries(['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing'].map(key => [key, style[key]]));
@@ -120,6 +135,7 @@ try {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     for (const label of ['每天', '每周', '累计总量']) {
       await page.getByRole('tab', { name: label, exact: true }).click();
+      await expectCenteredBody();
       for (const box of await page.locator('#usage-activity-panel .usage-cell').evaluateAll(nodes => nodes.map(node => ({ width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })))) {
         expect(box).toEqual({ width: 10, height: 10 });
       }

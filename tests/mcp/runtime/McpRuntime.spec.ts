@@ -94,3 +94,29 @@ test("McpRuntime.start: non-Error throws of null/undefined surface as 'null' / '
 // Keep an explicit reference to avoid `noUnusedParameters` complaints.
 void customErrorClient;
 void stubTransportFactory;
+
+test("stop during startup prevents queued clients from starting", async t => {
+  const runtime = new McpRuntime([baseSpec, { ...baseSpec, id: "queued" }], { connectConcurrency: 1 });
+  let release!: () => void;
+  t.mock.method(runtime.getClient(baseSpec.id)!, "start", () => new Promise<void>(resolve => { release = resolve; }));
+  const queued = t.mock.method(runtime.getClient("queued")!, "start", async () => {});
+  const pending = runtime.start();
+  await runtime.stop();
+  release();
+  await pending;
+  assert.equal(queued.mock.callCount(), 0);
+});
+
+test("concurrent stop callers wait for the same resource cleanup", async t => {
+  const runtime = new McpRuntime([baseSpec]);
+  let release!: () => void;
+  const close = t.mock.method(runtime.getClient(baseSpec.id)!, "close", () => new Promise<void>(resolve => { release = resolve; }));
+  const first = runtime.stop();
+  let secondDone = false;
+  const second = runtime.stop().then(() => { secondDone = true; });
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(secondDone, false);
+  assert.equal(close.mock.callCount(), 1);
+  release();
+  await Promise.all([first, second]);
+});

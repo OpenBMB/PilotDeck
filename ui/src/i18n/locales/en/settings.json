@@ -1,4 +1,36 @@
 {
+  "pythonRuntime": {
+    "title": "Python environment",
+    "description": "Python 3.12 and common agent, data and document libraries, provided by PilotDeck.",
+    "enable": "Use bundled Python",
+    "toggleHint": "Enabled by default. Changes apply to later turns; running tasks keep their current environment. Additional packages are stored in your user profile.",
+    "checking": "Checking the execution host’s Python environment…",
+    "available": "Bundled Python is installed. Its environment is prepared when a task needs it, or when you check it manually.",
+    "initializing": "The Python environment is being prepared. Check again to see the result.",
+    "statusTimedOut": "The environment check took too long. You can retry; an ongoing setup can finish in the background.",
+    "ready": "Ready on the execution host",
+    "disabled": "Bundled Python is disabled for new turns",
+    "external": "An explicitly activated virtual environment takes precedence",
+    "unavailable": "Bundled Python is unavailable on the execution host. Check the application installation and runtime logs, then check again.",
+    "statusFailed": "Could not check the execution host. Retry when the Gateway is connected.",
+    "interpreter": "Interpreter",
+    "libraries": "Bundled libraries",
+    "refresh": "Check again",
+    "saved": "Saved. Running tasks keep their current environment.",
+    "saveFailed": "Could not save the Python preference. Please try again."
+  },
+  "gitRuntime": {
+    "title": "Git environment",
+    "description": "Windows desktop includes Git and Git Bash. Other deployments use Git on the execution host.",
+    "checking": "Checking Git on the execution host…",
+    "ready": "Ready on the execution host",
+    "unavailable": "Git is unavailable. Repair the Windows desktop installation or install Git on the execution host, then check again.",
+    "statusFailed": "Could not check the execution host. Retry when the Gateway is connected.",
+    "statusTimedOut": "The Git check took too long. Please try again.",
+    "sources": { "bundled": "Provided by PilotDeck", "configured": "Explicitly configured Git", "system": "System Git" },
+    "executable": "Executable",
+    "refresh": "Check again"
+  },
   "generalWorkspace": {
     "title": "General conversations",
     "directory": "Working directory",

@@ -98,6 +98,10 @@ Web always sends an explicit modelSelection snapshot and records it with the acc
 
 The event stream may include model_selection_changed with provider, model, source, optional reasoning/speed parameters and runId. Existing turn_started, permission_request, assistant_text_delta, assistant_thinking_delta, tool_call_started, tool_call_finished, turn_completed and error events remain supported.
 
+Local callers may pass `submitTurn(input, { signal })` to cancel that specific submission. The signal is not part of the serialized request. Disconnect and iterator cancellation belong to the originating request, including preparation before `input_accepted`; a rejected duplicate cannot cancel another request with the same public `runId`. For stream cleanup, `abort_turn` may include `requestId`, which is resolved only within the sending WebSocket connection. Without `requestId`, the existing `{ sessionKey, runId?, reason? }` Stop API remains supported; a supplied stale `runId` is ignored.
+
+A session remains reserved until execution drains, independently of how quickly its consumer reads events. Hard timeouts include preparation and retire the timed-out session before releasing the reservation. Cancellation before execution emits an aborted completion without accepting input. A failed `response` addressed to a stream terminates that stream with its structured error code and details.
+
 ## Error and compatibility reference
 
 | Code | HTTP equivalent | Meaning |

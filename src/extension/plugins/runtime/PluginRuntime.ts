@@ -11,6 +11,8 @@ import { truncateMcpInstructionString } from "./truncateMcpString.js";
 import type { PilotDeckHooksSettings } from "../../hooks/protocol/settings.js";
 import type { PilotDeckCustomRouter } from "../../../router/customRouter/customRouter.js";
 import { renderSkillContent } from "../../skills/renderSkillContent.js";
+import type { PluginCommandContribution, PluginSkillContribution, PluginMcpInstruction, PluginPromptContributions } from "../protocol/promptContributions.js";
+export type { PluginCommandContribution, PluginSkillContribution, PluginMcpInstruction, PluginPromptContributions } from "../protocol/promptContributions.js";
 
 /**
  * Static MCP server contribution shape callers can rely on. Manifests load
@@ -47,26 +49,6 @@ export type PluginRefreshResult = {
   next: PilotDeckLoadedPlugin[];
   added: PilotDeckLoadedPlugin[];
   removed: PilotDeckLoadedPlugin[];
-};
-
-export type PluginCommandContribution = {
-  name: string;
-  description?: string;
-  argumentHint?: string;
-  namespace?: string;
-};
-
-export type PluginSkillContribution = {
-  name: string;
-  description?: string;
-  /** Absolute path to the resolved SKILL.md. */
-  path: string;
-  namespace?: string;
-};
-
-export type PluginMcpInstruction = {
-  serverName: string;
-  instructions?: string;
 };
 
 export type PluginContributionSnapshot = {
@@ -147,11 +129,22 @@ export class PluginRuntime {
   }
 
   getAllCommands(): PluginCommandContribution[] {
-    return this.snapshotContributions().commands;
+    return this.enabledPlugins().flatMap(plugin => (plugin.commands ?? []).map(command => toCommandContribution(plugin, command)));
   }
 
   getAllSkills(): PluginSkillContribution[] {
-    return this.snapshotContributions().skills;
+    return collectSkillContributions(this.enabledPlugins());
+  }
+
+  getPromptContributions(): PluginPromptContributions {
+    // Read preferences once for a consistent request view. Do not cache across
+    // requests: existing sessions must observe skill switches immediately.
+    const plugins = this.enabledPlugins();
+    return {
+      commands: plugins.flatMap(plugin => (plugin.commands ?? []).map(command => toCommandContribution(plugin, command))),
+      skills: collectSkillContributions(plugins),
+      mcpInstructions: this.getAllMcpInstructions(),
+    };
   }
 
   lookupRouter(extensionId: string): PilotDeckCustomRouter | undefined {

@@ -149,7 +149,7 @@
     "openSettings": "Open Settings"
   },
   "interrupted": {
-    "label": "Interrupted by user"
+    "label": "The user stopped the conversation"
   },
   "compact": {
     "label": "Context compacted",
@@ -214,6 +214,20 @@
       "errors": "{{count}} errors"
     },
     "live": {
+      "viewedImages_one": "Viewed {{count}} image",
+      "viewedImages_other": "Viewed {{count}} images",
+      "generatedImages_one": "Generated {{count}} image",
+      "generatedImages_other": "Generated {{count}} images",
+      "editedImages_one": "Edited {{count}} image",
+      "editedImages_other": "Edited {{count}} images",
+      "generatedVideos_one": "Generated {{count}} video",
+      "generatedVideos_other": "Generated {{count}} videos",
+      "openedPages_one": "Opened {{count}} page",
+      "openedPages_other": "Opened {{count}} pages",
+      "browserActions_one": "Performed {{count}} browser action",
+      "browserActions_other": "Performed {{count}} browser actions",
+      "loadedSkills_one": "Loaded {{count}} skill",
+      "loadedSkills_other": "Loaded {{count}} skills",
       "editedFiles": "Edited {{count}} files",
       "editedFiles_one": "Edited {{count}} file",
       "editedFiles_other": "Edited {{count}} files",
@@ -818,6 +832,12 @@
     "changes": "Changes",
     "noChanges": "No changes",
     "running": {
+      "viewImage": "Viewing",
+      "generateImage": "Generating image",
+      "editImage": "Editing image",
+      "generateVideo": "Generating video",
+      "browse": "Opening page",
+      "interact": "Interacting with browser",
       "command": "Running",
       "write": "Writing",
       "edit": "Editing",
@@ -828,6 +848,12 @@
       "skill": "Reading skill"
     },
     "pending": {
+      "viewImage": "View image",
+      "generateImage": "Generate image",
+      "editImage": "Edit image",
+      "generateVideo": "Generate video",
+      "browse": "Open page",
+      "interact": "Browser action",
       "command": "Command",
       "write": "Write",
       "edit": "Edit",
@@ -838,6 +864,12 @@
       "skill": "Read skill"
     },
     "done": {
+      "viewImage": "Viewed",
+      "generateImage": "Generated image",
+      "editImage": "Edited image",
+      "generateVideo": "Generated video",
+      "browse": "Opened page",
+      "interact": "Interacted with browser",
       "command": "Ran",
       "write": "Wrote",
       "edit": "Edited",

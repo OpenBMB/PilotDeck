@@ -1,6 +1,7 @@
 :where(.pilotdeck-settings-app) .settings-page.usage-page { min-width: 0; width: 100%; overflow-y: auto; scrollbar-width: thin; }
 :where(.pilotdeck-settings-app) .usage-page > .page-header { display: none; }
-:where(.pilotdeck-settings-app) .usage-content { width: 100%; max-width: 760px; margin: 0; min-width: 0; color: var(--ink); }
+:where(.pilotdeck-settings-app) .usage-content { width: 100%; min-width: 0; color: var(--ink); }
+.usage-body { width: 100%; max-width: 760px; margin-inline: auto; min-width: 0; }
 :where(.pilotdeck-settings-app) .usage-header { align-items: center; }
 .usage-header-actions { display: flex; align-items: center; gap: 8px; }
 .usage-refresh { display: inline-grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; color: var(--muted); background: transparent; }
@@ -15,7 +16,7 @@
 .usage-stat strong { color: var(--ink); font-size: 23px; font-weight: 500; line-height: 1.2; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
 .usage-stat-today strong { color: var(--ink); }
 .usage-stat-unit { color: var(--muted); font-size: 12px; }
-.usage-at-a-glance { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin: 16px 2px 32px; color: var(--muted); font-size: 12px; }
+.usage-at-a-glance { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 24px; margin: 16px 2px 32px; color: var(--muted); font-size: 12px; }
 .usage-at-a-glance strong { margin-inline-start: 6px; font-weight: 550; font-variant-numeric: tabular-nums; }
 .usage-activity { min-width: 0; padding: 16px 0 0; }
 .usage-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
@@ -25,7 +26,7 @@
 .usage-tabs button { border: 0; border-radius: 4px; padding: 4px 0; color: var(--muted); font-size: 13px; line-height: 1.5; white-space: nowrap; }
 .usage-tabs button[aria-selected=true], .usage-tabs button:hover { color: var(--ink); }
 .usage-heatmap-scroll { overflow-x: auto; padding: 4px; margin: -4px; scrollbar-width: thin; }
-.usage-heatmap-layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 18px; gap: 12px; width: calc(var(--usage-weeks) * 13px - 3px); }
+.usage-heatmap-layout { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 18px; gap: 12px; width: calc(var(--usage-weeks) * 13px - 3px); margin-inline: auto; }
 .usage-months { display: grid; grid-template-columns: repeat(var(--usage-weeks), 10px); gap: 3px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .usage-months { grid-column: 1; grid-row: 2; }
 .usage-heatmap { grid-column: 1; grid-row: 1; display: grid; grid-template-columns: repeat(var(--usage-weeks), 10px); grid-template-rows: repeat(7, 10px); grid-auto-flow: column; gap: 3px; }

@@ -10,6 +10,7 @@ import { createDesktopLifecycle } from "./desktopLifecycle";
 import { RuntimeProcessDiagnostics, runtimeReportArguments } from './runtimeDiagnostics';
 import { desktopInstallationRoot, withRuntimeCommandPath } from './runtimeEnvironment';
 import { findFreePort } from './startupNetwork';
+import { waitForPortOrProcessExit } from './runtimeReadiness';
 import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, registerDiagnosticSecrets, setRuntimeLogRetention, type RuntimeLogWriter } from '@pilotdeck/config';
 import { startupProgress } from './startupPresentation';
 import { exportRuntimeLogs } from './runtimeLogExport';
@@ -27,7 +28,6 @@ import { createUpdateController } from "./updates";
 import { createUpdateNetwork } from "./updateNetwork";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -116,6 +116,9 @@ class RuntimeManager {
   private configurationState: ModelConfigurationState | null = null;
   private gatewayState: GatewayRuntimeState = { state: "stopped" };
   private stopping = false;
+  private readonly startupAbort = new AbortController();
+  private startPromise: Promise<RuntimeInfo> | null = null;
+  private stopPromise: Promise<void> | null = null;
   computerUse: ComputerUseController | null = null;
 
   constructor(
@@ -149,7 +152,13 @@ class RuntimeManager {
     } catch { return true; }
   }
 
-  async start(): Promise<RuntimeInfo> {
+  start(): Promise<RuntimeInfo> {
+    if (!this.startPromise) this.startPromise = this.startOwnedRuntime();
+    return this.startPromise;
+  }
+
+  private async startOwnedRuntime(): Promise<RuntimeInfo> {
+    this.startupAbort.signal.throwIfAborted();
     this.stopping = false;
     // Read only the new preference from the existing YAML. Broken configuration
     // uses the default here; the normal model validation still owns its errors.
@@ -192,10 +201,13 @@ class RuntimeManager {
         log: message => this.log(message),
       });
       await this.computerUse.initialize();
+      this.startupAbort.signal.throwIfAborted();
     }
 
     const serverPort = await findFreePort(3001);
+    this.startupAbort.signal.throwIfAborted();
     const gatewayPort = await findFreePort(18789, [serverPort]);
+    this.startupAbort.signal.throwIfAborted();
     const bundledGit = resolveBundledGitPaths();
     if (bundledGit) {
       this.log(`Bundled Git Bash ready: ${bundledGit.bash}`);
@@ -216,6 +228,9 @@ class RuntimeManager {
       HOME: process.env.HOME || os.homedir(),
       HOST: "127.0.0.1",
       PILOTDECK_RUNTIME_ROOT: this.runtimeRoot,
+      PILOTDECK_PYTHON_ROOT: app.isPackaged
+        ? path.join(process.resourcesPath, 'python-runtime')
+        : path.join(__dirname, '..', 'resources', 'python-runtime'),
       PILOTDECK_DESKTOP_RUNTIME_ROOT: this.runtimeRoot,
       PILOTDECK_DESKTOP_INSTALL_ROOT: app.isPackaged ? desktopInstallationRoot(process.resourcesPath) : this.runtimeRoot,
       PILOT_HOME: config.pilotHome,
@@ -260,15 +275,19 @@ class RuntimeManager {
     this.serverProcess = server;
     server.on("message", (message) => this.handleServerMessage(message));
     try {
-      await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath);
+      await waitForPortOrProcessExit(server, "server", serverPort, "127.0.0.1", 90_000, this.logPath,
+        { signal: this.startupAbort.signal });
     } catch (error) {
+      this.startupAbort.signal.throwIfAborted();
       const message = error instanceof Error ? error.message : String(error);
       const detail = this.processDiagnostics.get(server)?.failure(message) ?? message;
       this.log(detail);
       // Configuration may now have started Gateway before Web was ready.
       await this.stopGateway().catch(stopError => this.log(`Failed to stop startup Gateway: ${String(stopError)}`));
+      this.startupAbort.signal.throwIfAborted();
       throw Object.assign(new Error(detail, { cause: error }), { name: 'RuntimeStartupError' });
     }
+    this.startupAbort.signal.throwIfAborted();
     this.processDiagnostics.get(server)?.markReady();
 
     this.info = {
@@ -289,9 +308,20 @@ class RuntimeManager {
     return this.info;
   }
 
-  async stop(): Promise<void> {
-    const failures: unknown[] = [];
+  stop(): Promise<void> {
     this.stopping = true;
+    this.startupAbort.abort(new DOMException('Desktop runtime startup canceled', 'AbortError'));
+    if (!this.stopPromise) {
+      const pending = this.stopOwnedProcesses();
+      this.stopPromise = pending;
+      // Successful disposal stays memoized. A failed cleanup can be retried.
+      void pending.catch(() => { if (this.stopPromise === pending) this.stopPromise = null; });
+    }
+    return this.stopPromise;
+  }
+
+  private async stopOwnedProcesses(): Promise<void> {
+    const failures: unknown[] = [];
     try { await this.computerUse?.stop(); this.computerUse = null; }
     catch (error) { failures.push(error); this.log(`Failed to stop computer use: ${String(error)}`); }
     await this.gatewayStopPromise?.catch(() => undefined);
@@ -512,8 +542,9 @@ class RuntimeManager {
         "127.0.0.1",
         90_000,
         this.logPath,
+        { signal: this.startupAbort.signal },
       );
-      if (this.gatewayProcess !== gateway) return;
+      if (this.stopping || this.gatewayProcess !== gateway) return;
       this.processDiagnostics.get(gateway)?.markReady();
       this.setGatewayState({ state: "ready" });
       publishRuntimeStatus({
@@ -522,6 +553,7 @@ class RuntimeManager {
         logPath: this.logPath,
       });
     } catch (error) {
+      if (this.stopping) return;
       if (gateway && this.gatewayProcess !== gateway) return;
       if (gateway && this.gatewayProcess === gateway) {
         this.expectedExits.add(gateway);
@@ -530,6 +562,7 @@ class RuntimeManager {
           this.gatewayProcess = null;
         } catch (stopError) { error = stopError; }
       }
+      if (this.stopping) return;
       const message = error instanceof Error ? error.message : String(error);
       const detail = gateway ? this.processDiagnostics.get(gateway)?.failure(message) ?? message : message;
       this.log(`Gateway failed to start: ${detail}`);
@@ -622,6 +655,17 @@ async function ensureRuntime(): Promise<RuntimeInfo> {
   };
   void pending.then(clearPending, clearPending);
   return pending;
+}
+
+async function stopRuntime(): Promise<void> {
+  const currentRuntime = runtime;
+  const pendingStartup = runtimeStartPromise;
+  // Stop cancels readiness first; waiting for startup first would delay Quit
+  // until the full startup timeout even when the owned server is stalled.
+  await currentRuntime?.stop();
+  await pendingStartup?.catch(() => undefined);
+  if (runtime === currentRuntime) runtime = null;
+  if (runtimeStartPromise === pendingStartup) runtimeStartPromise = null;
 }
 
 function isMainWindowForeground(): boolean {
@@ -810,6 +854,7 @@ async function startRuntimeAndLoad(): Promise<void> {
     const info = await ensureRuntime();
     await loadRuntimeUrl(info);
   } catch (error) {
+    if (isQuitting || (error instanceof Error && error.name === 'AbortError')) return;
     const detail = error instanceof Error && error.name === 'RuntimeStartupError'
       ? error.message
       : new RuntimeProcessDiagnostics("desktop", runtime?.getLogPath() || path.join(app.getPath("logs"), "runtime.log")).failure(error instanceof Error ? error.stack ?? error.message : String(error));
@@ -832,11 +877,8 @@ async function restoreMainWindow(): Promise<void> {
 async function retryRuntime(): Promise<void> {
   if (isQuitting) return;
   const currentRuntime = runtime;
-  await runtimeStartPromise?.catch(() => undefined);
-  if (currentRuntime) await currentRuntime.stop();
+  await stopRuntime();
   if (isQuitting) return;
-  runtime = null;
-  runtimeStartPromise = null;
   publishRuntimeStatus({ phase: 'starting', message: 'Preparing PilotDeck runtime...', logPath: currentRuntime?.getLogPath() });
   if (!mainWindow || mainWindow.isDestroyed()) {
     await createOrShowWindow();
@@ -961,59 +1003,6 @@ function ensurePilotHome(log: (message: string) => void): { pilotHome: string } 
   return { pilotHome };
 }
 
-function waitForPort(port: number, host: string, timeoutMs: number): Promise<void> {
-  const startedAt = Date.now();
-  return new Promise((resolve, reject) => {
-    const attempt = () => {
-      const socket = net.createConnection({ host, port });
-      socket.once("connect", () => {
-        socket.end();
-        resolve();
-      });
-      socket.once("error", () => {
-        socket.destroy();
-        if (Date.now() - startedAt > timeoutMs) {
-          reject(new Error(`Timed out waiting for ${host}:${port}`));
-          return;
-        }
-        setTimeout(attempt, 250);
-      });
-    };
-    attempt();
-  });
-}
-
-function waitForPortOrProcessExit(
-  child: ChildProcess,
-  name: string,
-  port: number,
-  host: string,
-  timeoutMs: number,
-  logPath: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (callback: () => void) => {
-      if (settled) return;
-      settled = true;
-      child.off("managed-exit", onExit);
-      child.off("error", onError);
-      callback();
-    };
-    const onExit = (code: number | null, signal: NodeJS.Signals | null, startupError?: string) => {
-      finish(() => {
-        reject(new Error(startupError || `${name} exited before it was ready (code=${code ?? "null"} signal=${signal ?? "null"}). See runtime log: ${logPath}`));
-      });
-    };
-    child.once("managed-exit", onExit);
-    const onError = (error: Error) => finish(() => reject(error));
-    child.once("error", onError);
-    waitForPort(port, host, timeoutMs)
-      .then(() => finish(resolve))
-      .catch((error) => finish(() => reject(error)));
-  });
-}
-
 async function killProcessTree(child: ChildProcess): Promise<void> {
   const { stopProcessTree } = require(path.join(resolveRuntimeRoot(), "ui/server/utils/processTree.js"));
   await stopProcessTree(child);
@@ -1065,11 +1054,7 @@ function getUpdateController() {
     compareVersions: releases.compareVersions,
     prepareToInstall: async () => {
       isQuitting = true;
-      await runtimeStartPromise?.catch(() => undefined);
-      const currentRuntime = runtime;
-      await currentRuntime?.stop();
-      runtime = null;
-      runtimeStartPromise = null;
+      await stopRuntime();
     },
     recoverRuntime: async () => {
       isQuitting = false;
@@ -1295,7 +1280,7 @@ const desktopUninstaller = createDesktopUninstaller({
   platform: process.platform, packaged: app.isPackaged, chinese: () => readAppearance().language === 'zh-CN', exists: fs.existsSync,
   run: (file, args) => new Promise(resolve => execFile(file, args, { windowsHide: true }, (error, stdout) => resolve({ code: error ? 1 : 0, stdout }))),
   confirm: options => mainWindow ? dialog.showMessageBox(mainWindow, options) : dialog.showMessageBox(options),
-  stop: async () => { isQuitting = true; await runtimeStartPromise?.catch(() => {}); await runtime?.stop(); runtime = null; runtimeStartPromise = null; },
+  stop: async () => { isQuitting = true; await stopRuntime(); },
   restore: async () => { isQuitting = false; await startRuntimeAndLoad(); },
   cleanup: () => {
     return uninstallDataHelper.cleanupPersonalData({ profile: os.homedir(), appData: app.getPath('appData'), localAppData: process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), pilotHome: process.env.PILOT_HOME });
@@ -1370,12 +1355,7 @@ const lifecycle = createDesktopLifecycle({
   },
   isChinese: () => readAppearance().language === "zh-CN",
   showDialog: (owner, options) => dialog.showMessageBox(owner, options),
-  stopRuntime: async () => {
-    await runtimeStartPromise?.catch(() => undefined);
-    await runtime?.stop();
-    runtime = null;
-    runtimeStartPromise = null;
-  },
+  stopRuntime,
   quit: () => app.quit(),
   reportError: error => console.error("PilotDeck lifecycle operation failed", error),
   reportStopError: error => dialog.showErrorBox(startupText("PilotDeck could not stop", readAppearance().language), String(error)),

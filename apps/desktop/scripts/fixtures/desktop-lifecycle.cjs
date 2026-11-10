@@ -41,6 +41,13 @@ if (process.argv.includes('--tray-second-instance')) {
   const api = new Proxy(electron, {
     get(target, key) {
       if (key === 'dialog') return nativeDialog;
+      if (key === 'BrowserWindow' && scenario === 'startup-quit') return new Proxy(target.BrowserWindow, {
+        construct(Window, args) {
+          const window = new Window(...args);
+          window.show = () => {}; // This scenario tests process cleanup, not native visibility.
+          return window;
+        },
+      });
       if (key === 'Tray') return function (icon) {
         if (process.platform === 'darwin') {
           assert.equal(icon.isTemplateImage(), true);
@@ -117,6 +124,11 @@ if (process.argv.includes('--tray-second-instance')) {
     assert.equal(completedAssertions, true, 'app must not exit before the checks finish');
     assert.equal(tray.isDestroyed(), true);
     if (scenario === 'slow-quit') assert.ok(slowStopChecks > 0, 'delayed cleanup was exercised');
+    if (scenario === 'startup-quit') {
+      const latency = Date.now() - quitConfirmedAt;
+      assert.ok(latency < 10_000, `Quit must cancel startup rather than wait for its 90s timeout (${latency}ms)`);
+      console.log(`[startup-quit] Stalled startup and its owned processes stopped in ${latency}ms`);
+    }
     assert.equal(alive(runtimePid), false, 'quit must stop the real runtime process');
     for (const suffix of ['.task', '.gateway']) {
       const file = process.env.PILOTDECK_TRAY_TEST_PID + suffix;
@@ -134,6 +146,7 @@ if (process.argv.includes('--tray-second-instance')) {
       runtimePid = Number(fs.readFileSync(process.env.PILOTDECK_TRAY_TEST_PID, 'utf8'));
       assert.ok(!window.webContents.getURL().startsWith('http:'), 'quit during startup, not after readiness');
       completedAssertions = true;
+      quitConfirmedAt = Date.now();
       app.quit();
       return;
     }

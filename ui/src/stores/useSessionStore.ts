@@ -2,17 +2,18 @@
  * Session-keyed message store.
  *
  * Holds per-session state in a Map keyed by sessionId.
- * Session switch = change activeSessionId pointer. No clearing. Old data stays.
+ * Session switches retain live data and at most eight inactive history-only snapshots.
  * WebSocket handler = store.appendRealtime(msg.sessionId, msg). One line.
  * No localStorage for messages. Backend JSONL is the source of truth.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionProvider } from '../types/app';
 import { authenticatedFetch, readAgentStatusErrorFromResponse } from '../utils/api';
 import { parseUserAttachmentNote } from '../components/chat/utils/attachmentNotes';
 import type { ChatAttachment } from '../components/chat/types/types';
 import { SessionTimeline, isTimelineMessage, mergeTimeline, type TimelinePosition } from './sessionTimeline';
+import { SessionHistoryCache } from './SessionHistoryCache';
 
 // ─── NormalizedMessage (mirrors server/adapters/types.js) ────────────────────
 
@@ -1646,11 +1647,20 @@ const MAX_REALTIME_MESSAGES = 500;
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useSessionStore() {
-  const storeRef = useRef(new Map<string, SessionSlot>());
+  const [historyCache] = useState(() => new SessionHistoryCache());
+  const storeRef = useRef(historyCache.slots);
   const activeSessionIdRef = useRef<string | null>(null);
   // Bump to force re-render — only when the active session's data changes
   const [, setTick] = useState(0);
   const notifySchedulerRef = useRef<RafScheduler | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      notifySchedulerRef.current?.cancelAll();
+    };
+  }, []);
   const getNotifyScheduler = (): RafScheduler => {
     if (notifySchedulerRef.current == null) {
       notifySchedulerRef.current = createRafNotifyScheduler(
@@ -1660,25 +1670,31 @@ export function useSessionStore() {
     }
     return notifySchedulerRef.current;
   };
-  const notify = useCallback((sessionId: string) => {
+  const notify = useCallback((sessionId: string, source: 'live' | 'history' = 'live') => {
+    if (source === 'live') historyCache.markLive(sessionId);
+    // History requests can settle after the view has unmounted. They must not
+    // retain a new animation callback after cleanup cancelled the old one.
+    if (!mountedRef.current) return;
     getNotifyScheduler().schedule(sessionId);
-  }, []);
+  }, [historyCache]);
 
   const setActiveSession = useCallback((sessionId: string | null) => {
     const changed = activeSessionIdRef.current !== sessionId;
     activeSessionIdRef.current = sessionId;
+    historyCache.setActiveSession(sessionId);
     if (changed) {
       setTick(n => n + 1);
     }
-  }, []);
+  }, [historyCache]);
 
-  const getSlot = useCallback((sessionId: string): SessionSlot => {
+  const getSlot = useCallback((sessionId: string, source: 'live' | 'history' = 'live'): SessionSlot => {
     const store = storeRef.current;
     if (!store.has(sessionId)) {
       store.set(sessionId, createEmptySlot());
     }
+    if (source === 'live') historyCache.markLive(sessionId);
     return store.get(sessionId)!;
-  }, []);
+  }, [historyCache]);
 
   const has = useCallback((sessionId: string) => storeRef.current.has(sessionId), []);
 
@@ -1700,12 +1716,13 @@ export function useSessionStore() {
       includeFromId?: string;
     } = {},
   ) => {
-    const slot = getSlot(sessionId);
+    const slot = getSlot(sessionId, 'history');
+    historyCache.beginHistory(sessionId);
     const requestGeneration = slot._serverRequestGeneration + 1;
     slot._serverRequestGeneration = requestGeneration;
     slot._serverLoadingGeneration = requestGeneration;
     slot.status = 'loading';
-    notify(sessionId);
+    notify(sessionId, 'history');
 
     try {
       const params = new URLSearchParams();
@@ -1774,7 +1791,8 @@ export function useSessionStore() {
         slot.tokenUsage = data.tokenUsage;
       }
 
-      notify(sessionId);
+      notify(sessionId, 'history');
+      historyCache.confirmHistory(sessionId, slot, Boolean(data.stream?.messages?.length));
       return slot;
     } catch (error) {
       if (slot._serverLoadingGeneration !== requestGeneration) return slot;
@@ -1782,10 +1800,12 @@ export function useSessionStore() {
       console.error(`[SessionStore] fetch failed for ${sessionId}:`, error);
       slot.status = 'error';
       slot.lastError = error instanceof Error ? error.message : 'Unknown error';
-      notify(sessionId);
+      notify(sessionId, 'history');
       return slot;
+    } finally {
+      historyCache.endHistory(sessionId);
     }
-  }, [getSlot, notify]);
+  }, [getSlot, notify, historyCache]);
 
   /**
    * Load older (paginated) messages and prepend to serverMessages.
@@ -1803,10 +1823,11 @@ export function useSessionStore() {
       limit?: number;
     } = {},
   ) => {
-    const slot = getSlot(sessionId);
+    const slot = getSlot(sessionId, 'history');
     if (!slot.hasMore) return slot;
     const pending = historyRequestsRef.current.get(sessionId);
     if (pending) return pending;
+    historyCache.beginHistory(sessionId);
     const request = (async () => {
       const appliedGeneration = slot._serverAppliedGeneration;
       const requestedCursor = slot.historyCursor;
@@ -1864,7 +1885,8 @@ export function useSessionStore() {
         slot.total = data.total ?? slot.total;
         slot.offset = slot.offset + olderMessages.length;
         recomputeMergedIfNeeded(slot);
-        notify(sessionId);
+        notify(sessionId, 'history');
+        historyCache.confirmHistory(sessionId, slot, Boolean(data.stream?.messages?.length));
         return slot;
       } catch (error) {
         console.error(`[SessionStore] fetchMore failed for ${sessionId}:`, error);
@@ -1875,8 +1897,9 @@ export function useSessionStore() {
     try { return await request; }
     finally {
       if (historyRequestsRef.current.get(sessionId) === request) historyRequestsRef.current.delete(sessionId);
+      historyCache.endHistory(sessionId);
     }
-  }, [getSlot, notify]);
+  }, [getSlot, notify, historyCache]);
 
   /**
    * Append a realtime (WebSocket) message to the correct session slot.
@@ -2177,6 +2200,10 @@ export function useSessionStore() {
   }, []);
 
   const setActivities = useCallback((sessionId: string, msgs: NormalizedMessage[]) => {
+    // Idle status polls carry empty snapshots. They do not mutate a clean
+    // history slot and must not pin it as live state or schedule a render.
+    if (!msgs.some(message => message.kind === 'agent_activity')
+      && !storeRef.current.get(sessionId)?.activityMessages.length) return;
     const slot = getSlot(sessionId);
     const byKey = new Map<string, NormalizedMessage>();
     const existingByKey = new Map(
@@ -2245,7 +2272,8 @@ export function useSessionStore() {
       afterRestore?: boolean;
     } = {},
   ) => {
-    const slot = getSlot(sessionId);
+    const slot = getSlot(sessionId, 'history');
+    historyCache.beginHistory(sessionId);
     const requestGeneration = slot._serverRequestGeneration + 1;
     slot._serverRequestGeneration = requestGeneration;
     try {
@@ -2328,12 +2356,17 @@ export function useSessionStore() {
         slot.status = 'idle';
         slot.lastError = null;
       }
-      notify(sessionId);
+      notify(sessionId, 'history');
+      historyCache.confirmHistory(sessionId, slot, Boolean(data.stream?.messages?.length));
+      return slot;
     } catch (error) {
       if (requestGeneration < slot._serverAppliedGeneration) return;
       console.error(`[SessionStore] refresh failed for ${sessionId}:`, error);
+      return null;
+    } finally {
+      historyCache.endHistory(sessionId);
     }
-  }, [getSlot, notify]);
+  }, [getSlot, notify, historyCache]);
 
   /**
    * Update session status.

@@ -107,6 +107,7 @@ function deepMerge(base, override) {
 export function buildDefaultPilotDeckConfig() {
   return {
     schemaVersion: CONFIG_VERSION,
+    runtime: { python: { enabled: true } },
     agent: {
       model: '',
       params: {},
@@ -516,6 +517,8 @@ export function validatePilotDeckConfig(config) {
   const errors = [];
   const warnings = [];
 
+  if (!isRecord(normalized.runtime) || !isRecord(normalized.runtime.python)
+    || typeof normalized.runtime.python.enabled !== 'boolean') errors.push('runtime.python.enabled must be a boolean');
   const providers = normalized.model?.providers;
   if (isRecord(providers)) {
     for (const [providerId, provider] of Object.entries(providers)) {

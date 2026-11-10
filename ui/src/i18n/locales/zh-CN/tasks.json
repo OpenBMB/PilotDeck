@@ -1,4 +1,5 @@
 {
+  "emptyWorkspaceHint": "还没有任务。请在工作区终端运行 task-master init，添加任务后刷新列表。",
   "notConfigured": {
     "title": "TaskMaster AI 尚未配置",
     "description": "TaskMaster 帮助您在 AI 辅助下将复杂项目拆分为可管理的任务",

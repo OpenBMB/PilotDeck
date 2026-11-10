@@ -342,7 +342,7 @@
   font-size: 14px;
 }
 
-:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .usage-page, .computer-use-page, .office-settings-page) .page-header h1 {
+:where(.pilotdeck-settings-app) .settings-page:is(.general-settings-page, .appearance-settings-page, .usage-page, .computer-use-page, .office-settings-page, .agent-memory-page, .agent-scheduled-page) .page-header h1 {
   font-size: 16px;
 }
 
@@ -508,7 +508,7 @@
   justify-self: end;
 }
 
-:where(.pilotdeck-settings-app) .general-select-wrap select {
+:where(.pilotdeck-settings-app) :is(.general-select-wrap select, .general-input) {
   width: 100%;
   height: 40px;
   padding: 0 38px 0 12px;
@@ -533,15 +533,22 @@
   transform: translateY(-50%);
 }
 
-:where(.pilotdeck-settings-app) .general-select-wrap select:hover {
+:where(.pilotdeck-settings-app) :is(.general-select-wrap select, .general-input):hover:not(:disabled) {
   border-color: rgb(193, 195, 212);
 }
 
-:where(.pilotdeck-settings-app) .general-select-wrap select:focus {
+:where(.pilotdeck-settings-app) :is(.general-select-wrap select, .general-input):focus {
   border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09);
   outline: none;
 }
+
+:where(.pilotdeck-settings-app) .general-input { padding: 0 12px; min-width: 0; max-width: 100%; }
+:where(.pilotdeck-settings-app) :is(.general-select-wrap select, .general-input):disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+:where(.pilotdeck-settings-app) .general-input[aria-invalid="true"] { border-color: var(--pd-danger-ink); }
 
 :where(.pilotdeck-settings-app) .route-switch {
   position: relative;
@@ -2169,18 +2176,18 @@
   color: var(--pd-accent-strong, #a5a6f0);
 }
 
-.dark :where(.pilotdeck-settings-app) .general-select-wrap select {
+.dark :where(.pilotdeck-settings-app) :is(.general-select-wrap select, .general-input) {
   background: #14141c;
   border-color: #3f3f4b;
   color: #e4e4e7;
 }
 
-.dark :where(.pilotdeck-settings-app) .general-select-wrap select:hover {
+.dark :where(.pilotdeck-settings-app) :is(.general-select-wrap select, .general-input):hover:not(:disabled) {
   border-color: #52525b;
   background: #14141c;
 }
 
-.dark :where(.pilotdeck-settings-app) .general-select-wrap select:focus {
+.dark :where(.pilotdeck-settings-app) :is(.general-select-wrap select, .general-input):focus {
   border-color: var(--pd-focus, #9294e9);
   box-shadow: 0 0 0 3px var(--pd-accent-soft, #5b5ce217);
   background: #14141c;
@@ -2252,461 +2259,38 @@
   }
 }
 
-/* Agent memory */
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page {
-  overflow-y: auto;
-  background:
-    radial-gradient(circle at 79% 9%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.48), transparent 25%),
-    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
-  scrollbar-width: thin;
-  scrollbar-color: rgb(217, 218, 228) transparent;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .page-header {
-  padding-bottom: 18px;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .page-header h1 {
-  font-size: 16px;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .page-header p,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-card h2,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-card p,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-card label,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-card input,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-card select,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-card button,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-enable-card h2,
-:where(.pilotdeck-settings-app) .settings-page.agent-memory-page .memory-enable-card p {
-  font-size: 14px;
-}
-
-:where(.pilotdeck-settings-app) .memory-page-content {
-  width: 100%;
-  margin: 0;
+/* Memory and scheduling use the General settings controls and card chrome. */
+:where(.pilotdeck-settings-app) :is(.memory-page-content, .scheduled-page-content) {
+  display: grid;
+  gap: 14px;
   padding-bottom: 26px;
 }
 
-:where(.pilotdeck-settings-app) .memory-enable-card {
-  min-height: 64px;
+:where(.pilotdeck-settings-app) :is(.memory-page-content, .scheduled-page-content) .general-toggle-row {
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1fr);
 }
 
-:where(.pilotdeck-settings-app) .memory-card {
-  overflow: hidden;
-  border: 1px solid rgb(222, 223, 235);
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: rgba(61, 60, 105, 0.067) 0 11px 30px;
-}
-
-:where(.pilotdeck-settings-app) .memory-config-card {
-  margin-top: 14px;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-section h2,
-:where(.pilotdeck-settings-app) .memory-data-section p {
-  margin: 0;
-}
-
-:where(.pilotdeck-settings-app) .memory-config-body {
-  transition: opacity 0.18s;
-}
-
-:where(.pilotdeck-settings-app) .memory-config-body.disabled {
-  opacity: 0.52;
-}
-
-:where(.pilotdeck-settings-app) .memory-setting-row,
-:where(.pilotdeck-settings-app) .memory-data-selector-row {
-  display: grid;
-  grid-template-columns: minmax(235px, 0.38fr) minmax(380px, 1fr);
-  align-items: center;
-  gap: 32px;
-}
-
-:where(.pilotdeck-settings-app) .memory-setting-row {
-  min-height: 84px;
-  padding: 12px 20px;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-selector-row {
-  min-height: 94px;
-  padding: 17px 20px;
-}
-
-:where(.pilotdeck-settings-app) .memory-config-body .memory-setting-row + .memory-setting-row {
-  position: relative;
-}
-
-:where(.pilotdeck-settings-app) .memory-config-body .memory-setting-row + .memory-setting-row::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 10px;
-  left: 10px;
-  height: 1px;
-  background: var(--line);
-  pointer-events: none;
-}
-
-:where(.pilotdeck-settings-app) .memory-setting-copy {
-  min-width: 0;
-}
-
-:where(.pilotdeck-settings-app) .memory-setting-copy label,
-:where(.pilotdeck-settings-app) .memory-setting-copy p {
-  display: block;
-  margin: 0;
-}
-
-:where(.pilotdeck-settings-app) .memory-setting-copy label {
-  color: var(--settings-panel-ink, rgb(55, 59, 73));
-  font-size: 14px;
-  font-weight: 710;
-  line-height: 1.45;
-}
-
-:where(.pilotdeck-settings-app) .memory-setting-copy p {
-  margin-top: 5px;
-  color: var(--settings-panel-muted, rgb(142, 146, 160));
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap {
-  position: relative;
-  min-width: 0;
-}
-
-:where(.pilotdeck-settings-app) .memory-model-select {
-  width: 350px;
-  max-width: 100%;
-  justify-self: start;
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap select,
-:where(.pilotdeck-settings-app) .memory-interval-control > input {
-  width: 100%;
-  height: 40px;
-  border: 1px solid rgb(218, 220, 230);
-  border-radius: 9px;
-  outline: 0;
-  background: rgb(255, 255, 255);
-  color: var(--settings-panel-ink, rgb(65, 69, 84));
-  font-size: 14px;
-  font-weight: 510;
-  box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
-  transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap select {
-  padding: 0 38px 0 12px;
-  appearance: none;
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap > svg {
-  position: absolute;
-  top: 50%;
-  right: 13px;
-  pointer-events: none;
-  color: var(--settings-panel-muted, rgb(139, 143, 158));
-  transform: translateY(-50%);
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap select:hover:not(:disabled),
-:where(.pilotdeck-settings-app) .memory-interval-control > input:hover:not(:disabled) {
-  border-color: rgb(193, 195, 212);
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap select:focus,
-:where(.pilotdeck-settings-app) .memory-interval-control > input:focus {
-  border-color: var(--pd-accent, rgb(146, 148, 233));
-  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap select:disabled,
-:where(.pilotdeck-settings-app) .memory-interval-control > input:disabled {
-  background: rgb(247, 247, 249);
-  color: var(--settings-panel-muted, rgb(146, 149, 162));
-  opacity: 1;
-}
-
-:where(.pilotdeck-settings-app) .memory-interval-control {
-  min-width: 0;
-  width: max-content;
-  max-width: 100%;
-  display: grid;
-  grid-template-columns: 200px 141px auto;
-  align-items: center;
-  gap: 9px;
-  justify-self: start;
-}
-
-:where(.pilotdeck-settings-app) .memory-interval-control > input {
-  padding: 0 12px;
-}
-
-:where(.pilotdeck-settings-app) .memory-select-wrap.compact {
-  width: 141px;
-}
-
-:where(.pilotdeck-settings-app) .memory-interval-actions {
+:where(.pilotdeck-settings-app) :is(.memory-interval-control, .memory-interval-actions, .memory-data-controls, .memory-data-actions, .scheduled-control-area, .scheduled-inline-actions) {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-:where(.pilotdeck-settings-app) .memory-edit-button {
-  min-width: 72px;
-  height: 40px;
-  padding: 0 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid rgb(217, 218, 229);
-  border-radius: 9px;
-  background: rgb(255, 255, 255);
-  color: var(--settings-panel-muted, rgb(105, 109, 124));
-  font-size: 14px;
-  font-weight: 680;
-  transition: border-color 0.16s, background 0.16s, color 0.16s, transform 0.16s;
-}
-
-:where(.pilotdeck-settings-app) .memory-edit-button:hover:not(:disabled) {
-  border-color: var(--pd-accent-border, rgb(200, 199, 239));
-  background: var(--brand-tint);
-  color: var(--brand-strong);
-  transform: translateY(-1px);
-}
-
-:where(.pilotdeck-settings-app) .memory-edit-button.editing {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: rgb(255, 255, 255);
-}
-
-:where(.pilotdeck-settings-app) .memory-edit-button:disabled {
-  background: rgb(247, 247, 250);
-  color: var(--settings-panel-muted, rgb(176, 178, 188));
-}
-
-:where(.pilotdeck-settings-app) .memory-data-section {
-  margin-top: 14px;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-header {
-  min-height: 58px;
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-}
-
-:where(.pilotdeck-settings-app) .memory-data-section h2 {
-  color: var(--settings-panel-ink, rgb(48, 51, 63));
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-header p {
-  margin-top: 5px;
-  color: var(--settings-panel-muted, rgb(139, 143, 157));
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-selector-row {
-  min-height: 86px;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-controls {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-}
-
-:where(.pilotdeck-settings-app) .memory-project-select {
-  width: 350px;
-  max-width: 100%;
-  flex: 0 0 350px;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-actions {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-actions .button {
-  min-height: 40px;
-  padding: 0 14px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 680;
-  line-height: 1;
-  letter-spacing: normal;
-  white-space: nowrap;
-  transition: transform 0.16s, background 0.16s, border-color 0.16s, box-shadow 0.16s;
-}
-
-:where(.pilotdeck-settings-app) .memory-data-actions .button:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-:where(.pilotdeck-settings-app) .memory-data-actions .memory-clear-button {
-  border-color: rgb(223, 91, 105);
-  background: rgb(223, 91, 105);
-  box-shadow: rgba(207, 77, 93, 0.16) 0 7px 16px;
-}
-
-:where(.pilotdeck-settings-app) .memory-import-button {
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-:where(.pilotdeck-settings-app) .memory-import-button.disabled,
-:where(.pilotdeck-settings-app) .memory-import-button:has(input:disabled) {
-  opacity: 0.45;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-:where(.pilotdeck-settings-app) .memory-import-input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-}
-
-:where(.pilotdeck-settings-app) .memory-action-status {
-  margin: 0 20px 16px;
-  min-height: 40px;
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--pd-neutral-soft, rgb(250, 250, 253));
-  color: var(--settings-panel-muted, rgb(119, 123, 138));
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-:where(.pilotdeck-settings-app) .memory-action-status.success {
-  border-color: rgb(200, 233, 220);
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-:where(.pilotdeck-settings-app) .memory-action-status.error {
-  border-color: rgb(239, 215, 219);
-  background: var(--danger-soft);
-  color: rgb(169, 70, 85);
-}
-
-:where(.pilotdeck-settings-app) .memory-action-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-}
-
-:where(.pilotdeck-settings-app) .memory-action-icon.spin {
-  animation: 0.8s linear 0s infinite normal none running spin;
-}
-
-:where(.pilotdeck-settings-app) .memory-clear-modal {
-  width: min(500px, 100%);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid rgb(222, 223, 235);
-  border-radius: 16px;
-  background: rgb(255, 255, 255);
-  box-shadow: rgba(var(--pd-accent-rgb, 40, 40, 80), 0.22) 0 26px 70px;
-}
-
-:where(.pilotdeck-settings-app) .memory-clear-modal .modal-header {
-  align-items: flex-start;
-  min-height: 0;
-  padding: 20px 20px 17px;
-  border-color: transparent;
-}
-
-:where(.pilotdeck-settings-app) .memory-clear-modal .modal-header > div {
   min-width: 0;
 }
 
-:where(.pilotdeck-settings-app) .memory-clear-modal .modal-header p {
-  margin: 6px 0 0;
-  color: var(--settings-panel-muted, rgb(137, 141, 155));
-  font-size: 14px;
-  line-height: 1.5;
-}
+:where(.pilotdeck-settings-app) .memory-interval-control > .general-input { width: 100px; }
+:where(.pilotdeck-settings-app) .memory-interval-control > .general-select-wrap { width: 120px; }
+:where(.pilotdeck-settings-app) .scheduled-control-area > :is(.general-input, .general-select-wrap) { width: 230px; }
 
 :where(.pilotdeck-settings-app) .simple-delete-modal .modal-header,
 :where(.pilotdeck-settings-app) .simple-delete-modal .modal-actions {
   border-color: transparent;
 }
 
-:where(.pilotdeck-settings-app) .memory-clear-modal .modal-actions {
-  padding: 13px 20px;
-  background: var(--pd-neutral-soft, rgb(250, 250, 253));
-}
-
 @media (max-width: 860px) {
-  :where(.pilotdeck-settings-app) .memory-enable-card {
-    align-items: flex-start;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-setting-row,
-  :where(.pilotdeck-settings-app) .memory-data-selector-row {
-    min-height: 0;
-    grid-template-columns: 1fr;
-    gap: 13px;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-setting-row {
-    padding: 12px 16px;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-model-select {
-    width: 100%;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-data-selector-row {
-    padding: 18px 16px;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-data-controls {
-    flex-wrap: wrap;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-project-select {
-    width: 100%;
-    flex-basis: 100%;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-interval-control {
-    width: 100%;
-    grid-template-columns: minmax(86px, 1fr) minmax(96px, 0.8fr) auto;
-    justify-self: stretch;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-select-wrap.compact {
-    width: 100%;
-  }
-
-  :where(.pilotdeck-settings-app) .memory-data-actions {
-    flex-wrap: wrap;
+  :where(.pilotdeck-settings-app) :is(.memory-page-content, .scheduled-page-content) .general-toggle-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
   }
 }
 
@@ -3568,213 +3152,6 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 2px;
-  }
-}
-
-/* Agent scheduled tasks */
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page {
-  overflow-y: auto;
-  background:
-    radial-gradient(circle at 79% 8%, rgba(var(--pd-accent-soft-rgb, 238, 236, 255), 0.5), transparent 25%),
-    linear-gradient(rgb(255, 255, 255), var(--pd-neutral-soft, rgb(252, 252, 255)));
-  scrollbar-width: thin;
-  scrollbar-color: rgb(217, 218, 228) transparent;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .page-header {
-  padding-bottom: 18px;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .page-header h1 {
-  font-size: 16px;
-}
-
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .page-header p,
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-enable-card h2,
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card label,
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card p,
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card input,
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card select,
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card option,
-:where(.pilotdeck-settings-app) .settings-page.agent-scheduled-page .scheduled-card button {
-  font-size: 14px !important;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-page-content {
-  width: 100%;
-  padding-bottom: 26px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-enable-card {
-  margin-bottom: 18px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-card {
-  overflow: hidden;
-  border: 1px solid rgb(222, 223, 235);
-  border-radius: 15px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: rgba(61, 60, 105, 0.067) 0 11px 30px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-setting-row {
-  position: relative;
-  display: grid;
-  min-height: 84px;
-  grid-template-columns: minmax(235px, 0.38fr) minmax(380px, 1fr);
-  align-items: center;
-  gap: 32px;
-  padding: 12px 20px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-setting-row + .scheduled-setting-row::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 10px;
-  left: 10px;
-  height: 1px;
-  background: var(--line);
-  pointer-events: none;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-setting-copy {
-  min-width: 0;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-setting-copy label,
-:where(.pilotdeck-settings-app) .scheduled-setting-copy p {
-  display: block;
-  margin: 0;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-setting-copy label {
-  color: var(--settings-panel-ink, rgb(55, 59, 73));
-  font-weight: 710;
-  line-height: 1.45;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-setting-copy p {
-  margin-top: 5px;
-  color: var(--settings-panel-muted, rgb(142, 146, 160));
-  line-height: 1.55;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-control-area {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 350px) auto;
-  align-items: center;
-  justify-content: start;
-  gap: 9px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-select-wrap,
-:where(.pilotdeck-settings-app) .scheduled-input-wrap {
-  position: relative;
-  width: 350px;
-  max-width: 100%;
-  min-width: 0;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-select-wrap select,
-:where(.pilotdeck-settings-app) .scheduled-input-wrap input {
-  width: 100%;
-  height: 40px;
-  border: 1px solid rgb(218, 220, 230);
-  border-radius: 9px;
-  outline: 0;
-  background: rgb(255, 255, 255);
-  color: var(--settings-panel-ink, rgb(65, 69, 84));
-  font-family: inherit;
-  font-weight: 510;
-  box-shadow: rgba(44, 44, 75, 0.02) 0 1px 2px;
-  transition: border-color 0.16s, box-shadow 0.16s, background 0.16s;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-select-wrap select {
-  padding: 0 38px 0 12px;
-  appearance: none;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-input-wrap input {
-  padding: 0 12px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-select-wrap > svg {
-  position: absolute;
-  top: 50%;
-  right: 13px;
-  color: var(--settings-panel-muted, rgb(139, 143, 158));
-  pointer-events: none;
-  transform: translateY(-50%);
-}
-
-:where(.pilotdeck-settings-app) .scheduled-select-wrap select:hover:not(:disabled),
-:where(.pilotdeck-settings-app) .scheduled-input-wrap input:hover:not(:disabled) {
-  border-color: rgb(193, 195, 212);
-}
-
-:where(.pilotdeck-settings-app) .scheduled-select-wrap select:focus,
-:where(.pilotdeck-settings-app) .scheduled-input-wrap input:focus {
-  border-color: var(--pd-accent, rgb(146, 148, 233));
-  box-shadow: rgba(var(--pd-accent-rgb, 91, 92, 226), 0.09) 0 0 0 3px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-select-wrap select:disabled,
-:where(.pilotdeck-settings-app) .scheduled-input-wrap input:disabled {
-  background: rgb(247, 247, 249);
-  color: var(--settings-panel-muted, rgb(108, 112, 126));
-  opacity: 1;
-  -webkit-text-fill-color: rgb(108, 112, 126);
-}
-
-:where(.pilotdeck-settings-app) .scheduled-input-wrap input[aria-invalid="true"] {
-  border-color: rgb(217, 155, 165);
-  background: rgb(255, 250, 251);
-  box-shadow: rgba(181, 82, 96, 0.08) 0 0 0 3px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-inline-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-edit-button,
-:where(.pilotdeck-settings-app) .scheduled-inline-actions .button {
-  min-width: 72px;
-  height: 40px;
-  justify-content: center;
-}
-
-:where(.pilotdeck-settings-app) .scheduled-edit-button:disabled {
-  border-color: rgb(228, 229, 236);
-  background: rgb(246, 247, 249);
-  color: var(--settings-panel-muted, rgb(174, 177, 188));
-  opacity: 1;
-}
-
-@media (max-width: 860px) {
-  :where(.pilotdeck-settings-app) .scheduled-setting-row {
-    min-height: 0;
-    grid-template-columns: 1fr;
-    gap: 12px;
-    padding: 14px 16px;
-  }
-
-  :where(.pilotdeck-settings-app) .scheduled-control-area {
-    grid-template-columns: 1fr;
-  }
-
-  :where(.pilotdeck-settings-app) .scheduled-select-wrap,
-  :where(.pilotdeck-settings-app) .scheduled-input-wrap {
-    width: 100%;
-  }
-
-  :where(.pilotdeck-settings-app) .scheduled-edit-button,
-  :where(.pilotdeck-settings-app) .scheduled-inline-actions {
-    justify-self: start;
   }
 }
 
@@ -5116,69 +4493,6 @@
   }
 }
 
-.dark :where(.pilotdeck-settings-app) .memory-card,
-.dark :where(.pilotdeck-settings-app) .memory-enable-card {
-  border-color: #2c2c3a;
-  background: #19191f;
-  box-shadow: 0 11px 30px rgba(0, 0, 0, 0.28);
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-setting-copy label,
-.dark :where(.pilotdeck-settings-app) .memory-data-section h2,
-.dark :where(.pilotdeck-settings-app) .memory-enable-card h2 {
-  color: #eeeeF4;
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-setting-copy p,
-.dark :where(.pilotdeck-settings-app) .memory-data-header p,
-.dark :where(.pilotdeck-settings-app) .memory-enable-card p {
-  color: #a1a1aa;
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-data-header {
-  border-color: var(--line);
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-config-body .memory-setting-row + .memory-setting-row::before {
-  background: var(--line);
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-select-wrap select,
-.dark :where(.pilotdeck-settings-app) .memory-interval-control > input,
-.dark :where(.pilotdeck-settings-app) .memory-edit-button,
-.dark :where(.pilotdeck-settings-app) .memory-data-actions .button.secondary {
-  border-color: #383847;
-  background: #202027;
-  color: #e5e5ec;
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-select-wrap select:disabled,
-.dark :where(.pilotdeck-settings-app) .memory-interval-control > input:disabled,
-.dark :where(.pilotdeck-settings-app) .memory-edit-button:disabled {
-  background: #1a1a22;
-  color: #8b8b98;
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-action-status {
-  background: #1c1c24;
-  border-color: #2e2e3c;
-  color: #a1a1aa;
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-clear-modal {
-  border-color: #2c2c3a;
-  background: #19191f;
-  box-shadow: 0 26px 70px #00000066;
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-clear-modal .modal-header p {
-  color: #8d8d9a;
-}
-
-.dark :where(.pilotdeck-settings-app) .memory-clear-modal .modal-actions {
-  background: #16161c;
-}
-
 .dark :where(.pilotdeck-settings-app) .resident-project-panel,
 .dark :where(.pilotdeck-settings-app) .resident-card {
   border-color: #2c2c3a;
@@ -5391,44 +4705,6 @@
 
 .dark :where(.pilotdeck-settings-app) .integration-select-control > svg {
   color: #a1a1aa;
-}
-
-.dark :where(.pilotdeck-settings-app) .scheduled-card {
-  border-color: #2c2c3a;
-  background: #19191f;
-  box-shadow: 0 11px 30px rgba(0, 0, 0, 0.28);
-}
-
-.dark :where(.pilotdeck-settings-app) .scheduled-setting-row + .scheduled-setting-row::before {
-  background: var(--line);
-}
-
-.dark :where(.pilotdeck-settings-app) .scheduled-setting-copy label {
-  color: #eeeeF4;
-}
-
-.dark :where(.pilotdeck-settings-app) .scheduled-setting-copy p {
-  color: #a1a1aa;
-}
-
-.dark :where(.pilotdeck-settings-app) .scheduled-select-wrap select,
-.dark :where(.pilotdeck-settings-app) .scheduled-input-wrap input {
-  border-color: #383847;
-  background: #202027;
-  color: #e5e5ec;
-}
-
-.dark :where(.pilotdeck-settings-app) .scheduled-select-wrap select:disabled,
-.dark :where(.pilotdeck-settings-app) .scheduled-input-wrap input:disabled {
-  background: #1a1a22;
-  color: #a1a1aa;
-  -webkit-text-fill-color: #a1a1aa;
-}
-
-.dark :where(.pilotdeck-settings-app) .scheduled-edit-button:disabled {
-  border-color: #30303d;
-  background: #1c1c24;
-  color: #696975;
 }
 
 .dark :where(.pilotdeck-settings-app) .route-card {

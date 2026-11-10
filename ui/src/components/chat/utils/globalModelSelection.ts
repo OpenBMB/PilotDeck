@@ -1,5 +1,5 @@
 import { authenticatedFetch } from '../../../utils/api';
-import { modelSelectionId, normalizeModelSelection, parseCatalogItem } from '../../chat-v2/modelCapabilityOptions';
+import { modelSelectionId, normalizeModelSelection, parseCatalogItem } from './modelCapabilityOptions';
 import type { ChatModelCatalogItem, ChatModelSelection } from '../hooks/useChatProviderState';
 import { safeLocalStorage } from './chatStorage';
 

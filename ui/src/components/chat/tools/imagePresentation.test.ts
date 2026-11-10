@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { ChatMessage } from '../types/types';
-import { buildRenderableMessageItems, groupProcessIntervals, getLiveProcessDetailMessages, isProcessMessage } from '../../chat-v2/processGrouping';
+import { buildRenderableMessageItems, groupProcessIntervals, getLiveProcessDetailMessages, isProcessMessage } from '../utils/processGrouping';
 import { imagePurpose, isImageDeliverable } from './imagePresentation';
 
 const base = { id: 'draw', type: 'tool', isToolUse: true, toolName: 'generate_image', timestamp: new Date(), content: '' } as ChatMessage;

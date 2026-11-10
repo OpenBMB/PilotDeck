@@ -1,4 +1,5 @@
 {
+  "emptyWorkspaceHint": "No tasks yet. Run task-master init in the workspace terminal, add your tasks, then refresh this list.",
   "notConfigured": {
     "title": "TaskMaster AI is not configured",
     "description": "TaskMaster helps break down complex projects into manageable tasks with AI-powered assistance",

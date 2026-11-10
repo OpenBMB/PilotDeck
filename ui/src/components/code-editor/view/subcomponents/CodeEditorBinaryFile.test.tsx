@@ -126,7 +126,7 @@ describe('CodeEditorBinaryFile', () => {
     expect(container.querySelector('.absolute.right-2.top-1')).toBeNull();
   });
 
-  it('enables page navigation and workspace expansion for PDF files', () => {
+  it('enables page navigation and workspace expansion for PDF files', async () => {
     const onToggleExpand = vi.fn();
     render(
       <CodeEditorBinaryFile
@@ -140,7 +140,7 @@ describe('CodeEditorBinaryFile', () => {
       />,
     );
 
-    const preview = screen.getByRole('button', { name: 'PDF preview' });
+    const preview = await screen.findByRole('button', { name: 'PDF preview' });
     expect(preview.getAttribute('data-navigation-mode')).toBe('pages');
     expect(preview.getAttribute('data-page-controls')).toBe('true');
     preview.click();

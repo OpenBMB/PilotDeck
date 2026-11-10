@@ -11,6 +11,7 @@ export default function ComputerUseSections() {
   const bridge = computerUseApi;
   const [status, setStatus] = useState<ComputerUseStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [pathCopied, setPathCopied] = useState(false);
@@ -40,12 +41,14 @@ export default function ComputerUseSections() {
     return () => { active = false; window.clearInterval(interval); window.removeEventListener('focus', onVisible); document.removeEventListener('visibilitychange', onVisible); };
   }, [bridge]);
 
-  const run = async (operation: () => Promise<ComputerUseStatus>) => {
-    operationPending.current = true; ++requestSequence.current;
-    setBusy(true); setError('');
-    try { setStatus(await operation()); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
-    finally { operationPending.current = false; setBusy(false); }
+  const run = async (operation: () => Promise<ComputerUseStatus>, canStop = false) => {
+    operationPending.current = true; const sequence = ++requestSequence.current;
+    setBusy(true); setStarting(canStop); setError('');
+    try { const value = await operation(); if (sequence === requestSequence.current) setStatus(value); }
+    catch (caught) { if (sequence === requestSequence.current) setError(caught instanceof Error ? caught.message : String(caught)); }
+    finally {
+      if (sequence === requestSequence.current) { operationPending.current = false; setBusy(false); setStarting(false); }
+    }
   };
   return <div className="general-page-content computer-use-content">
     <section className="general-section">
@@ -54,7 +57,7 @@ export default function ComputerUseSections() {
         <GeneralSettingRow title={t('computerUse.enable')} detail={t('computerUse.enableDescription')}>
           <SettingsToggle checked={status?.enabled === true} disabled={busy || !status || !status.available}
             ariaLabel={t('computerUse.enable')} showSuccessToast={false}
-            onChange={enabled => { void run(() => bridge.setEnabled(enabled)); }} />
+            onChange={enabled => { void run(() => bridge.setEnabled(enabled), enabled); }} />
         </GeneralSettingRow>
       </article>
     </section>
@@ -118,10 +121,10 @@ export default function ComputerUseSections() {
               {status.desktopSession ? ` · ${status.desktopSession === 'x11' ? 'X11' : status.desktopSession === 'wayland' ? 'Wayland' : t('computerUse.unknownSession')}` : ''}</p>}
           </div>
           <div className="computer-use-actions">
-            <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy || !status} onClick={() => { void run(() => bridge.refresh()); }}>
+            <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy || !status} onClick={() => { void run(() => bridge.refresh(), status?.enabled === true); }}>
               <GeneralSettingsIcon icon={RefreshCw} className={busy ? 'animate-spin' : ''} />{t('computerUse.refresh')}
             </button>
-            {status?.enabled && <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy} onClick={() => { void run(() => bridge.setEnabled(false)); }}>
+            {(status?.enabled || starting) && <button type="button" className="button secondary compact disabled:opacity-50" disabled={busy && !starting} onClick={() => { void run(() => bridge.setEnabled(false)); }}>
               <GeneralSettingsIcon icon={Square} />{t('computerUse.stop')}
             </button>}
           </div>

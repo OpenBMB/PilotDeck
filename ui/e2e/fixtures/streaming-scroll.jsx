@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { FindShortcutProvider } from '../../src/contexts/FindShortcutContext';
 import { ThemeProvider } from '../../src/contexts/ThemeContext';
 import PermissionRequestsBanner from '../../src/components/chat/view/subcomponents/PermissionRequestsBanner';
-import MessagesPane from '../../src/components/chat-v2/MessagesPaneV2';
+import MessagesPane from '../../src/components/chat/view/MessagesPane';
 import { useScrollFollow } from '../../src/components/chat/hooks/useScrollFollow';
 import { normalizedToChatMessages } from '../../src/components/chat/hooks/useChatMessages';
 import { useSessionStore } from '../../src/stores/useSessionStore';
@@ -22,6 +22,7 @@ function Fixture() {
   const [working, setWorking] = useState(false);
   const [questions, setQuestions] = useState([]);
   const answerText = useRef('');
+  const turnStartedAt = useRef(timestamp);
   const [inline, setInline] = useState(true);
   const [mode, setMode] = useState('agent');
   const [olderMessages, setOlderMessages] = useState([]);
@@ -60,9 +61,10 @@ function Fixture() {
         ];
       }).flat());
     },
-    beginTurn(id = 'current-user') {
+    beginTurn(id = 'current-user', content = 'Inspect the implementation') {
       const at = new Date().toISOString();
-      store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content: 'Inspect the implementation', timestamp: at });
+      turnStartedAt.current = at;
+      store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content, timestamp: at });
       setWorking(true);
     },
     prepareFile(id, receivedBytes, filePath) {
@@ -109,6 +111,13 @@ function Fixture() {
       }] });
     },
     text(text) { setWorking(true); store.finalizeStreamingThinking(sid, 'live'); store.updateStreaming(sid, text, 'pilotdeck', 'live'); },
+    stop(withTiming = true) {
+      store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live');
+      const endedAt = new Date().toISOString();
+      store.appendRealtime(sid, { ...base, id: 'stopped-completion', kind: 'complete', timestamp: endedAt, finishReason: 'aborted',
+        ...(withTiming ? { turnTiming: { startedAt: turnStartedAt.current, completedAt: endedAt, finishReason: 'aborted' } } : {}) });
+      setWorking(false);
+    },
     complete(durationMs) {
       store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live');
       if (typeof durationMs === 'number') store.appendRealtime(sid, {
@@ -136,7 +145,7 @@ function Fixture() {
       scrollContainerRef={ref}
       showReturnToLatest={follow.canReturnToLatest}
       onResumeScroll={follow.scrollToBottom}
-      onPauseScroll={() => follow.setPaused(true)}
+      onPauseScroll={follow.pauseAt}
       chatMessages={messages} visibleMessages={messages} activityMessages={activities} visibleMessageCount={100}
       isLoadingSessionMessages={false} isLoadingMoreMessages={false}
       hasMoreMessages={false} totalMessages={messages.length}

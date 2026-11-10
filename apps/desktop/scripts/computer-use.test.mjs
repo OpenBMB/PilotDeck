@@ -17,7 +17,7 @@ const execute = promisify(execFile);
 const compiled = ts.transpileModule(fs.readFileSync(new URL('../src/computerUse.ts', import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
 }).outputText;
-function setup({ permissions = true, bundleId = 'cn.pilotdeck.desktop', permissionApplication = false } = {}) {
+function setup({ permissions = true, bundleId = 'cn.pilotdeck.desktop', permissionApplication = false, stallStart = false } = {}) {
   const originalDisplay = process.env.DISPLAY;
   if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) process.env.DISPLAY = ':fixture';
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pd-cua-test-'));
@@ -35,7 +35,7 @@ function setup({ permissions = true, bundleId = 'cn.pilotdeck.desktop', permissi
   // Run the fixture with Node on every OS, including Windows where a script
   // named .exe is not executable. Keep real child processes, native sockets /
   // named pipes, stdin shutdown and exit events in the controller tests.
-  const fixtureArgs = args => [fixture, '--pid-file', pidFile, ...args];
+  const fixtureArgs = args => [fixture, '--pid-file', pidFile, ...(stallStart ? ['--stall-start'] : []), ...args];
   const fixtureExecFile = (file, args, options, callback) => {
     assert.equal(file, binary);
     return execFile(process.execPath, fixtureArgs(args), options, callback);
@@ -156,6 +156,23 @@ test('shutdown preserves the preference but revokes the running connection', asy
     assert.equal(await canConnect(endpoint), false);
     assert.equal(isAlive(pid), false);
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, 'settings', 'settings.json'))).enabled, true);
+  } finally { await f.cleanup(); }
+});
+for (const action of ['disable', 'shutdown']) test(`desktop ${action} cancels an unready native child without waiting for startup timeout`, async () => {
+  const f = setup({ stallStart: true });
+  try {
+    const enabling = f.controller.setEnabled(true);
+    const deadline = Date.now() + 5000;
+    while (!fs.existsSync(f.pidFile) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(fs.existsSync(f.pidFile), true, 'Fixture never started');
+    const pid = Number(fs.readFileSync(f.pidFile, 'utf8'));
+    const started = Date.now();
+    await (action === 'disable' ? f.controller.setEnabled(false) : f.controller.stop());
+    assert.ok(Date.now() - started < 3000, 'Stop waited for the 20-second startup deadline');
+    await enabling;
+    assert.equal(isAlive(pid), false);
+    assert.deepEqual(f.servers(), {});
+    assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, 'settings/settings.json'))).enabled, action === 'shutdown');
   } finally { await f.cleanup(); }
 });
 test('rejects a daemon with a different macOS permission owner', { skip: process.platform !== 'darwin' }, async () => {

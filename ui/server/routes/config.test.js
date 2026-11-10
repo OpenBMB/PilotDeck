@@ -14,6 +14,34 @@ import { webSearchConfigForProvider } from '../../src/components/settings/view/a
 const nativeFetch = globalThis.fetch;
 const tempDirs = [];
 
+it('returns Python capability from the executing Gateway and handles disconnected hosts', async () => {
+  const status = { enabled: true, state: 'ready', version: '3.12.16', executable: '/execution-host/python', packages: { numpy: '2' } };
+  const pythonStatus = vi.fn().mockResolvedValueOnce(status).mockRejectedValueOnce(new Error('offline'));
+  const { requestStatus } = await createConfigApp({ pythonStatus });
+  expect((await requestStatus('/api/config/python-runtime')).body).toEqual(status);
+  expect(pythonStatus).toHaveBeenLastCalledWith({ initialize: false });
+  expect((await requestStatus('/api/config/python-runtime')).status).toBe(503);
+});
+
+it('performs a full Python check only on explicit POST and reports Gateway Git', async () => {
+  const pythonStatus = vi.fn().mockResolvedValue({ enabled: true, state: 'ready' });
+  const git = { state: 'ready', source: 'bundled', executable: '/host/git', version: '2.51.2' };
+  const gitStatus = vi.fn().mockResolvedValue(git);
+  const { requestStatus } = await createConfigApp({ pythonStatus, gitStatus });
+  expect((await requestStatus('/api/config/python-runtime/check', { method: 'POST' })).status).toBe(200);
+  expect(pythonStatus).toHaveBeenLastCalledWith();
+  expect((await requestStatus('/api/config/git-runtime')).body).toEqual(git);
+  expect(gitStatus).toHaveBeenCalledTimes(1);
+});
+
+it('normalizes the Python preference to true and rejects non-boolean values', () => {
+  expect(validatePilotDeckConfig({}).config.runtime.python.enabled).toBe(true);
+  expect(validatePilotDeckConfig({ runtime: { python: { enabled: false } } }).config.runtime.python.enabled).toBe(false);
+  for (const runtime of [null, false, { python: null }, { python: { enabled: 'false' } }]) {
+    expect(validatePilotDeckConfig({ runtime }).errors).toContain('runtime.python.enabled must be a boolean');
+  }
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -53,6 +81,62 @@ describe('config provider credential availability', () => {
 });
 
 describe('config test-connection route', () => {
+  it.each(['legacy', 'versioned'])('keeps probing images when %s text succeeds at a fallback outside the catalog endpoint', async (route) => {
+    const fetch = vi.fn(async (url, init) => String(url).includes('/v1/')
+      ? jsonResponse({ error: { message: 'not found' } }, { ok: false, status: 404 })
+      : jsonResponse(openaiReply(init)));
+    vi.stubGlobal('fetch', fetch);
+    const { request } = await createConfigApp();
+    const legacy = route === 'legacy';
+    const data = await request(legacy ? '/api/config/test-connection' : '/api/config/test-connections', {
+      method: 'POST', body: JSON.stringify(legacy
+        ? { providerId: 'deepseek', providerType: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: 'key', model: 'deepseek-v4-pro' }
+        : { providerId: 'deepseek', protocol: 'openai', endpoint: 'https://api.deepseek.com', apiKey: 'key', models: ['deepseek-v4-pro'], retryPolicy: { maxRetries: 0 } }),
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(hasImagePayload(fetch.mock.calls[2][1])).toBe(true);
+    expect(legacy ? data.supportsImage : data.models[0].imageInput).toBe(legacy ? true : 'supported');
+  });
+
+  for (const [label, providerId, baseUrl, model, catalogSupport] of [
+    ['official text-only model', 'deepseek', 'https://api.deepseek.com/v1', 'deepseek-v4-pro', false],
+    ['official root endpoint', 'deepseek', 'https://api.deepseek.com/', 'deepseek-v4-pro', false],
+    ['official full endpoint', 'deepseek', 'https://api.deepseek.com/v1/chat/completions', 'deepseek-v4-pro', false],
+    ['custom endpoint under an official provider ID', 'deepseek', 'https://proxy.example/v1', 'deepseek-v4-pro', null],
+    ['custom path on the official origin', 'deepseek', 'https://api.deepseek.com/proxy/v1', 'deepseek-v4-pro', null],
+    ['custom provider with an official model name', 'my-provider', 'https://api.deepseek.com/v1', 'deepseek-v4-pro', null],
+    ['model belonging to another provider', 'openai', 'https://api.openai.com/v1', 'deepseek-v4-pro', null],
+    ['unknown model', 'deepseek', 'https://api.deepseek.com/v1', 'custom-model', null],
+    ['vision model', 'openai', 'https://api.openai.com/v1', 'gpt-4.1', true],
+  ]) {
+    it.each(['legacy', 'versioned'])('scopes catalog capabilities for %s: ' + label, async (route) => {
+      const fetch = vi.fn(async (_url, init) => jsonResponse({
+        choices: [{ message: { content: hasImagePayload(init) ? 'I cannot tell.' : '1' } }],
+      }));
+      vi.stubGlobal('fetch', fetch);
+      const { request } = await createConfigApp();
+      const legacy = route === 'legacy';
+      const data = await request(legacy ? '/api/config/test-connection' : '/api/config/test-connections', {
+        method: 'POST', body: JSON.stringify(legacy
+          ? { providerId, providerType: 'openai', baseUrl, apiKey: 'key', model }
+          : { providerId, protocol: 'openai', endpoint: baseUrl, apiKey: 'key', models: [model], retryPolicy: { maxRetries: 0 } }),
+      });
+      const skipImage = legacy ? catalogSupport !== null : catalogSupport === false;
+      expect(fetch).toHaveBeenCalledTimes(skipImage ? 1 : 2);
+      expect(hasImagePayload(fetch.mock.calls[0][1])).toBe(false);
+      if (!skipImage) expect(hasImagePayload(fetch.mock.calls[1][1])).toBe(true);
+      if (legacy) {
+        expect(data).toMatchObject({ ok: true, supportsImage: catalogSupport, imageCheckSource: skipImage ? 'catalog' : 'probe' });
+      } else {
+        expect(data).toMatchObject({
+          status: skipImage ? 'passed' : 'manual_input_required',
+          manualInputRequired: !skipImage,
+          models: [{ modelId: model, textInput: 'supported', imageInput: skipImage ? 'unsupported' : 'unknown' }],
+        });
+      }
+    });
+  }
+
   it('uses protocol-versioned chat completions when the root base URL works', async () => {
     const calls = [];
     vi.stubGlobal('fetch', vi.fn(async (url, init) => {
@@ -2659,7 +2743,7 @@ describe('config routes invalid YAML fallback', () => {
   });
 });
 
-async function createConfigApp({ config = {}, probe } = {}) {
+async function createConfigApp({ config = {}, probe, pythonStatus, gitStatus } = {}) {
   const writePilotDeckConfig = vi.fn(async (nextConfig) => ({
     config: nextConfig,
     raw: stringifyYaml(nextConfig),
@@ -2689,7 +2773,7 @@ async function createConfigApp({ config = {}, probe } = {}) {
     };
   });
   vi.doMock('../pilotdeck-bridge.js', () => ({
-    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined) })),
+    getPilotDeckGateway: vi.fn(async () => ({ reloadConfig: vi.fn(async () => undefined), getPythonRuntimeStatus: pythonStatus, getGitRuntimeStatus: gitStatus })),
   }));
 
   const { default: configRoutes } = await import('./config.js');

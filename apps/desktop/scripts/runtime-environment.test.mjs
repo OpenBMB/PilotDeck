@@ -30,6 +30,7 @@ test('Windows duplicate keys retain Node selection while bundled tools win comma
   assert.equal(next.TEMP, 'chosen-temp');
   assert.equal(next.Temp, undefined);
   assert.equal(next.PILOTDECK_GIT_BASH_PATH, git.bash);
+  assert.equal(next.PILOTDECK_BUNDLED_GIT, '1');
   assert.equal(env.Path, 'wrong-lower');
 });
 

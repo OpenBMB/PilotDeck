@@ -12,9 +12,9 @@ const panels = '[data-settings-surface=panel],.general-card,.memory-card,.reside
 const routes = [
   ['appearance', '.appearance-settings'], ['general', '.general-page-content'],
   ['models', '.model-pool-workspace'],
-  ['agent-route', '.route-card'], ['agent-memory', '.memory-card'],
+  ['agent-route', '.route-card'], ['agent-memory', '.general-card'],
   ['agent-resident', '.resident-card'], ['agent-search', '.search-card'],
-  ['agent-schedule', '.scheduled-card'], ['integrations', '.integration-gateway-card'],
+  ['agent-schedule', '.general-card'], ['integrations', '.integration-gateway-card'],
   ['mcp', '.mcp-config-card'], ['office', '.office-page-content .general-card'],
   ['privacy', '.security-card'], ['advanced', '.advanced-settings-card'],
   ['about', '[data-settings-surface=panel]'],

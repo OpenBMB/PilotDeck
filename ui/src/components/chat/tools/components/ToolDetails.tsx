@@ -45,9 +45,9 @@ export function ToolDetails({ title, copyContent, copyLabel, children, footer }:
           </button>}
         </div>
       </header>
-      <div ref={viewport} role="region" tabIndex={0} aria-label={t('toolDisplay.details')}
+      <div ref={viewport} data-chat-scroll-region role="region" tabIndex={0} aria-label={t('toolDisplay.details')}
         style={{ maxHeight: full ? Math.max(320, naturalHeight) : 320, scrollbarGutter: 'stable' }}
-        className="overflow-auto overscroll-contain px-3.5 pb-3 text-[12px] leading-5 transition-[max-height] duration-200 ease-out focus-visible:outline-[var(--pd-accent,#8b5cf6)] motion-reduce:transition-none">
+        className="overflow-auto overscroll-y-auto overscroll-x-contain px-3.5 pb-3 text-[12px] leading-5 transition-[max-height] duration-200 ease-out focus-visible:outline-[var(--pd-accent,#8b5cf6)] motion-reduce:transition-none">
         <div ref={content} className="flow-root min-w-0">{children}</div>
       </div>
       {footer && <footer className="flex justify-end gap-2 px-3.5 pb-2.5 text-xs text-neutral-500 dark:text-neutral-400">{footer}</footer>}

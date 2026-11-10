@@ -1,5 +1,5 @@
-import type { AlwaysOnSubTab, AppTab, Project, ProjectSession } from '../../../types/app';
-import type { WorkspaceUploadController } from '../../main-content-v2/useWorkspaceUpload';
+import type { AlwaysOnSubTab, AppTab, Project, ProjectSession, SessionMessagesUpdateTarget } from '../../../types/app';
+import type { WorkspaceUploadController } from '../../file-tree/hooks/useWorkspaceUpload';
 import type { ReviewOpenRequest } from '../../chat-review/ChatReviewContext';
 
 export type SessionLifecycleHandler = (sessionId?: string | null) => void;
@@ -49,7 +49,6 @@ export type MainContentProps = {
   onAlwaysOnSubTabChange?: (tab: AlwaysOnSubTab) => void;
   ws: WebSocket | null;
   sendMessage: (message: unknown) => void;
-  latestMessage: unknown;
   isMobile: boolean;
   onMenuClick: () => void;
   isLoading: boolean;
@@ -86,6 +85,7 @@ export type MainContentProps = {
   onShowSettings: () => void;
   onSelectProjectByName?: (projectName: string) => void;
   externalMessageUpdate: number;
+  externalMessageUpdateTarget?: SessionMessagesUpdateTarget | null;
   /** When the URL uses /session/<file> by mistake, open the file in the editor. */
   misroutedFileFromUrl?: string | null;
   onMisroutedFileUrlHandled?: () => void;

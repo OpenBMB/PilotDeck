@@ -9,6 +9,21 @@ import { createRouterRuntime } from "../../src/router/RouterRuntime.js";
 import type { RouterConfig } from "../../src/router/config/schema.js";
 import { calculateInputCost, calculateCacheReadCost } from "../../src/router/utils/modelPricing.js";
 import { currentRequestContext, requestContextHeaders, withRequestContext } from "../../src/network/requestContext.js";
+import { DefaultContextRuntime } from "../../src/context/DefaultContextRuntime.js";
+import { buildCachePlan } from "../../src/context/cache/CachePlan.js";
+
+test("same-route patches rebuild cache identity from the final request", async t => {
+  const router = createRouterRuntime(config, { modelRuntime: runtime });
+  t.after(() => router.shutdown());
+  const request: CanonicalModelRequest = { provider: "primary", model: "main", systemPrompt: "initial",
+    messages: [{ role: "user", content: [{ type: "text", text: "synthetic" }] }], tools: [] };
+  request.cachePlan = buildCachePlan({ ...request, tools: [], enabled: true }, 7);
+  const decision = await router.decide({ request, sessionId: "patch-cache", isMainAgent: true });
+  decision.requestPatch = { systemPrompt: "patched", tools: [{ name: "synthetic", inputSchema: { type: "object" } }] };
+  const actual = router.materializeRequest(decision, request);
+  assert.deepEqual(actual.cachePlan, buildCachePlan({ ...actual, tools: actual.tools ?? [], enabled: true }, 7));
+  assert.notEqual(actual.cachePlan?.fingerprint, request.cachePlan?.fingerprint);
+});
 
 const capabilities = {
   supportsToolUse: true,
@@ -48,6 +63,46 @@ const runtime: ModelRuntime = {
     return `https://${provider}.invalid`;
   },
 };
+
+for (const isMainAgent of [true, false]) {
+  test(`request-only memory does not activate sticky routing without conversation history (main: ${isMainAgent})`, async t => {
+    let judgeCalls = 0;
+    const router = createRouterRuntime({ ...config, tokenSaver: {
+      enabled: true, defaultTier: "simple", judgeTimeoutMs: 5000,
+      judge: { id: "primary/judge", provider: "primary", model: "judge" },
+      tiers: {
+        simple: { model: { id: "primary/simple", provider: "primary", model: "simple" } },
+        reasoning: { model: { id: "primary/reasoning", provider: "primary", model: "reasoning" } },
+      },
+    } }, { modelRuntime: runtime, judgeRuntime: { ...runtime, async complete(request) {
+      judgeCalls++;
+      const tier = JSON.stringify(request.messages).includes("Deep analysis") ? "reasoning" : "simple";
+      return { role: "assistant", content: [{ type: "text", text: `<tier>${tier}</tier>` }], finishReason: "stop" };
+    } } });
+    t.after(() => router.shutdown());
+    const context = new DefaultContextRuntime({ memoryResolver: {
+      async retrieve() { return { systemContext: "Retrieved background.", diagnostics: [] }; }, async captureTurn() {},
+    } });
+    const prepare = async (task: string, withHistory = false): Promise<CanonicalModelRequest> => ({
+      provider: "primary", model: "main", ...await context.prepareForModel({
+        sessionId: "sticky-memory", turnId: task, cwd: process.cwd(), provider: "primary", model: "main",
+        permissionMode: "default", additionalWorkingDirectories: [], tools: [], messages: [
+          ...(withHistory ? [{ role: "user" as const, content: [{ type: "text" as const, text: "Prior task" }] },
+            { role: "assistant" as const, content: [{ type: "text" as const, text: "Prior answer" }] }] : []),
+          { role: "user", content: [{ type: "text", text: task }] },
+        ],
+      }),
+    });
+    const decide = async (task: string, withHistory = false) => router.decide({
+      sessionId: "sticky-memory", isMainAgent, request: await prepare(task, withHistory),
+    });
+    assert.equal((await decide("Hello")).model, "simple");
+    assert.equal((await decide("Deep analysis")).model, "reasoning");
+    assert.equal(judgeCalls, 2, "One real-user message must be reclassified despite appended context");
+    assert.equal((await decide("Hello", true)).model, "reasoning");
+    assert.equal(judgeCalls, 2, "Real conversation history retains sticky routing");
+  });
+}
 
 test("compaction model headers retain the originating turn without leaking concurrent context", async () => {
   const home = mkdtempSync(join(tmpdir(), "pilotdeck-compaction-headers-"));

@@ -71,6 +71,20 @@
     outline-offset: 3px;
   }
 
+  .chat-process-shimmer {
+    color: transparent;
+    background-image: linear-gradient(100deg, hsl(var(--muted-foreground)) 30%, #b8b8b8 48%, hsl(var(--muted-foreground)) 66%);
+    background-size: 250% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: chat-process-shimmer 3.2s linear infinite;
+  }
+
+  @keyframes chat-process-shimmer {
+    from { background-position: 160% 0; }
+    to { background-position: -100% 0; }
+  }
+
   .chat-process-disclosure {
     display: grid;
     min-width: 0;
@@ -90,6 +104,7 @@
   [data-turn-process-prose] .prose > :last-child { margin-bottom: 0; }
 
   @media (prefers-reduced-motion: reduce) {
+    .chat-process-shimmer { animation: none; background: none; color: hsl(var(--muted-foreground)); }
     .chat-process-disclosure { transition: none; }
     .conversation-turn-mark::before, .conversation-turn-preview { transition: none; animation: none; }
   }
@@ -149,7 +164,7 @@
     --search-match-active-text: var(--on-primary, #fff);
     --search-match-ring: color-mix(in srgb, var(--brand) 28%, transparent);
 
-    /* V2 zinc/neutral palette — light */
+    /* Zinc/neutral palette — light */
     --background: 0 0% 100%;
     --foreground: 0 0% 9%;
     --card: 0 0% 100%;
@@ -199,7 +214,7 @@
   .dark {
     --pd-warning-ink: #e7c487;
     --pd-danger-ink: #ef9ca5;
-    /* V2 zinc/neutral palette — dark */
+    /* Zinc/neutral palette — dark */
     --background: 0 0% 4%;
     --foreground: 0 0% 96%;
     --card: 0 0% 4%;
@@ -220,7 +235,7 @@
     --input: 0 0% 25%;
     --ring: 0 0% 64%;
 
-    /* V2 chrome tokens — match Tailwind dark:bg-neutral-950 / text-neutral-100 */
+    /* Chrome tokens — match Tailwind dark:bg-neutral-950 / text-neutral-100 */
     --ink: #f5f5f5;
     --app-muted: #a3a3a3;
     --line: #262626;
@@ -625,8 +640,9 @@
     word-wrap: break-word;
     overflow-wrap: break-word;
     hyphens: auto;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 120px;
+    /* The message virtualizer owns offscreen estimates. Native content-visibility
+       adds a second estimate (also to nested process messages), causing height
+       changes as the reader scrolls into an expanded step. */
   }
 
   /* Force wrap long URLs and code */
@@ -748,16 +764,16 @@
 
   /*
    * Tighter vertical rhythm for tool-call rows in the chat message list.
-   * .ui-v2-legacy-row is the marker class set by MessageRowV2 on every
+   * .chat-message-row is the marker class set by MessageRow on every
    * delegated (tool/permission/subagent) message.  The parent container
    * uses Tailwind space-y-8 (32px) which is fine for prose-to-prose gaps
    * but far too generous between consecutive tool rows.
    */
-  .space-y-8 > .ui-v2-legacy-row + .ui-v2-legacy-row {
+  .space-y-8 > .chat-message-row + .chat-message-row {
     margin-top: 0.125rem; /* 2px — tool rows sit nearly flush */
   }
-  .space-y-8 > :not(.ui-v2-legacy-row) + .ui-v2-legacy-row,
-  .space-y-8 > .ui-v2-legacy-row + :not(.ui-v2-legacy-row) {
+  .space-y-8 > :not(.chat-message-row) + .chat-message-row,
+  .space-y-8 > .chat-message-row + :not(.chat-message-row) {
     margin-top: 1rem; /* 16px — transitional gap between prose ↔ tool */
   }
 
@@ -1903,7 +1919,7 @@
     color: inherit;
   }
 
-  /* V2 chrome dark mode — hardcoded light colors above don't follow Tailwind dark: */
+  /* Chrome dark mode — hardcoded light colors above don't follow Tailwind dark: */
   .dark .app-shell {
     border-color: rgba(255, 255, 255, 0.08);
     background: #0a0a0a;

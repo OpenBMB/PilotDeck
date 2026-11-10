@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "pythonVersion": "3.12.16",
+  "pythonRelease": "20261026",
+  "uvVersion": "0.13.7",
+  "targets": {
+    "win32-x64": {
+      "triple": "x86_64-pc-windows-msvc",
+      "python": {
+        "name": "cpython-3.12.16+20261026-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+        "sha256": "1f2ab53880fc67ea323398c6388e05af28addc99a8e389209f08a51fdff4b149"
+      },
+      "uv": {
+        "name": "uv-x86_64-pc-windows-msvc.zip",
+        "sha256": "0cdc5b38fe5a8168ed6a25814f5ba43c21d313dd3187314fccb37b7cec46e021"
+      }
+    },
+    "win32-arm64": {
+      "triple": "aarch64-pc-windows-msvc",
+      "python": {
+        "name": "cpython-3.12.16+20261026-aarch64-pc-windows-msvc-install_only_stripped.tar.gz",
+        "sha256": "3b2e4da9209cec3e0eaf4db31176977a88df32d598ff94a7899c34cd8304db04"
+      },
+      "uv": {
+        "name": "uv-aarch64-pc-windows-msvc.zip",
+        "sha256": "505d9e65e7692bac3ddf98c66754aa26c5050c409c184af30a881a0a72cc85e3"
+      }
+    },
+    "darwin-x64": {
+      "triple": "x86_64-apple-darwin",
+      "python": {
+        "name": "cpython-3.12.16+20261026-x86_64-apple-darwin-install_only_stripped.tar.gz",
+        "sha256": "37c38fda76fec1fbf310adcbafb7f0d96af13b5511bf8ea954c3aa8eec185734"
+      },
+      "uv": {
+        "name": "uv-x86_64-apple-darwin.tar.gz",
+        "sha256": "20c47e4c1f630b8abaff8c291fa9b9aa300fef92c4fbff95adf198b55287cda7"
+      }
+    },
+    "darwin-arm64": {
+      "triple": "aarch64-apple-darwin",
+      "python": {
+        "name": "cpython-3.12.16+20261026-aarch64-apple-darwin-install_only_stripped.tar.gz",
+        "sha256": "353d5f1b4fd2715e7053f12f068435d5bbad16b91e057006b5d01e0925709a7e"
+      },
+      "uv": {
+        "name": "uv-aarch64-apple-darwin.tar.gz",
+        "sha256": "81b811b57e4624df7ed3aac148e0359100d9962f3d9dce00aec533dc2e086731"
+      }
+    },
+    "linux-x64": {
+      "triple": "x86_64-unknown-linux-gnu",
+      "python": {
+        "name": "cpython-3.12.16+20261026-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+        "sha256": "ce4f6d0a6cfdb3bed6e44c2f9affd85943c76a42e25ad3a259002f31d6fb8a20"
+      },
+      "uv": {
+        "name": "uv-x86_64-unknown-linux-gnu.tar.gz",
+        "sha256": "c5221ff41b7892bfc223543883600125f6a47fe845093e0f5bdff4f359196d83"
+      }
+    },
+    "linux-arm64": {
+      "triple": "aarch64-unknown-linux-gnu",
+      "python": {
+        "name": "cpython-3.12.16+20261026-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
+        "sha256": "bb4b6392670c5d3f93876996fcaa19858a4a413a0c7720144c18b0d6f1f0db2d"
+      },
+      "uv": {
+        "name": "uv-aarch64-unknown-linux-gnu.tar.gz",
+        "sha256": "71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc"
+      }
+    }
+  }
+}

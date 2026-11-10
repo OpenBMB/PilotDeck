@@ -53,6 +53,90 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it.each([-1, 1])('accepts code-region boundary handoff without consuming its inner scroll (%s)', direction => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    const code = document.createElement('pre'); code.dataset.chatScrollRegion = '';
+    row.append(code);
+    Object.defineProperties(code, { scrollHeight: { value: 600 }, clientHeight: { value: 200 } });
+    code.scrollTop = 200;
+    fireEvent.wheel(code, { deltaY: direction * 40 });
+    code.scrollTop += direction * 40;
+    resize(); flush();
+    expect(node.scrollTop).toBe(500);
+    expect(api.isPaused).toBe(true);
+    code.scrollTop = direction < 0 ? 0 : 400;
+    fireEvent.wheel(code, { deltaY: direction * 40 });
+    node.scrollTop += direction * 40;
+    resize(); fireEvent.scroll(node); flush();
+    expect(node.scrollTop).toBe(500 + direction * 40);
+  });
+
+  it.each([-1, 1])('anchors and ends a gesture whose compositor displacement preceded wheel (%s)', direction => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.scroll(node);
+    node.scrollTop += direction * 30;
+    fireEvent.wheel(node, { deltaY: direction * 30 });
+    metrics.height += 40; resize(); flush();
+    expect(node.scrollTop).toBe(500 + direction * 30);
+    fireEvent.scroll(node);
+    fireEvent(node, new Event('scrollend'));
+    node.scrollTop += direction * 30;
+    resize(); flush();
+    expect(node.scrollTop).toBe(500 + direction * 30);
+  });
+
+  it.each([false, true])('retains delayed native displacement until scrollend (already moved: %s)', alreadyMoved => {
+    const { node, metrics, view } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: -120 });
+    if (alreadyMoved) { node.scrollTop = 470; fireEvent.scroll(node); }
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000);
+    try {
+      // Native scrolling can continue on the compositor while rendering keeps
+      // the main thread from delivering its scroll events for more than 250ms.
+      node.scrollTop -= 30;
+      view.rerender(<Harness version={1} />);
+      fireEvent.scroll(node); resize(); flush();
+      expect(node.scrollTop).toBe(alreadyMoved ? 440 : 470);
+      fireEvent(node, new Event('scrollend'));
+      node.scrollTop -= 30;
+      resize(); flush();
+      expect(node.scrollTop).toBe(alreadyMoved ? 440 : 470);
+    } finally { now.mockRestore(); }
+  });
+
+  it.each([-1, 1])('retains compositor momentum while the wheel reverses direction (%s)', direction => {
+    const { node, metrics, view } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: direction * 60 });
+    node.scrollTop += direction * 30; fireEvent.scroll(node);
+    fireEvent.wheel(node, { deltaY: -direction * 60 });
+    // The compositor can deliver the previous gesture's final frame after
+    // the next wheel event, before adopting the new direction.
+    node.scrollTop += direction * 10;
+    metrics.height += 40;
+    view.rerender(<Harness version={1} />);
+    resize(); fireEvent.scroll(node); flush();
+    expect(node.scrollTop).toBe(500 + direction * 40);
+    node.scrollTop -= direction * 50;
+    fireEvent.scroll(node); resize(); flush();
+    expect(node.scrollTop).toBe(500 - direction * 10);
+  });
+
   it('reacquires a visible anchor when a large wheel outruns the virtual window', () => {
     const { node, metrics } = setup();
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
@@ -92,7 +176,12 @@ describe('reader-owned scroll following', () => {
   });
 
   it.each(['scrollend', 'idle'])('stops attributing later layout movement to a finished gesture (%s)', ending => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'onscrollend')!;
+    // Older engines need the idle fallback; current Chromium ends gestures
+    // through scrollend rather than time spent waiting on a busy main thread.
+    if (ending === 'idle') delete (HTMLElement.prototype as Partial<HTMLElement>).onscrollend;
     const { node, metrics } = setup();
+    Object.defineProperty(HTMLElement.prototype, 'onscrollend', descriptor);
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
     row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
     node.scrollTop = 500;
@@ -180,6 +269,40 @@ describe('reader-owned scroll following', () => {
     resize(); flush();
     expect(node.scrollTop).toBe(620);
     expect(result.getBoundingClientRect().top).toBe(50);
+  });
+
+  it('automatically anchors the visible child while retaining its virtual parent key', () => {
+    const { node, metrics } = setup();
+    const process = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    const child = document.createElement('div');
+    child.dataset.messageKey = 'visible-child';
+    const closed = document.createElement('div');
+    closed.setAttribute('inert', '');
+    const hidden = document.createElement('div');
+    hidden.dataset.messageKey = 'closed-child';
+    hidden.getBoundingClientRect = () => ({ top: -30, bottom: 300 }) as DOMRect;
+    closed.appendChild(hidden);
+    process.appendChild(closed);
+    process.appendChild(child);
+    let inserted = 0;
+    process.getBoundingClientRect = () => ({ top: 100 - metrics.top, bottom: 1200 + inserted - metrics.top }) as DOMRect;
+    child.getBoundingClientRect = () => ({ top: 480 + inserted - metrics.top, bottom: 800 + inserted - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pause());
+    expect(api.getReadingAnchor()).toEqual({ key: 'visible-child', offset: -20 });
+    expect(node.dataset.readingAnchorKey).toBe('reading');
+    for (const height of [180, 60, 0]) {
+      metrics.height += height - inserted;
+      inserted = height;
+      resize(); flush();
+      expect(child.getBoundingClientRect().top).toBe(-20);
+      expect(node.scrollTop).toBe(500 + inserted);
+    }
+    child.setAttribute('inert', '');
+    inserted = -100; metrics.height -= 100;
+    resize(); flush();
+    expect(node.scrollTop).toBe(500);
+    expect(api.getReadingAnchor()?.key).toBe('reading');
   });
 
   it('cancels a queued follow on a small upward gesture, before React commits', () => {
@@ -362,7 +485,7 @@ it('ignores non-user upward scroll events after layout measurements have settled
   expect(node.scrollTop).toBe(metrics.height - metrics.viewport);
 });
 
-it('preserves an anchor when virtual measurements redistribute rows without resizing the content', () => {
+it.each([4, 0.5, 0.25])('preserves an anchor when virtual measurements redistribute rows by %s px without resizing the content', shift => {
   const { node, metrics } = setup();
   node.scrollTop = 500;
   let shifted = 0;
@@ -370,7 +493,7 @@ it('preserves an anchor when virtual measurements redistribute rows without resi
   row.getBoundingClientRect = () => ({ top: 750 + shifted - metrics.top, bottom: 1000 + shifted - metrics.top }) as DOMRect;
   act(() => api.pauseAt('reading'));
   const offset = row.getBoundingClientRect().top;
-  shifted = 4;
+  shifted = shift;
   act(() => notifyScrollLayout(node));
   expect(row.getBoundingClientRect().top).toBe(offset);
   expect(api.isPaused).toBe(true);

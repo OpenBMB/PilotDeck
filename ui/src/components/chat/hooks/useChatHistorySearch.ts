@@ -1,0 +1,373 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import { useRegisterFindShortcutTarget } from '../../../contexts/FindShortcutContext';
+import { useGlobalSearch } from '../../global-search/GlobalSearchContext';
+import { getSessionRequestIdentity, type SessionRequestIdentity } from '../utils/sessionRequestIdentity';
+import {
+  buildSearchableMessages,
+  clearSearchHighlights,
+  findChatHistoryMatches,
+  highlightSearchMatches,
+  scrollSearchTargetIntoView,
+  scrollToMessageIndex,
+  type ChatHistorySearchMatch,
+  type SearchableChatMessage,
+  type SearchableChatMessageInput,
+} from '../utils/chatHistorySearchUtils';
+
+const EMPTY_SEARCHABLE_MESSAGES: SearchableChatMessage[] = [];
+
+type UseChatHistorySearchOptions = {
+  scrollContainerRef: RefObject<HTMLElement | null>;
+  keyedMessages: SearchableChatMessageInput[];
+  measuredItemHeights: number[];
+  allMessagesLoaded: boolean;
+  hasMoreMessages: boolean;
+  historyReady?: boolean;
+  loadAllMessages: () => void | Promise<void>;
+  sessionId: string | null;
+  requestIdentity?: SessionRequestIdentity | null;
+  captureFindShortcutInModal?: boolean;
+  renderWindowKey?: string | number;
+  onNavigate?: (match: ChatHistorySearchMatch) => void;
+};
+
+export function useChatHistorySearch({
+  scrollContainerRef,
+  keyedMessages,
+  measuredItemHeights,
+  allMessagesLoaded,
+  historyReady = true,
+  loadAllMessages,
+  sessionId,
+  requestIdentity,
+  captureFindShortcutInModal = false,
+  renderWindowKey = 0,
+  onNavigate,
+}: UseChatHistorySearchOptions) {
+  const [isOpen, setIsOpen] = useState(false);
+  const globalSearch = useGlobalSearch();
+  const candidateTarget = globalSearch?.target;
+  const scopeKey = requestIdentity?.key ?? sessionId;
+  const globalTarget = candidateTarget?.kind === 'chats' && requestIdentity
+    && getSessionRequestIdentity(candidateTarget.project, candidateTarget.sessionId ? { id: candidateTarget.sessionId } : null)?.transcriptKey !== requestIdentity.transcriptKey
+    ? undefined : candidateTarget;
+  const consumedGlobalTarget = useRef<string | null>(null);
+  const loadingGlobalTarget = useRef<string | null>(null);
+  const failedGlobalTarget = useRef<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const historyRequest = useRef<Promise<void> | null>(null);
+  const selectedScope = useRef({ sessionId, key: scopeKey, active: true });
+  if (selectedScope.current.key !== scopeKey) selectedScope.current = { sessionId, key: scopeKey, active: true };
+  const latestGlobalTarget = useRef(globalTarget);
+  latestGlobalTarget.current = globalTarget;
+  const [query, setQuery] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const navigationRef = useRef(0);
+  const requestedMatchRef = useRef<string | null>(null);
+  const pendingRevealRef = useRef<{ match: ChatHistorySearchMatch; navigation: number; ready: boolean; coarseJumped: boolean } | null>(null);
+  const refreshHighlightsRef = useRef<() => void>(() => {});
+
+  // Streaming can update this list every frame. Do not parse tool payloads or
+  // scan message bodies until search needs them. A pending global result must
+  // still be indexed before it opens the local search UI.
+  const shouldIndex = isOpen || Boolean(historyReady && allMessagesLoaded
+    && globalTarget?.kind === 'chats' && globalTarget.matchType === 'content'
+    && globalTarget.sessionId === sessionId
+    && consumedGlobalTarget.current !== globalTarget.requestId);
+  const searchableMessages = useMemo(
+    () => shouldIndex ? buildSearchableMessages(keyedMessages) : EMPTY_SEARCHABLE_MESSAGES,
+    [keyedMessages, shouldIndex],
+  );
+
+  const matches = useMemo(
+    () => findChatHistoryMatches(searchableMessages, query),
+    [query, searchableMessages],
+  );
+
+  const activeMatch: ChatHistorySearchMatch | null = matches[activeMatchIndex] ?? null;
+
+  const closeSearch = useCallback(() => {
+    navigationRef.current += 1;
+    requestedMatchRef.current = null;
+    pendingRevealRef.current = null;
+    setIsOpen(false);
+    setQuery('');
+    setActiveMatchIndex(0);
+    const container = scrollContainerRef.current;
+    if (container) clearSearchHighlights(container);
+  }, [scrollContainerRef]);
+
+  const openSearch = useCallback(() => {
+    setIsOpen(true);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+  }, []);
+
+  const ensureAllMessagesLoaded = useCallback(async () => {
+    if (allMessagesLoaded) return;
+    if (historyRequest.current) return historyRequest.current;
+    const scope = selectedScope.current;
+    setHistoryError(null);
+    setIsLoadingHistory(true);
+    let load: void | Promise<void>;
+    try { load = loadAllMessages(); } catch (error) { load = Promise.reject(error); }
+    const request = Promise.resolve(load).catch(error => {
+      if (selectedScope.current === scope && scope.active) setHistoryError(error instanceof Error ? error.message : String(error));
+      throw error;
+    }).finally(() => {
+      if (selectedScope.current === scope && scope.active) {
+        historyRequest.current = null;
+        setIsLoadingHistory(false);
+      }
+    });
+    historyRequest.current = request;
+    return request;
+  }, [allMessagesLoaded, loadAllMessages]);
+
+  const loadGlobalHistory = useCallback(() => {
+    const target = latestGlobalTarget.current;
+    if (!target || target.kind !== 'chats' || target.sessionId !== selectedScope.current.sessionId) return;
+    const scope = selectedScope.current;
+    loadingGlobalTarget.current = target.requestId;
+    failedGlobalTarget.current = null;
+    void ensureAllMessagesLoaded().catch(() => {
+      if (selectedScope.current !== scope || !scope.active || latestGlobalTarget.current?.requestId !== target.requestId) return;
+      loadingGlobalTarget.current = null;
+      failedGlobalTarget.current = target.requestId;
+      setQuery(target.query);
+      setIsOpen(true);
+    });
+  }, [ensureAllMessagesLoaded]);
+
+  const retryHistory = useCallback(() => {
+    const target = latestGlobalTarget.current;
+    if (target?.kind === 'chats' && target.matchType === 'content' && target.sessionId === sessionId
+      && consumedGlobalTarget.current !== target.requestId) loadGlobalHistory();
+    else void ensureAllMessagesLoaded().catch(() => {});
+  }, [ensureAllMessagesLoaded, loadGlobalHistory, sessionId]);
+
+  const applySearchHighlights = useCallback((match: ChatHistorySearchMatch | null) => {
+    const container = scrollContainerRef.current;
+    if (!container) return null;
+    return highlightSearchMatches(
+      container,
+      searchableMessages,
+      matches,
+      query.trim(),
+      match,
+    );
+  }, [matches, query, scrollContainerRef, searchableMessages]);
+
+  const revealMatch = useCallback(async (match: ChatHistorySearchMatch) => {
+    const navigation = ++navigationRef.current;
+    const pending = { match, navigation, ready: false, coarseJumped: false };
+    pendingRevealRef.current = pending;
+    onNavigate?.(match);
+    try {
+      if (!historyError) await ensureAllMessagesLoaded();
+    } catch {
+      // Results already loaded remain searchable if fetching older history fails.
+    }
+    if (navigation !== navigationRef.current) return;
+    pending.ready = true;
+    refreshHighlightsRef.current();
+  }, [ensureAllMessagesLoaded, historyError, onNavigate]);
+
+  const goToMatch = useCallback((index: number) => {
+    if (matches.length === 0) return;
+    const wrapped = ((index % matches.length) + matches.length) % matches.length;
+    setActiveMatchIndex(wrapped);
+  }, [matches.length]);
+
+  const goToNext = useCallback(() => {
+    goToMatch(activeMatchIndex + 1);
+  }, [activeMatchIndex, goToMatch]);
+
+  const goToPrevious = useCallback(() => {
+    goToMatch(activeMatchIndex - 1);
+  }, [activeMatchIndex, goToMatch]);
+
+  useEffect(() => {
+    if (globalTarget?.kind === 'chats' && globalTarget.matchType === 'content' && globalTarget.sessionId === sessionId && globalTarget.query === query) {
+      const item = searchableMessages.find(candidate => candidate.text.toLowerCase().includes(globalTarget.query.toLowerCase()) && (globalTarget.entryId
+        ? candidate.message.entryId === globalTarget.entryId && candidate.message.type === globalTarget.role
+        : candidate.message.turnId === globalTarget.turnId && candidate.message.type === globalTarget.role));
+      const index = item ? matches.findIndex(match => match.messageKey === item.messageKey) : -1;
+      setActiveMatchIndex(index >= 0 ? index : 0);
+    } else setActiveMatchIndex(0);
+  // Recompute the chosen hit after changing the query; later live messages must not reset navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  useEffect(() => {
+    if (!selectedScope.current.active) selectedScope.current = { sessionId, key: scopeKey, active: true };
+    const scope = selectedScope.current;
+    closeSearch();
+    historyRequest.current = null;
+    loadingGlobalTarget.current = null;
+    failedGlobalTarget.current = null;
+    setHistoryError(null);
+    setIsLoadingHistory(false);
+    return () => { scope.active = false; };
+  }, [closeSearch, sessionId, scopeKey]);
+
+  useEffect(() => {
+    if (!historyReady || !globalTarget || globalTarget.kind !== 'chats' || globalTarget.sessionId !== sessionId) return;
+    if (globalTarget.matchType !== 'content') { closeSearch(); return; }
+    if (consumedGlobalTarget.current === globalTarget.requestId) return;
+    if (!allMessagesLoaded) {
+      if (loadingGlobalTarget.current !== globalTarget.requestId && failedGlobalTarget.current !== globalTarget.requestId) {
+        loadGlobalHistory();
+      }
+      return;
+    }
+    const item = searchableMessages.find(candidate => candidate.text.toLowerCase().includes(globalTarget.query.toLowerCase()) && (globalTarget.entryId
+      ? candidate.message.entryId === globalTarget.entryId && candidate.message.type === globalTarget.role
+      : candidate.message.turnId === globalTarget.turnId && candidate.message.type === globalTarget.role));
+    if (!item) return;
+    const targetMatches = findChatHistoryMatches(searchableMessages, globalTarget.query);
+    const index = targetMatches.findIndex(match => match.messageKey === item.messageKey);
+    if (index < 0) return;
+    consumedGlobalTarget.current = globalTarget.requestId;
+    setQuery(globalTarget.query);
+    setActiveMatchIndex(index);
+    setIsOpen(true);
+  }, [globalTarget, sessionId, historyReady, allMessagesLoaded, loadGlobalHistory, searchableMessages, closeSearch]);
+
+  const openFromShortcut = useCallback(() => {
+    if (isOpen) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      return;
+    }
+    openSearch();
+  }, [isOpen, openSearch]);
+
+  useRegisterFindShortcutTarget({
+    scope: 'chat',
+    containerRef: scrollContainerRef,
+    onOpen: openFromShortcut,
+    captureInModal: captureFindShortcutInModal,
+  });
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!isOpen || !activeMatch || !query.trim()) {
+      if (container) clearSearchHighlights(container);
+      requestedMatchRef.current = null;
+      pendingRevealRef.current = null;
+      return;
+    }
+    const key = `${sessionId}:${query}:${activeMatch.messageKey}:${activeMatch.offset}`;
+    if (requestedMatchRef.current === key) return;
+    requestedMatchRef.current = key;
+    void revealMatch(activeMatch);
+  }, [activeMatch, isOpen, query, revealMatch, scrollContainerRef, sessionId]);
+
+  // The search index sees complete text before the typewriter exposes it. Wait
+  // for a mark or for the row to finish rendering: cross-node phrases and hidden
+  // link URLs may never produce a mark. Disconnect while marking our DOM changes.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !isOpen || !query.trim()) return;
+    let frame: number | null = null;
+    const observer = new MutationObserver(() => schedule());
+    const observe = () => observer.observe(container, {
+      childList: true, characterData: true, subtree: true,
+      attributes: true, attributeFilter: ['data-chat-search-render-pending'],
+    });
+    const refresh = () => {
+      frame = null;
+      observer.disconnect();
+      const target = applySearchHighlights(activeMatch);
+      observe();
+      const pending = pendingRevealRef.current;
+      if (!pending?.ready || pending.navigation !== navigationRef.current) return;
+      const canReveal = target && (target.matches('mark[aria-current="true"]')
+        || !target.querySelector('[data-chat-search-render-pending="true"]'));
+      if (canReveal) {
+        // Land before onNavigate records the reading anchor. An unfinished
+        // animation races streaming layout corrections and reader gestures.
+        scrollSearchTargetIntoView(container, target, 'auto');
+        onNavigate?.(pending.match);
+        pendingRevealRef.current = null;
+      } else if (!target && !pending.coarseJumped) {
+        // Only a missing row needs a virtualization jump. A mounted row may
+        // still be draining text; keep waiting without moving the reader again.
+        pending.coarseJumped = true;
+        const match = matches.find((candidate) => candidate.messageKey === pending.match.messageKey
+          && candidate.offset === pending.match.offset) ?? pending.match;
+        scrollToMessageIndex(container, measuredItemHeights, match.messageIndex);
+        schedule();
+      }
+    };
+    const schedule = () => {
+      if (frame === null) frame = requestAnimationFrame(refresh);
+    };
+    refreshHighlightsRef.current = schedule;
+    observe();
+    schedule();
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      refreshHighlightsRef.current = () => {};
+    };
+  }, [activeMatch, applySearchHighlights, isOpen, query, renderWindowKey, matches, measuredItemHeights, onNavigate, scrollContainerRef]);
+
+  useEffect(() => {
+    if (matches.length === 0) {
+      setActiveMatchIndex(0);
+      return;
+    }
+    if (activeMatchIndex >= matches.length) {
+      setActiveMatchIndex(0);
+    }
+  }, [activeMatchIndex, matches.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const cancelNavigation = () => {
+      navigationRef.current += 1;
+      pendingRevealRef.current = null;
+    };
+    const cancelKeyboardNavigation = (event: KeyboardEvent) => {
+      if (event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]')) return;
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) cancelNavigation();
+    };
+    container.addEventListener('wheel', cancelNavigation, { passive: true });
+    container.addEventListener('touchmove', cancelNavigation, { passive: true });
+    container.addEventListener('keydown', cancelKeyboardNavigation);
+    container.addEventListener('pointerdown', cancelNavigation);
+    return () => {
+      navigationRef.current += 1;
+      container.removeEventListener('wheel', cancelNavigation);
+      container.removeEventListener('touchmove', cancelNavigation);
+      container.removeEventListener('keydown', cancelKeyboardNavigation);
+      container.removeEventListener('pointerdown', cancelNavigation);
+      clearSearchHighlights(container);
+    };
+  }, [isOpen, scrollContainerRef]);
+
+  return {
+    isOpen,
+    query,
+    setQuery,
+    matches,
+    activeMatchIndex,
+    inputRef,
+    openSearch,
+    closeSearch,
+    goToNext,
+    goToPrevious,
+    historyError,
+    isLoadingHistory,
+    retryHistory,
+  };
+}

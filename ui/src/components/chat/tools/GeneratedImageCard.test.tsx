@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ChatMessage } from '../types/types';
-import { isProcessMessage, buildRenderableMessageItems, groupProcessIntervals } from '../../chat-v2/processGrouping';
+import { isProcessMessage, buildRenderableMessageItems, groupProcessIntervals } from '../utils/processGrouping';
 import GeneratedImageCard from './GeneratedImageCard';
 import { UnifiedToolCall } from './UnifiedToolCall';
 

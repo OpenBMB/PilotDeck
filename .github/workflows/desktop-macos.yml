@@ -228,6 +228,13 @@ jobs:
           if [ "$PILOTDECK_DESKTOP_REQUIRE_SIGNING" != 1 ]; then updater_args+=(--directory-only); fi
           ELECTRON_RUN_AS_NODE=1 "$app_path/Contents/MacOS/PilotDeck" apps/desktop/scripts/verify-updater.cjs "$app_path/Contents/Resources/app.asar" "${updater_args[@]}"
 
+      - name: Verify packaged Python and Gateway environment lifecycle
+        shell: bash
+        run: |
+          app_path="$(find apps/desktop/dist-electron -mindepth 2 -maxdepth 2 -type d -name 'PilotDeck.app' -print -quit)"
+          test -n "$app_path"
+          PILOTDECK_PYTHON_TEST_ROOT="$app_path/Contents/Resources/python-runtime" pnpm run test:python
+
       - name: Verify production macOS identity and notarization
         if: ${{ inputs.require_macos_signing }}
         shell: bash

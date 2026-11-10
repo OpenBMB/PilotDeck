@@ -15,6 +15,10 @@ pnpm --filter pilotdeck-desktop test
 
 Development and packaging prepare an architecture-matched runtime and pinned native resources. Packaging depends on the matching host architecture and platform toolchain. Use [release instructions](../../docs/release.md), [DEB support](../../docs/ubuntu-desktop-support.md) or [RPM support](../../docs/redhat-desktop-support.md) for build and signing setup.
 
+Desktop includes Python 3.12, uv/uvx and a curated set of agent, data, statistics, plotting and document libraries on all six Windows/macOS/Linux x64/ARM64 targets. Settings > Advanced > Python environment enables it by default. The Gateway creates an offline, writable virtual environment under `PILOT_HOME/runtimes/python`, sharing the immutable bundled base libraries. Preference changes apply to subsequent turns and retain running tasks and MCP connections. See [bundled Python release inputs](../../docs/release.md#bundled-python).
+
+Settings > Advanced shows Git beside Python, including the executing host's source, version and path. Windows desktop already bundles Portable Git/Git Bash and puts it on the runtime PATH; other hosts use their configured/system Git. Opening settings reads Python installation metadata without preparing an environment. Status reads time out after 20 seconds; explicit full Python checks allow 90 seconds for environment creation and library imports. Both can be retried and are cancelled when the page closes.
+
 ## Entry points and boundaries
 
 - [main.ts](src/main.ts): application lifecycle, IPC and supervised Web/Gateway processes.
@@ -26,6 +30,9 @@ Development and packaging prepare an architecture-matched runtime and pinned nat
 - [computerUse.ts](src/computerUse.ts): built-in native Driver lifecycle. Settings > External integrations > Computer Use controls it; macOS permissions belong to PilotDeck Computer Use, not the main app. See [MCP](../../src/mcp/README.md).
 
 Closing the window keeps background work running when a supported tray is available. Explicit Quit stops owned processes; updater failure must restore a working runtime. Do not terminate unrelated user processes.
+
+Runtime readiness owns its probe sockets, retry timers and process listeners. Success, process failure, cancellation and the startup deadline release them before a replacement attempt begins; failed starts do not leave background polling behind.
+Quit, update installation and runtime replacement cancel pending readiness before awaiting startup settlement. Each runtime coalesces launch and cleanup, prevents late startup stages from launching processes after shutdown, and retains failed cleanup for an explicit retry.
 
 Caption menus retain each native popup through deferred close completion. `close()` stops hover tracking and returns a promise that resolves after native teardown. Renderer acknowledgements and queued menu switches resume after the native close callback exits; repeated close requests do not cancel that settlement. Native acceptance controls popup closure through renderer IPC and reads main-process debugger state after dismissal.
 

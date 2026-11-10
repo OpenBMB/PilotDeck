@@ -9,6 +9,7 @@ import type {
   GatewayPermissionDecisionInput,
   GatewayServerInfo,
   GatewaySubmitTurnInput,
+  GatewayTurnOptions,
   GatewayCancelSteerInput,
   GatewayCancelSteerResult,
   GatewaySteerTurnInput,
@@ -95,8 +96,8 @@ export class RemoteGateway implements Gateway {
     this.client.onDisconnect(handler);
   }
 
-  submitTurn(input: GatewaySubmitTurnInput): AsyncIterable<GatewayEvent> {
-    return this.client.stream("submit_turn", input);
+  submitTurn(input: GatewaySubmitTurnInput, options?: GatewayTurnOptions): AsyncIterable<GatewayEvent> {
+    return this.client.stream("submit_turn", input, options);
   }
 
   async steerTurn(input: GatewaySteerTurnInput): Promise<GatewaySteerTurnResult> {
@@ -242,6 +243,14 @@ export class RemoteGateway implements Gateway {
 
   async reloadConfig(): Promise<ReloadConfigResult> {
     return parseReloadConfigResult(await this.client.request("reload_config", {}));
+  }
+
+  async getPythonRuntimeStatus(input?: import('../../runtime/pythonRuntime.js').PythonRuntimeStatusInput): Promise<import('../../runtime/pythonRuntime.js').PythonRuntimeStatus> {
+    return await this.client.request('python_runtime_status', input ?? {}) as import('../../runtime/pythonRuntime.js').PythonRuntimeStatus;
+  }
+
+  async getGitRuntimeStatus(): Promise<import('../../runtime/gitRuntime.js').GitRuntimeStatus> {
+    return await this.client.request('git_runtime_status', {}) as import('../../runtime/gitRuntime.js').GitRuntimeStatus;
   }
 
   async prepareWeixinLogin(): Promise<PrepareWeixinLoginResult> {

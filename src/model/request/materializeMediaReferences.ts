@@ -23,18 +23,25 @@ export type MaterializeMediaReferencesResult = {
 
 export async function materializeMediaReferences(
   messages: CanonicalMessage[],
+  options: { signal?: AbortSignal; maxConcurrency?: number } = {},
 ): Promise<MaterializeMediaReferencesResult> {
+  options.signal?.throwIfAborted();
+  const concurrency = options.maxConcurrency ?? 4;
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new RangeError("Media concurrency must be a positive integer.");
   const cloned = cloneMessages(messages);
   const diagnostics: MediaReferenceMaterializationDiagnostic[] = [];
-
-  await Promise.all(
-    cloned.map(async (message) => {
-      const content = await Promise.all(
-        messageContent(message).map((block) => materializeBlock(block, diagnostics)),
-      );
-      message.content = content;
-    }),
-  );
+  const pending = cloned.flatMap(message => messageContent(message).map((block, index) => ({ message, block, index })));
+  let next = 0;
+  const reads = new Map<string, Promise<string>>();
+  const workers = Array.from({ length: Math.min(concurrency, pending.length) }, async () => {
+    while (next < pending.length) {
+      options.signal?.throwIfAborted();
+      const { message, block, index } = pending[next++];
+      message.content[index] = await materializeBlock(block, diagnostics, options.signal, reads);
+    }
+  });
+  await Promise.all(workers);
+  options.signal?.throwIfAborted();
 
   return { messages: cloned, diagnostics };
 }
@@ -42,13 +49,22 @@ export async function materializeMediaReferences(
 async function materializeBlock(
   block: CanonicalContentBlock,
   diagnostics: MediaReferenceMaterializationDiagnostic[],
+  signal: AbortSignal | undefined,
+  reads: Map<string, Promise<string>>,
 ): Promise<CanonicalContentBlock> {
   if (block.type !== "media_reference") {
     return block;
   }
 
   try {
-    const data = await readFile(block.path, "utf8");
+    signal?.throwIfAborted();
+    let read = reads.get(block.path);
+    if (!read) {
+      read = readFile(block.path, { encoding: "utf8", signal });
+      reads.set(block.path, read);
+    }
+    const data = await read;
+    signal?.throwIfAborted();
     const materialized = toMediaBlock(block, data);
     if (!materialized) {
       diagnostics.push({
@@ -61,6 +77,7 @@ async function materializeBlock(
     }
     return materialized;
   } catch (error) {
+    signal?.throwIfAborted();
     diagnostics.push({
       code: "media_reference_materialization_failed",
       path: block.path,

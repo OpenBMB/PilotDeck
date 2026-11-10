@@ -83,6 +83,21 @@ test('restored reasoning shows its measured duration and reduced motion keeps th
   expect(await live.evaluate((node) => getComputedStyle(node).animationName)).toBe('none');
 });
 
+test('short restored thoughts show at least one second in both the group and its details', async ({ page }) => {
+  await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
+  await page.evaluate(() => window.streamFixture.restoreThinking(0));
+  const group = page.locator('[data-process-block] > button');
+  await expect(group).toHaveAttribute('aria-expanded', 'true');
+  await group.click();
+  await expect(group).toHaveText('Thought for 1s');
+  await group.click();
+  await expect(page.locator('[data-thinking-state] > button')).toHaveText('Thought for 1s');
+  await page.evaluate(() => window.streamFixture.setLanguage('zh-CN'));
+  await expect(page.locator('[data-thinking-state] > button')).toHaveText('已思考 1 秒');
+  await group.click();
+  await expect(group).toHaveText('已思考 1 秒');
+});
+
 test('live and completed tools keep semantic icons in every palette', async ({ page }) => {
   await page.goto('/e2e/fixtures/streaming-scroll.html?history=0');
   await page.evaluate(() => {
@@ -92,10 +107,13 @@ test('live and completed tools keep semantic icons in every palette', async ({ p
   });
   const writeIcon = page.locator('[data-tool-id="new-file"] > div > button > svg').first();
   await expect(writeIcon).toHaveClass(/lucide-file-plus-2/);
-  await expect(writeIcon).toHaveCSS('animation-name', 'pulse');
+  await expect(writeIcon).toHaveCSS('animation-name', 'none');
+  const writeText = page.locator('[data-tool-id="new-file"] .chat-process-shimmer');
+  await expect(writeText).toHaveCSS('animation-name', 'chat-process-shimmer');
   await expect(page.locator('[data-process-block] > button > svg').first()).toHaveClass(/lucide-file-plus-2/);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(writeIcon).toHaveCSS('animation-name', 'none');
+  await expect(writeText).toHaveCSS('animation-name', 'none');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.evaluate(() => {
     window.streamFixture.finishTool('new-file', 'Written');

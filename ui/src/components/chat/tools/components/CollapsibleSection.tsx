@@ -35,7 +35,11 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
   useEffect(() => {
     if (expanded) { setNativeOpen(true); return; }
     if (!nativeOpen) return;
-    const timer = window.setTimeout(() => setNativeOpen(false), 240);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setNativeOpen(false); return; }
+    // Closing native details suppresses descendant rendering and can freeze
+    // an in-flight grid transition. Let its actual end close the native seat;
+    // the fallback covers transitions cancelled by a hidden ancestor/tab.
+    const timer = window.setTimeout(() => setNativeOpen(false), 1000);
     return () => window.clearTimeout(timer);
   }, [expanded, nativeOpen]);
   const toggle = (value: boolean) => { setLocal({ source: open, expanded: value }); onOpenChange?.(value); };
@@ -86,7 +90,10 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
         )}
         {action && <span className="ml-1 flex-shrink-0">{action}</span>}
       </summary>
-      <AnimatedDisclosure id={contentId} expanded={expanded} keepMounted contentClassName="ml-[22px] mt-2">
+      <AnimatedDisclosure id={contentId} expanded={expanded} keepMounted contentClassName="ml-[22px] mt-2"
+        onTransitionEnd={event => {
+          if (event.target === event.currentTarget && event.propertyName === 'grid-template-rows' && !expanded) setNativeOpen(false);
+        }}>
         {children}
       </AnimatedDisclosure>
     </details>

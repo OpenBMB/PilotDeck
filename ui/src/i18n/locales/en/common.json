@@ -62,7 +62,10 @@
     "noMatches": "No matches",
     "previous": "Previous match",
     "next": "Next match",
-    "close": "Close search"
+    "close": "Close search",
+    "historyLoadFailed": "Could not load earlier messages.",
+    "retryHistory": "Retry",
+    "loadingHistory": "Loading conversation history"
   },
   "filesWorkbench": {
     "openFileTitle": "Open a file to start working",

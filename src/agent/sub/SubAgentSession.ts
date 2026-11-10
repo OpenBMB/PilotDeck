@@ -213,27 +213,18 @@ export class SubAgentSession {
 
   private buildScopedRegistry(): ToolRegistry {
     const scoped = new ToolRegistry();
-    const allowedSet = new Set(this.options.definition.allowedTools);
-    const wildcard = allowedSet.has("*");
     for (const tool of this.options.parentDependencies.tools.registry.list()) {
-      if (!wildcard && !allowedSet.has(tool.name)) {
-        continue;
-      }
-      if (tool.name === "enter_plan_mode" || tool.name === "exit_plan_mode") {
-        continue; // Subagents must not participate in the plan-mode workflow.
-      }
-      if (tool.name === "agent") {
-        continue; // Subagents must never nest-fork.
-      }
-      if (tool.name.startsWith("always_on_")) {
-        continue; // Always-On tools require a RunContext unavailable in subagents.
-      }
-      if (tool.name === "ask_user_question") {
-        continue; // Subagents have no elicitation channel.
-      }
+      if (!this.includesTool(tool)) continue;
       scoped.register(tool as PilotDeckToolDefinition);
     }
     return scoped;
+  }
+
+  private includesTool(tool: PilotDeckToolDefinition): boolean {
+    const allowed = this.options.definition.allowedTools;
+    return (allowed.includes("*") || allowed.includes(tool.name))
+      && !["enter_plan_mode", "exit_plan_mode", "agent", "ask_user_question"].includes(tool.name)
+      && !tool.name.startsWith("always_on_");
   }
 
   private forwardActivity(event: AgentEvent): void {
@@ -300,6 +291,10 @@ export class SubAgentSession {
     return {
       router: this.options.parentDependencies.router,
       tools: { scheduler, registry },
+      refreshToolCatalog: this.options.parentDependencies.refreshToolCatalog
+        ? (target, signal, include) => this.options.parentDependencies.refreshToolCatalog!(target, signal,
+          tool => this.includesTool(tool) && (include?.(tool) ?? true))
+        : undefined,
       context: this.options.parentDependencies.context,
       now: this.options.parentDependencies.now,
       uuid: this.options.parentDependencies.uuid,

@@ -45,6 +45,24 @@ it('failed enable leaves the previous state visible and displays the error', asy
   await waitFor(() => expect(view.getByRole('alert').textContent).toBe('failed to save'));
   expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('false');
 });
+it.each(['success', 'failure'])('can stop a pending Windows enable and ignores its late %s', async outcome => {
+  const initial = { ...disabled, platform: 'win32', permissions: undefined };
+  const fetch = install(false, initial);
+  const view = render(<ComputerUseSections />);
+  await waitFor(() => expect(view.getByRole('switch').hasAttribute('disabled')).toBe(false));
+  let complete!: (response: Response) => void;
+  fetch.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  fireEvent.click(view.getByRole('switch'));
+  const stop = view.getByRole('button', { name: 'computerUse.stop' });
+  expect(stop.hasAttribute('disabled')).toBe(false);
+  fireEvent.click(stop);
+  await waitFor(() => expect(view.getByRole('switch').hasAttribute('disabled')).toBe(false));
+  expect(fetch).toHaveBeenLastCalledWith('/api/computer-use/enabled', expect.objectContaining({ body: '{"enabled":false}' }));
+  await act(async () => complete({ ok: outcome === 'success', json: async () => outcome === 'success'
+    ? { ...initial, enabled: true, phase: 'ready' } : { error: 'Canceled startup failed' } } as Response));
+  expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('false');
+  expect(view.queryByRole('alert')).toBeNull();
+});
 it('permission buttons explicitly request the selected grant through HTTP', async () => {
   const fetch = install(); const view = render(<ComputerUseSections />);
   await waitFor(() => expect(view.getAllByText('computerUse.openPermissions')).toHaveLength(2));

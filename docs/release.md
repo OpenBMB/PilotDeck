@@ -23,6 +23,52 @@ and pending-run migration behavior.
 - Desktop runtime production dependencies use the dedicated manifest and frozen
   lockfile under `apps/desktop/runtime`; Web installs do not include this package.
 
+## Bundled Python
+
+`apps/desktop/scripts/prepare-python.mjs` builds the native `resources/python-runtime`
+payload on matching Windows, macOS and Linux x64/ARM64 hosts. `scripts/python/runtime.json`
+pins CPython 3.12 and uv release archives by SHA-256. Per-target `requirements-*.txt`
+lock wheel versions and hashes; source builds and runtime downloads are not used.
+`requirements.in` defines the curated direct dependencies; `packages.json` defines the
+imports and package versions validated before packaging. Keep CPython, uv and wheel
+license notices in the payload. The after-pack hook executes the copied interpreter,
+imports every library and checks platform, architecture and versions.
+
+To update locks, first prepare a bootstrap interpreter with
+`node apps/desktop/scripts/prepare-python.mjs --bootstrap`, then use its uv executable
+to run `uv pip compile scripts/python/requirements.in --python <bootstrap-python>
+--python-version 3.12 --python-platform <target-triple> --only-binary :all:
+--generate-hashes --no-header --no-annotate --output-file
+scripts/python/requirements-<platform>-<arch>.txt --index-url https://pypi.org/simple`
+for each target in `runtime.json`. Run the preparation script again without `--bootstrap`.
+`PILOTDECK_PYTHON_ARCHIVE` and `PILOTDECK_UV_ARCHIVE` accept local archives, and
+`PILOTDECK_PYTHON_BASE_URL` / `PILOTDECK_UV_BASE_URL` support mirrors; checksum checks
+still apply. `PILOTDECK_PYTHON_DESTINATION` selects an isolated build output.
+
+The installed base is immutable. A version-and-location keyed venv under
+`PILOT_HOME/runtimes/python` provides `python`, `python3`, pip and writable additions,
+with bundled uv/uvx on PATH. `python -m pip install` and `uv pip install` target that
+venv; uncached additions require network access. Existing explicitly activated venvs
+and explicit MCP executables/environment selections take precedence. Disabling
+`runtime.python.enabled` removes the bundled capability from later turns, without
+deleting environments or interrupting old tasks. It is a preference, not an execution
+sandbox. An application upgrade creates a new venv; user additions are retained in
+the previous directory but are not copied automatically between Python payloads.
+
+Browser clients use the same Gateway capability and setting. Standalone Web/CLI
+deployments can prepare a matching payload and set `PILOTDECK_PYTHON_ROOT` to its
+absolute directory on the execution host. Without that payload they report
+unavailable and preserve the host's existing tools; browser-side Python is not used.
+External programs such as LibreOffice and Poppler remain separate dependencies.
+
+Run `pnpm run test:python` after preparing a native payload. Override
+`PILOTDECK_PYTHON_TEST_ROOT` to test an installed/copied payload; native checks are
+skipped only when no bundle is available in an ordinary source checkout. Desktop CI
+sets that path to the actual packaged payload on all six targets and additionally
+checks DEB and RPM installations. Tests cover offline documents/data/plots, writable
+package isolation, real shell and MCP execution, model context, and preference changes
+during a live Gateway turn. UI checks live beside the Advanced settings component.
+
 Pull requests that touch shared, UI, Docker, or desktop code run the Web
 regression workflow. Desktop-related pull requests also compile and test the
 desktop shell.
@@ -40,8 +86,8 @@ guidance on keeping regression coverage focused.
 the latest unified release tag:
 
 - no production change: skip the release;
-- production change: build signed and notarized macOS arm64 and x64 installers,
-  an unsigned Windows installer, and Ubuntu x64 and arm64 DEBs and RHEL-family x64 and arm64 RPMs, then publish one
+- production change: build signed and notarized macOS installers, signed Windows
+  installers, Ubuntu DEBs, and RHEL-family RPMs for x64 and arm64, then publish one
   dated GitHub Release;
 - repeated manual release on the same date: use `-r2`, `-r3`, and so on.
 
@@ -551,8 +597,8 @@ Repository administrator setup:
    small real signature/verification probe, then run the **Windows** workflow
    with `require_windows_signing=true`. It builds both native architectures, signs
    each EXE before generating updater hashes, and fails on invalid signatures.
-5. Daily Release always passes `require_windows_signing=true`; the legacy
-   `PILOTDECK_WINDOWS_SIGNING_ENABLED` variable is no longer used. Missing or
+5. Daily Release passes `require_windows_signing=true` and `secrets: inherit` so
+   the reusable Windows job can resolve secrets from `windows-signing`. Missing or
    invalid credentials, signatures or timestamps stop the Windows job before
    artifact upload and block the entire release. PR checks retain the reusable
    workflow's unsigned default. Manual Desktop Build exposes

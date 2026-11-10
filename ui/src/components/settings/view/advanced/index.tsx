@@ -8,6 +8,8 @@ import AdvancedRetrySection from "./components/AdvancedRetrySection";
 import ServiceSection from "./components/ServiceSection";
 import CustomEnvSection from "./components/CustomEnvSection";
 import RuntimeLogsSection from './components/RuntimeLogsSection';
+import PythonRuntimeSection from './components/PythonRuntimeSection';
+import GitRuntimeSection from './components/GitRuntimeSection';
 
 type AdvancedSectionsProps = {
   title: string;
@@ -44,6 +46,8 @@ export default function AdvancedSections({ title: _title }: AdvancedSectionsProp
         </div>
       ) : parsedConfig ? (
         <>
+          <PythonRuntimeSection config={parsedConfig} onSave={saveConfig} saving={saving} />
+          <GitRuntimeSection />
           <RuntimeLogsSection config={parsedConfig} onSave={saveConfig} saving={saving} />
           <AdvancedRetrySection
             config={parsedConfig}

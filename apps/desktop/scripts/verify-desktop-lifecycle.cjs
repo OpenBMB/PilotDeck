@@ -48,7 +48,8 @@ async function verify(scenario) {
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID, String(process.pid));
       const task = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {stdio:'ignore'});
       fs.writeFileSync(process.env.PILOTDECK_TRAY_TEST_PID + '.task', String(task.pid));
-      if (process.env.PILOTDECK_TEST_SCENARIO === 'startup-quit') await new Promise(resolve => setTimeout(resolve, 700));
+      // Never become ready: Quit must cancel the pending readiness wait.
+      if (process.env.PILOTDECK_TEST_SCENARIO === 'startup-quit') await new Promise(() => {});
       process.send({type:'pilotdeck:configuration-state',configuration:{state:'ready'}});
       http.createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><title>Tray test</title><p>Isolated runtime</p>'); }).listen(Number(process.env.SERVER_PORT), '127.0.0.1');
     `);

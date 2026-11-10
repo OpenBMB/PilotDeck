@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { requestAppVersion } from "../../network/requestContext.js";
-import type { GatewayEvent } from "../protocol/types.js";
+import type { GatewayEvent, GatewayTurnOptions } from "../protocol/types.js";
 import type { GatewayWsClientName, WsEventFrame, WsGatewayMethod, WsHelloOk, WsNotificationFrame, WsResponseFrame } from "../protocol/frames.js";
 import { PILOTDECK_GATEWAY_PROTOCOL_VERSION } from "../protocol/version.js";
 
@@ -141,17 +141,36 @@ export class GatewayWsClient {
 
   request(method: WsGatewayMethod, params: unknown): Promise<unknown> {
     const id = randomUUID();
-    this.send({ type: "request", id, method, params });
-    return new Promise((resolve, reject) => {
+    const result = new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
     });
+    try { this.send({ type: "request", id, method, params }); }
+    catch (error) { this.pending.delete(id); throw error; }
+    return result;
   }
 
-  stream(method: WsGatewayMethod, params: unknown): AsyncIterable<GatewayEvent> {
+  stream(method: WsGatewayMethod, params: unknown, options: GatewayTurnOptions = {}): AsyncIterable<GatewayEvent> {
     const id = randomUUID();
-    const queue = new AsyncEventQueue<GatewayEvent>();
+    const turn = method === "submit_turn" ? params as { sessionKey?: string; runId?: string } : undefined;
+    const runId = turn ? turn.runId ?? randomUUID() : undefined;
+    const onAbort = () => { void queue[Symbol.asyncIterator]().return?.().catch(() => undefined); };
+    const queue = new AsyncEventQueue<GatewayEvent>(async () => {
+      if (!this.streams.delete(id)) return;
+      if (turn?.sessionKey && runId) {
+        try { await this.request("abort_turn", { requestId: id, sessionKey: turn.sessionKey, runId, reason: "consumer_closed" }); }
+        catch { /* Disconnect has already terminated the stream. */ }
+      }
+    }, () => options.signal?.removeEventListener("abort", onAbort));
+    if (options.signal?.aborted) { queue.close(); return queue; }
+    options.signal?.addEventListener("abort", onAbort, { once: true });
     this.streams.set(id, queue);
-    this.send({ type: "request", id, method, params });
+    try {
+      this.send({ type: "request", id, method, params: turn ? { ...turn, runId } : params });
+    } catch (error) {
+      this.streams.delete(id);
+      queue.close();
+      throw error;
+    }
     return queue;
   }
 
@@ -183,6 +202,13 @@ export class GatewayWsClient {
     if (frame.type === "response") {
       const pending = this.pending.get(frame.id);
       if (!pending) {
+        if (!frame.ok) {
+          const stream = this.streams.get(frame.id);
+          if (stream) {
+            this.streams.delete(frame.id);
+            stream.fail(responseError(frame.error));
+          }
+        }
         return;
       }
       this.pending.delete(frame.id);
@@ -194,16 +220,7 @@ export class GatewayWsClient {
         // payload (e.g. `validation` for SkillValidationError) so
         // hosts can route on a stable identifier instead of parsing
         // the message string.
-        const envelope = frame.error as { code?: string; message?: string; validation?: unknown; details?: unknown };
-        pending.reject(
-          new GatewayRequestError(
-            envelope.code ?? "gateway_request_failed",
-            envelope.message ?? "Gateway request failed.",
-            envelope.validation !== undefined || envelope.details !== undefined
-              ? { validation: envelope.validation, details: envelope.details }
-              : undefined,
-          ),
-        );
+        pending.reject(responseError(frame.error));
       }
       return;
     }
@@ -242,7 +259,10 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
   private closed = false;
   private error?: Error;
 
+  constructor(private readonly cancel?: () => Promise<void>, private readonly settled?: () => void) {}
+
   push(value: T): void {
+    if (this.closed) return;
     const waiter = this.waiters.shift();
     if (waiter) {
       waiter.resolve({ done: false, value });
@@ -253,6 +273,7 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
 
   close(): void {
     this.closed = true;
+    this.settled?.();
     for (const waiter of this.waiters.splice(0)) {
       waiter.resolve({ done: true, value: undefined });
     }
@@ -260,7 +281,9 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
 
   fail(error: Error): void {
     this.error = error;
+    this.values.length = 0;
     this.closed = true;
+    this.settled?.();
     for (const waiter of this.waiters.splice(0)) {
       waiter.reject(error);
     }
@@ -269,6 +292,12 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
   [Symbol.asyncIterator](): AsyncIterator<T> {
     return {
       next: () => this.next(),
+      return: async () => {
+        this.values.length = 0;
+        this.close();
+        await this.cancel?.();
+        return { done: true, value: undefined };
+      },
     };
   }
 
@@ -285,6 +314,16 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
     }
     return new Promise((resolve, reject) => this.waiters.push({ resolve, reject }));
   }
+}
+
+function responseError(envelope: { code?: string; message?: string; validation?: unknown; details?: unknown }): GatewayRequestError {
+  return new GatewayRequestError(
+    envelope.code ?? "gateway_request_failed",
+    envelope.message ?? "Gateway request failed.",
+    envelope.validation !== undefined || envelope.details !== undefined
+      ? { validation: envelope.validation, details: envelope.details }
+      : undefined,
+  );
 }
 
 function waitForOpen(ws: WebSocket): Promise<void> {

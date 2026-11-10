@@ -29,6 +29,7 @@ import type {
 } from "../../tool/index.js";
 import type { McpClient } from "../client/McpClient.js";
 import type { McpRuntime } from "./McpRuntime.js";
+import { toolContractFingerprint } from "./toolContract.js";
 import type {
   PilotDeckMcpToolAnnotations,
   PilotDeckMcpToolSpec,
@@ -37,14 +38,26 @@ import type {
 export type CreateToolDefinitionsOptions = {
   /** Per-call timeout override (default falls through to McpClient default). */
   callTimeoutMs?: number;
+  refresh?: boolean;
+  signal?: AbortSignal;
 };
+
+const toolOwners = new WeakMap<PilotDeckToolDefinition, McpRuntime>();
+
+export function getMcpToolOwner(tool: PilotDeckToolDefinition): McpRuntime | undefined {
+  return toolOwners.get(tool);
+}
 
 export async function createMcpToolDefinitionsFromRuntime(
   runtime: McpRuntime,
   options: CreateToolDefinitionsOptions = {},
 ): Promise<PilotDeckToolDefinition[]> {
-  const tools = await runtime.listAllTools();
-  return tools.map((spec) => buildToolDefinition(spec, runtime, options));
+  const tools = options.refresh ? await runtime.refreshToolCatalog(options.signal) : await runtime.listAllTools();
+  return tools.map(spec => {
+    const tool = buildToolDefinition(spec, runtime, options);
+    toolOwners.set(tool, runtime);
+    return tool;
+  });
 }
 
 function buildToolDefinition(
@@ -58,6 +71,7 @@ function buildToolDefinition(
   const isOpenWorld = annotations.openWorldHint !== false;
 
   const inputSchema = normalizeSchema(spec.inputSchema);
+  const expectedContract = toolContractFingerprint(spec);
 
   return {
     name: spec.wireName,
@@ -81,6 +95,7 @@ function buildToolDefinition(
         const { content, structuredContent, isError } = await client.callTool(spec.toolName, input, {
           signal: context.abortSignal,
           timeoutMs: options.callTimeoutMs,
+          expectedContract,
         });
         if (isError === true) {
           throw new PilotDeckToolRuntimeError(

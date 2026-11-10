@@ -8,10 +8,10 @@ export function GeneralSettingsIcon({ icon, className }: { icon: LucideIcon; cla
 }
 
 /** The General page's visual contract, shared with other preference pages. */
-export function GeneralCardHeader({ icon, title, extra }: { icon: ReactNode; title: string; extra?: ReactNode }) {
+export function GeneralCardHeader({ icon, title, detail, id, extra }: { icon: ReactNode; title: string; detail?: string; id?: string; extra?: ReactNode }) {
   return <header className="general-card-header">
     <span className="general-card-header-icon" aria-hidden="true">{icon}</span>
-    <h2>{title}</h2>
+    <div className="general-setting-copy"><h2 id={id}>{title}</h2>{detail && <p>{detail}</p>}</div>
     {extra && <span className="general-card-header-extra">{extra}</span>}
   </header>;
 }

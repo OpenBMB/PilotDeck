@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { createRef, type ReactNode } from 'react';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CodeEditorTab } from '../types/types';
 import EditorSidebar from './EditorSidebar';
+
+vi.mock('../../../contexts/ThemeContext', () => ({ useTheme: () => ({ isDarkMode: false }) }));
 
 const mocks = vi.hoisted(() => ({
   codeEditorProps: [] as Array<{
@@ -66,17 +68,19 @@ afterEach(() => {
 });
 
 describe('EditorSidebar workspace embedding', () => {
-  it('keeps the mobile editor embedded inside the Files workspace', () => {
+  it('keeps the mobile editor embedded inside the Files workspace', async () => {
     renderSidebar(true);
 
+    await waitFor(() => expect(mocks.codeEditorProps.length).toBeGreaterThan(0));
     expect(mocks.codeEditorProps.at(-1)?.isSidebar).toBe(true);
     expect(mocks.codeEditorProps.at(-1)?.compactHeader).toBe(true);
     expect(mocks.codeEditorProps.at(-1)?.headerPrefix).toBeTruthy();
   });
 
-  it('retains the legacy full-screen mobile editor outside workspace mode', () => {
+  it('retains the legacy full-screen mobile editor outside workspace mode', async () => {
     renderSidebar(false);
 
+    await waitFor(() => expect(mocks.codeEditorProps.length).toBeGreaterThan(0));
     expect(mocks.codeEditorProps.at(-1)?.isSidebar).toBe(false);
     expect(mocks.codeEditorProps.at(-1)?.compactHeader).toBe(false);
     expect(mocks.codeEditorProps.at(-1)?.headerPrefix).toBeTruthy();

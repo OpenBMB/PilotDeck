@@ -35,6 +35,7 @@ export type PilotConfigDiagnostic = {
 
 export type PilotRawConfig = {
   schemaVersion?: unknown;
+  runtime?: unknown;
   agent?: unknown;
   model?: unknown;
   extension?: unknown;
@@ -208,6 +209,7 @@ export type PilotTelemetryConfig = {
 };
 
 export type PilotConfig = {
+  runtime?: { python: { enabled: boolean } };
   agent: PilotAgentConfig;
   model: ModelConfig;
   extension: PilotExtensionConfig;

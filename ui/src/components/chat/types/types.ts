@@ -2,6 +2,7 @@ import type {
   Project,
   ProjectSession,
   SessionProvider,
+  SessionMessagesUpdateTarget,
 } from '../../../types/app';
 import type { ContentReference } from '../../../types/contentReference';
 
@@ -147,6 +148,13 @@ export interface ChatMessage {
   webFetchCount?: number;
   editedFileCount?: number;
   exploredFileCount?: number;
+  viewedImageCount?: number;
+  generatedImageCount?: number;
+  editedImageCount?: number;
+  generatedVideoCount?: number;
+  openedPageCount?: number;
+  browserActionCount?: number;
+  loadedSkillCount?: number;
   commandCount?: number;
   subagentCount?: number;
   compactCount?: number;
@@ -256,7 +264,6 @@ export interface ChatInterfaceProps {
   ws: WebSocket | null;
   sendMessage: (message: unknown) => boolean;
   subscribe?: (handler: (message: any) => void) => () => void;
-  latestMessage: any;
   onFileOpen?: (filePath: string, diffInfo?: any) => void;
   onInputFocusChange?: (focused: boolean) => void;
   onSessionActive?: (sessionId?: string | null) => void;
@@ -282,9 +289,10 @@ export interface ChatInterfaceProps {
   autoScrollToBottom?: boolean;
   sendByCtrlEnter?: boolean;
   externalMessageUpdate?: number;
+  externalMessageUpdateTarget?: SessionMessagesUpdateTarget | null;
   onTaskClick?: (...args: unknown[]) => void;
   onShowAllTasks?: (() => void) | null;
-  // V2 only: when true, ignore session/messages and render the welcome layout:
+  // When true, ignore session/messages and render the welcome layout:
   // centered headline + big composer in the middle of the pane.
   forceWelcome?: boolean;
   // Fired the moment the user submits their first message from welcome

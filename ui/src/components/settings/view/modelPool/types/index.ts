@@ -15,6 +15,7 @@ export type V2Provider = {
 };
 
 export type PilotDeckConfig = {
+  runtime?: { python?: { enabled?: boolean } };
   agent?: {
     model?: string;
     maxContextTokens?: number;

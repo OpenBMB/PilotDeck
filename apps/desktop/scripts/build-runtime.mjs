@@ -507,6 +507,7 @@ function rewriteUiServerSourceImports(serverRoot) {
 }
 
 run(process.execPath, [resolve(desktopRoot, "scripts", "download-node.mjs")], desktopRoot);
+run(process.execPath, [resolve(desktopRoot, "scripts", "prepare-python.mjs")], desktopRoot);
 if (process.platform === "linux") {
   run(process.execPath, [resolve(desktopRoot, "scripts", "prepare-electron.mjs")], desktopRoot);
 }
