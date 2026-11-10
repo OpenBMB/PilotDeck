@@ -1103,6 +1103,30 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
   const turns = createMessageTurns(messages);
   attachSummariesToTurns(messages, turns);
   const stopNotices: RenderableMessageItem[] = [];
+  // Guidance adds user boundaries without starting another execution. Terminal
+  // metadata may sit on any history anchor; it governs every segment of that
+  // run, while its stop notice belongs after the final segment only.
+  const terminalRuns = new Map<string, { outcome: NonNullable<TurnProcessGroup['outcome']>; endedAt: ChatMessage['timestamp']; time: number }>();
+  const lastRunTurns = new Map<string, number>();
+  const interruptedRuns = new Set<string>();
+  turns.forEach((turn, index) => {
+    const anchor = messages[turn.start];
+    const identity = anchor.turnId || anchor.runId;
+    if (identity && anchor.type === 'user') lastRunTurns.set(identity, index);
+  });
+  for (const message of messages) {
+    const identity = message.turnId || message.runId;
+    if (!identity) continue;
+    if (message.isInterruptedNotice) interruptedRuns.add(identity);
+    const reason = message.turnTiming?.finishReason;
+    const outcome = reason ? reason === 'completed' ? 'completed' : reason.startsWith('aborted') ? 'cancelled' : 'failed'
+      : message.isInterruptedNotice ? 'cancelled'
+      : message.isAgentActivitySummary && (message.state === 'completed' || message.state === 'cancelled' || message.state === 'failed') ? message.state : undefined;
+    if (!outcome) continue;
+    const endedAt = message.turnTiming?.completedAt || message.endedAt || message.timestamp;
+    const time = parseMessageTime(endedAt) ?? 0;
+    if (time >= (terminalRuns.get(identity)?.time ?? -Infinity)) terminalRuns.set(identity, { outcome, endedAt, time });
+  }
   let cursor = 0;
   for (const [turnIndex, turn] of turns.entries()) {
     const turnItems: RenderableMessageItem[] = [];
@@ -1110,6 +1134,9 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     if (!turnItems.length) continue;
     const raw = messages.slice(turn.start, turn.end);
     const reversed = [...raw].reverse();
+    const anchor = messages[turn.start];
+    const identity = anchor.turnId || anchor.runId;
+    const terminal = identity ? terminalRuns.get(identity) : undefined;
     const running = working && turnIndex === turns.length - 1;
     const artifacts = raw.flatMap(message => message.artifacts ?? []);
     const fileHost = reversed.find(message => message.type === 'assistant' && (message.turnId || message.runId))
@@ -1122,11 +1149,11 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
       && !message.isCompactBoundary && !isEmptyAssistantShell(message));
     const reason = reversed.find(message => message.turnTiming?.finishReason)?.turnTiming?.finishReason;
     const summaryState = turn.summary?.message.state;
-    const outcome: TurnProcessGroup['outcome'] = reason ? reason === 'completed' ? 'completed'
+    const outcome: TurnProcessGroup['outcome'] = terminal?.outcome ?? (reason ? reason === 'completed' ? 'completed'
       : reason.startsWith('aborted') ? 'cancelled' : 'failed'
       : summaryState === 'completed' ? 'completed'
       : summaryState === 'cancelled' || raw.some(message => message.isInterruptedNotice) ? 'cancelled'
-      : summaryState === 'failed' || raw.some(message => message.type === 'error') ? 'failed' : undefined;
+      : summaryState === 'failed' || raw.some(message => message.type === 'error') ? 'failed' : undefined);
     const interrupted = outcome === 'cancelled' || outcome === 'failed';
     const cancelled = !running && outcome === 'cancelled';
     const finalReply = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
@@ -1153,7 +1180,6 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     const durationMs = getTurnRunDurationMs(messages, turn);
     const timing = getRecordedTurnTiming(raw);
     if (!running && !seats.length && durationMs === null) continue;
-    const anchor = messages[turn.start];
     const startedAtMs = parseMessageTime(anchor.timestamp);
     const group: TurnProcessGroup = {
       id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`,
@@ -1172,11 +1198,13 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     }
     // Timing summaries can confirm a stop without a separate transcript
     // notice. Project one status row outside the fold; never persist or duplicate it.
-    if (cancelled && !turnItems.some(item => item.message.isInterruptedNotice)) {
+    const finalRunSegment = !identity || lastRunTurns.get(identity) === turnIndex;
+    const hasStopNotice = identity ? interruptedRuns.has(identity) : turnItems.some(item => item.message.isInterruptedNotice);
+    if (cancelled && finalRunSegment && !hasStopNotice) {
       const id = `${group.id}-interrupted`;
       stopNotices.push({
         message: { id, renderKey: id, type: 'system', content: '', isInterruptedNotice: true,
-          timestamp: turn.summary?.message.endedAt || reversed[0]?.timestamp || anchor.timestamp },
+          timestamp: terminal?.endedAt || turn.summary?.message.endedAt || reversed[0]?.timestamp || anchor.timestamp },
         originalIndex: turn.end - 0.1,
         beforeRunAttachment: null, afterRunAttachment: null, beforeProcessAttachments: [], afterProcessAttachments: [],
       });
