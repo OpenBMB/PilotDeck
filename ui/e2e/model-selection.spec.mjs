@@ -191,7 +191,7 @@ test('response model appears before time only with the response hover actions', 
 });
 
 for (const preset of ['mint', 'blue']) {
-  test(`the ${preset} model menu keeps white surfaces and follows the active accent`, async ({ page }) => {
+  test(`the ${preset} model menu uses production palette surfaces and semantic file colors`, async ({ page }) => {
     await setup(page);
     await expect.poll(() => choice(page), { timeout: 15000 }).toEqual(B);
     await page.evaluate(async preset => {
@@ -204,7 +204,11 @@ for (const preset of ['mint', 'blue']) {
     await expect(menu).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     const border = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--pd-accent-border').trim());
     const expected = `rgb(${[1,3,5].map(index => parseInt(border.slice(index,index+2),16)).join(', ')})`;
-    await expect(menu).toHaveCSS('border-top-color', expected);
+    const neutralBorder = await page.evaluate(() => {
+      const hex = getComputedStyle(document.documentElement).getPropertyValue('--pd-border').trim();
+      return `rgb(${[1,3,5].map(index => parseInt(hex.slice(index,index+2),16)).join(', ')})`;
+    });
+    await expect(menu).toHaveCSS('border-top-color', neutralBorder);
     const search = menu.getByRole('searchbox');
     await search.focus();
     await expect(search).toHaveCSS('border-top-color', expected);
@@ -217,7 +221,8 @@ for (const preset of ['mint', 'blue']) {
     });
     const icons = page.getByTestId('palette-file-icons').locator('svg');
     await expect(icons.nth(0)).toHaveCSS('stroke', accents[0]);
-    await expect(icons.nth(1)).toHaveCSS('color', accents[1]);
+    // Image files retain their semantic category color across palette changes.
+    await expect(icons.nth(1)).toHaveCSS('color', 'rgb(147, 51, 234)');
     await page.screenshot({ path: new URL(`../../artifacts/appearance-navigation/composer-${preset}.png`, import.meta.url).pathname });
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
