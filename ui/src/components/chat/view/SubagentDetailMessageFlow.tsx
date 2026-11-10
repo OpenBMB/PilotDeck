@@ -250,7 +250,7 @@ export default function SubagentDetailMessageFlow({
           onRetryHistory={chatHistorySearch.retryHistory}
         />
       ) : null}
-      <div ref={scrollContainerRef} data-stream-scroll-viewport className="chat-panel-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ overflowAnchor: 'none' }}>
+      <div ref={scrollContainerRef} data-stream-scroll-viewport tabIndex={0} role="region" aria-label={t('session.conversation', { defaultValue: 'Conversation' })} className="chat-panel-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-neutral-400" style={{ overflowAnchor: 'none' }}>
         <div data-chat-scroll-content className="flex min-w-0 flex-col px-6 py-4" onClickCapture={event => {
           const trigger = expandingDisclosure(event.target);
           if (!trigger) return;

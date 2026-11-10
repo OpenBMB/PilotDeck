@@ -53,6 +53,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it('applies keyboard navigation immediately and preserves controls and modified keys', () => {
+    const { node } = setup();
+    fireEvent.keyDown(node, { key: 'Home' });
+    expect(node.scrollTop).toBe(0);
+    fireEvent.keyDown(node, { key: 'PageDown' });
+    expect(node.scrollTop).toBe(180);
+    fireEvent.keyDown(node, { key: 'ArrowUp' });
+    expect(node.scrollTop).toBe(140);
+    const input = document.createElement('textarea');
+    const button = document.createElement('button');
+    node.append(input, button);
+    fireEvent.keyDown(input, { key: 'Home' });
+    fireEvent.keyDown(button, { key: ' ' });
+    fireEvent.keyDown(node, { key: 'Home', metaKey: true });
+    fireEvent.keyDown(node, { key: 'Home', shiftKey: true });
+    expect(node.scrollTop).toBe(140);
+    fireEvent.keyDown(node, { key: 'End' });
+    expect(node.scrollTop).toBe(800);
+    expect(api.isPaused).toBe(false);
+  });
+
   it.each([-1, 1])('accepts code-region boundary handoff without consuming its inner scroll (%s)', direction => {
     const { node, metrics } = setup();
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
@@ -146,6 +167,7 @@ describe('reader-owned scroll following', () => {
     fireEvent(node, new Event('scrollend'));
     // The old window is entirely below the viewport until React mounts it.
     expect(api.getReadingAnchor()).toBeNull();
+    expect(node.dataset.readingAnchorKey).toBeUndefined();
     const replacement = document.createElement('div');
     replacement.dataset.messageKey = 'new-window';
     let inserted = 0;
@@ -153,6 +175,7 @@ describe('reader-owned scroll following', () => {
     row.replaceWith(replacement);
     act(() => notifyScrollLayout(node));
     expect(api.getReadingAnchor()).toEqual({ key: 'new-window', offset: -10 });
+    expect(node.dataset.readingAnchorKey).toBe('new-window');
     expect(node.scrollTop).toBe(200);
     inserted = 80; metrics.height += 80;
     resize(); flush();

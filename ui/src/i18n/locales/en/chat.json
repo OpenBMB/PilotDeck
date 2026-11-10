@@ -599,6 +599,7 @@
     }
   },
   "session": {
+    "conversation": "Conversation",
     "loadFailedTitle": "Could not load this conversation",
     "retryLoad": "Retry",
     "continue": {

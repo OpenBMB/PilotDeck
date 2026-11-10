@@ -55,7 +55,8 @@ test('code output consumes wheels inside its range and hands both edges to the c
   await expect.poll(() => code.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(300);
   await viewport(page).evaluate(node => {
     const code = node.querySelector('[data-tool-id="scroll-code"] [data-chat-scroll-region]');
-    node.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+    // Register native reader intent before positioning this nested-wheel case.
+    node.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, bubbles: true }));
     node.scrollTop += code.getBoundingClientRect().top - node.getBoundingClientRect().top - 180;
     node.dispatchEvent(new Event('scroll'));
   });
