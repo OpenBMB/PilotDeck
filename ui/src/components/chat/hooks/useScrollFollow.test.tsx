@@ -53,6 +53,47 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it.each([-1, 1])('anchors and ends a gesture whose compositor displacement preceded wheel (%s)', direction => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.scroll(node);
+    node.scrollTop += direction * 30;
+    fireEvent.wheel(node, { deltaY: direction * 30 });
+    metrics.height += 40; resize(); flush();
+    expect(node.scrollTop).toBe(500 + direction * 30);
+    fireEvent.scroll(node);
+    fireEvent(node, new Event('scrollend'));
+    node.scrollTop += direction * 30;
+    resize(); flush();
+    expect(node.scrollTop).toBe(500 + direction * 30);
+  });
+
+  it.each([false, true])('retains delayed native displacement until scrollend (already moved: %s)', alreadyMoved => {
+    const { node, metrics, view } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    fireEvent.wheel(node, { deltaY: -120 });
+    if (alreadyMoved) { node.scrollTop = 470; fireEvent.scroll(node); }
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000);
+    try {
+      // Native scrolling can continue on the compositor while rendering keeps
+      // the main thread from delivering its scroll events for more than 250ms.
+      node.scrollTop -= 30;
+      view.rerender(<Harness version={1} />);
+      fireEvent.scroll(node); resize(); flush();
+      expect(node.scrollTop).toBe(alreadyMoved ? 440 : 470);
+      fireEvent(node, new Event('scrollend'));
+      node.scrollTop -= 30;
+      resize(); flush();
+      expect(node.scrollTop).toBe(alreadyMoved ? 440 : 470);
+    } finally { now.mockRestore(); }
+  });
+
   it.each([-1, 1])('retains compositor momentum while the wheel reverses direction (%s)', direction => {
     const { node, metrics, view } = setup();
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
@@ -113,7 +154,12 @@ describe('reader-owned scroll following', () => {
   });
 
   it.each(['scrollend', 'idle'])('stops attributing later layout movement to a finished gesture (%s)', ending => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'onscrollend')!;
+    // Older engines need the idle fallback; current Chromium ends gestures
+    // through scrollend rather than time spent waiting on a busy main thread.
+    if (ending === 'idle') delete (HTMLElement.prototype as Partial<HTMLElement>).onscrollend;
     const { node, metrics } = setup();
+    Object.defineProperty(HTMLElement.prototype, 'onscrollend', descriptor);
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
     row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
     node.scrollTop = 500;

@@ -11,6 +11,50 @@ async function open(page) {
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
 }
 
+for (const working of [false, true]) {
+  test(`a busy main thread cannot undo a delayed native wheel in a ${working ? 'live' : 'completed'} long conversation`, async ({ page, baseURL }) => {
+    await page.route('**/api/config', route => route.fulfill({ json: {} }));
+    await page.goto(new URL('/e2e/fixtures/streaming-scroll.html?history=100', baseURL).href);
+    await expect(page.locator('[data-virtualized-messages="true"]')).toHaveCount(1);
+    await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+    if (working) {
+      await page.evaluate(() => {
+        window.streamFixture.beginTurn();
+        window.streamFixture.tool('busy-read', 'read_file', { file_path: 'example.ts' });
+        window.streamFixture.finishTool('busy-read', 'Synthetic file contents.');
+        window.streamFixture.text('Current output.\n\n'.repeat(12));
+      });
+      await expect(page.getByText('Current output.', { exact: true }).last()).toBeVisible();
+      await expect(page.getByText('Current output.', { exact: true })).toHaveCount(12);
+      await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+    }
+    await viewport(page).hover({ position: { x: 60, y: 300 } });
+    await viewport(page).evaluate(node => {
+      const row = [...node.querySelectorAll('[data-message-key]')].find(item => !item.closest('[inert]')
+        && item.getBoundingClientRect().bottom > node.getBoundingClientRect().top);
+      window.delayedWheelAnchor = { key: row.dataset.messageKey, y: row.getBoundingClientRect().top };
+      node.addEventListener('wheel', () => {
+        // Model expensive Markdown/tool rendering after input is registered.
+        // A blocking listener makes native movement wait for the busy thread,
+        // exercising the event-after-input ordering on every platform.
+        const until = performance.now() + 400;
+        while (performance.now() < until) { /* deliberate main-thread stall */ }
+      }, { once: true, passive: false });
+    });
+    await page.mouse.wheel(0, -120);
+    const displacement = () => viewport(page).evaluate(node => {
+      const anchor = window.delayedWheelAnchor;
+      const row = [...node.querySelectorAll('[data-message-key]')].find(item => item.dataset.messageKey === anchor?.key);
+      return row ? row.getBoundingClientRect().top - anchor.y : NaN;
+    });
+    await expect.poll(displacement).toBeCloseTo(120, 0);
+    // Measurements may arrive after the native scroll appears to have landed.
+    await page.waitForTimeout(1000);
+    expect(await displacement()).toBeCloseTo(120, 0);
+    await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+  });
+}
+
 test('small upward gestures win over text streaming and explicit resume follows again', async ({ page }) => {
   await open(page);
   await page.evaluate(() => window.streamFixture.text('Streaming response.\n\n'.repeat(60)));
@@ -342,6 +386,9 @@ test('ongoing generation permits bidirectional wheels and repeated middle-step d
   });
   const group = page.locator('[data-process-block] > button');
   await expect(group).toHaveAttribute('aria-expanded', 'false');
+  // Wait for the initial typewriter tail before requesting a large downward
+  // wheel; an unfinished reply can still make that target exceed native bounds.
+  await expect(page.getByText('Current streamed paragraph.', { exact: true })).toHaveCount(20);
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
   await page.evaluate(() => {
     let tokens = 0;

@@ -211,7 +211,8 @@ export function useScrollFollow({
     captureAnchor();
     // One native gesture produces multiple scroll frames (smooth wheels,
     // touch inertia and PageUp/Down). Keep ownership until scrollend/idle.
-    userScrollRef.current = { ...input, moved: true, top: node.scrollTop, expiresAt: Date.now() + GESTURE_IDLE_MS };
+    userScrollRef.current = { ...input, moved: true, top: node.scrollTop,
+      expiresAt: input.expiresAt === Infinity ? Infinity : Date.now() + GESTURE_IDLE_MS };
     rememberMetrics();
     return true;
   }, [containerRef, captureAnchor, rememberMetrics, restoreAnchor]);
@@ -297,6 +298,12 @@ export function useScrollFollow({
     const node = containerRef.current;
     if (!node) return;
     let touchY: number | null = null;
+    // Native scrolling can run on the compositor while Markdown/tool rendering
+    // blocks this thread. Wall time alone cannot end that gesture: its delayed
+    // scroll events still belong to the reader. Current desktop engines signal
+    // the actual end; retain the idle fallback only for older browsers.
+    const supportsScrollEnd = 'onscrollend' in node;
+    const gestureDeadline = () => supportsScrollEnd ? Infinity : Date.now() + GESTURE_IDLE_MS;
     const atBottom = () => node.scrollHeight - node.scrollTop - node.clientHeight <= BOTTOM_EPSILON;
     const sourceViewport = (target: EventTarget | null) => {
       let source = target instanceof Element ? target.closest<HTMLElement>(VIEWPORT_SELECTOR) ?? node : node;
@@ -313,13 +320,20 @@ export function useScrollFollow({
       setPaused(true);
       if (source === node) {
         programmaticTopRef.current = null;
-        userScrollRef.current = { top: node.scrollTop, direction: -1, expiresAt: Date.now() + GESTURE_IDLE_MS };
+        userScrollRef.current = { top: node.scrollTop, direction: -1, expiresAt: gestureDeadline(),
+          moved: node.scrollTop !== metricsRef.current.top };
       }
     };
     const beginDownwardInput = (target: EventTarget | null) => {
       if (sourceViewport(target) !== node) return;
       if (atBottom()) scrollToBottom();
-      else userScrollRef.current = { top: node.scrollTop, direction: 1, expiresAt: Date.now() + GESTURE_IDLE_MS };
+      else {
+        const moved = node.scrollTop !== metricsRef.current.top;
+        // The compositor can move before delivering wheel. Adopt that reading
+        // position now, before reflow can restore the preceding gesture's anchor.
+        if (moved) captureAnchor();
+        userScrollRef.current = { top: node.scrollTop, direction: 1, expiresAt: gestureDeadline(), moved };
+      }
     };
     const wheel = (event: WheelEvent) => {
       if (event.ctrlKey) return;
