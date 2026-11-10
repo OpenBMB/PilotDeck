@@ -15,6 +15,7 @@ React/Vite client and Express server used by browser and Electron deployments.
 - Server entry: [server/index.js](server/index.js); HTTP routes and services live under [server](server). [Router dashboard projections](server/services/routerDashboard.js) read stats and transcripts asynchronously, identify requests by durable turn IDs, revalidate file identity and coalesce concurrent reads. Projection caches have both entry and byte limits; summary and single-session queries avoid unrelated transcript enrichment.
 - Plugin mounts own isolated containers, context subscriptions and an AbortSignal. Version changes and successful update revisions reload the active module; cleanup aborts its RPC requests and disposes late asynchronous mounts without touching the next instance or host-owned error feedback.
 - Shared contracts: [shared](shared); real browser/Electron acceptance: [e2e](e2e).
+- Chat Markdown renders Mermaid diagrams after a response finishes, with source/copy controls and a source fallback for invalid diagrams or external image nodes. The renderer is loaded on demand and uses strict security settings. Search locates diagram messages without modifying SVG labels; source view supports text highlighting.
 - [Form chrome](src/form-controls.css) owns select menus, checkbox/radio indicators and sliders. Keep semantic HTML controls and existing change handlers. Electron and Chromium 135+ use CSS `base-select` top-layer menus; other engines retain a functional native picker. Do not cover selects with transparent overlays. [Form events](src/lib/formControlEvents.ts) lets an open picker consume Escape before an enclosing dialog.
 - Memory and scheduling settings reuse [General settings primitives](src/components/settings/shared/view/GeneralSettingsPrimitives.tsx). The embedded memory dashboard receives the same form chrome and palette tokens; its status colors remain data-specific. Run `node ui/e2e/memory-schedule-settings.smoke.mjs` against Vite on port 5187 for card/control consistency, keyboard import, scoped data actions, interval edits and schedule validation. These cases also run in the browser regression suite.
 - [DateTimeField](src/components/ui/DateTimeField.tsx) supplies themed calendar/clock panels while retaining typed inputs, ISO date/time values and browser validation. File/directory selection and OS permission dialogs remain system-owned.
@@ -33,5 +34,9 @@ pnpm --dir ui typecheck
 pnpm --dir ui test
 pnpm --dir ui build
 ```
+
+Mermaid browser regression: `pnpm --dir ui exec playwright test --config e2e/mermaid.config.mjs`.
+Web Regression CI runs this suite for browser-affecting changes and uploads failure evidence.
+It uses synthetic chat events and a local Vite server; set `PILOTDECK_TEST_BROWSER_CHANNEL=chrome` to use an installed Chrome instead of Playwright Chromium.
 
 The import audit, `node scripts/audit-ui-reachability.mjs --exports`, reports review candidates only. Dynamic consumers and intentional test helpers need manual review before deletion. See [API references](../docs/README.md) and [test guidance](../docs/testing.md).

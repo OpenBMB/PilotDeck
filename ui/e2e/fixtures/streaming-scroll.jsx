@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FindShortcutProvider } from '../../src/contexts/FindShortcutContext';
+import { ThemeProvider } from '../../src/contexts/ThemeContext';
 import PermissionRequestsBanner from '../../src/components/chat/view/subcomponents/PermissionRequestsBanner';
 import MessagesPane from '../../src/components/chat/view/MessagesPane';
 import { useScrollFollow } from '../../src/components/chat/hooks/useScrollFollow';
@@ -170,4 +171,4 @@ function Fixture() {
     </div>
   </div></FindShortcutProvider>;
 }
-createRoot(document.getElementById('root')).render(<Fixture />);
+createRoot(document.getElementById('root')).render(<ThemeProvider><Fixture /></ThemeProvider>);

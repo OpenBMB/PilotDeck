@@ -190,6 +190,51 @@ describe('chatHistorySearchUtils', () => {
     expect(activeMarks[0].parentElement).toBe(secondSpan);
   });
 
+  it('leaves SVG labels and styles intact and falls back to the containing message', () => {
+    const container = document.createElement('div');
+    container.innerHTML = '<div class="chat-message" data-message-key="diagram"><svg><style>.needle { fill: red }</style><text>needle</text></svg></div>';
+    const message = container.firstElementChild;
+    const original = message?.innerHTML;
+    const searchable = buildSearchableMessages([{ messageKey: 'diagram', message: {
+      type: 'assistant', content: '```mermaid\nflowchart LR\n A[needle]\n```',
+    } as ChatMessage }]);
+    const matches = findChatHistoryMatches(searchable, 'needle');
+    const target = highlightSearchMatches(container, searchable, matches, 'needle', matches[0]);
+    expect(target).toBe(message);
+    expect(message?.innerHTML).toBe(original);
+    expect(container.querySelector('mark')).toBeNull();
+  });
+
+  it('highlights visible source instead of the hidden diagram fallback', () => {
+    const container = document.createElement('div');
+    container.innerHTML = '<div class="chat-message" data-message-key="diagram"><div hidden><pre>needle</pre></div><pre>needle</pre></div>';
+    const searchable = buildSearchableMessages([{ messageKey: 'diagram', message: {
+      type: 'assistant', content: 'needle',
+    } as ChatMessage }]);
+    const matches = findChatHistoryMatches(searchable, 'needle');
+    const target = highlightSearchMatches(container, searchable, matches, 'needle', matches[0]);
+    expect(container.querySelector('[hidden] mark')).toBeNull();
+    expect(target?.parentElement).toBe(container.querySelector('.chat-message > pre'));
+    expect(target?.textContent).toBe('needle');
+  });
+
+  it('preserves result order when a diagram and later prose contain the same word', () => {
+    const container = document.createElement('div');
+    container.innerHTML = '<div class="chat-message" data-message-key="diagram"><div data-chat-search-text="flowchart LR A[needle]"><svg><style>.needle { fill: red }</style><text>needle</text></svg></div><p>needle in the paragraph</p></div>';
+    const searchable = buildSearchableMessages([{ messageKey: 'diagram', message: {
+      type: 'assistant', content: '```mermaid\nflowchart LR A[needle]\n```\n\nneedle in the paragraph',
+    } as ChatMessage }]);
+    const matches = findChatHistoryMatches(searchable, 'needle');
+    expect(matches).toHaveLength(2);
+    const first = highlightSearchMatches(container, searchable, matches, 'needle', matches[0]);
+    expect(first).toBe(container.firstElementChild);
+    expect(container.querySelector('mark[aria-current]')).toBeNull();
+    const second = highlightSearchMatches(container, searchable, matches, 'needle', matches[1]);
+    expect(second?.parentElement).toBe(container.querySelector('p'));
+    expect(second?.getAttribute('aria-current')).toBe('true');
+    expect(container.querySelector('svg mark')).toBeNull();
+  });
+
   it('centers a mounted result relative to the current conversation scroll position', () => {
     const container = document.createElement('div');
     const target = document.createElement('mark');
