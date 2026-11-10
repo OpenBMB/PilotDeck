@@ -242,3 +242,5 @@ export {
   isAskModeAllowedTool,
   isAskModeViolationText,
 } from "./askModeConstraints.js";
+
+export { createTaskPreviewTool, type TaskPreviewInput, type TaskPreviewOutput } from "./builtin/taskPreview.js";

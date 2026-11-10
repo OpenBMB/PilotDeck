@@ -10,3 +10,30 @@ Scope: [BackgroundTaskRuntime](../../src/task/runtime/BackgroundTaskRuntime.ts),
 - The registry is in memory. Do not imply restart persistence or recovery that has not been implemented.
 
 Tests: [runtime](../../tests/task/background-task-runtime.spec.ts), [process/output behavior](../../tests/task/runtime/BackgroundTaskRuntime.test.ts), [tool display](../../tests/tool/session-tools-display.spec.ts). Use controlled child streams and temporary spill directories; native-shell acceptance is separate from deterministic tests.
+
+## Web preview handoff
+
+`task_preview({ taskId, url, expectedText })` checks an already-running task in the
+calling session and workspace. Use the exact page URL from `task_output` and a
+project-specific marker from its initial HTML, matched exactly including case and
+whitespace; avoid scaffold default titles. It requires HTTP 200, `text/html`, and
+the marker within 512 KiB. A single five-second deadline covers both IPv4/IPv6
+attempts and callers can cancel. Only explicit nonzero, non-default-port HTTP
+loopback URLs are accepted; credentials, fragments, redirects and compressed
+responses are rejected. Requests bypass ambient proxies, and localhost is pinned
+to IPv4 loopback, retrying `[::1]` only if that connection is refused.
+IPv6 services can also use `[::1]` explicitly.
+
+The successful result supplies a clickable URL, check time, HTTP/content evidence
+and the task identity for `task_stop`. It neither launches a browser nor executes
+JavaScript. The caller must perform browser acceptance when available and report
+its limits. The task association validates lifecycle/ownership, not OS socket
+ownership: a distinctive HTML marker helps catch a wrong port or application.
+The URL belongs to the executing Gateway; remote/Docker clients need their own
+forwarding. No client URL is guessed, service is stopped, or persistent deployment
+is created. Leave requested previews running until the user stops them or the
+owning runtime shuts down. Historical checks are point-in-time evidence only.
+
+Ask and Plan may inspect an existing owned preview, but must not start services.
+Implementation handoff guidance is omitted in those modes. Preview calls/results
+receive the same compaction protection as the other task tools.

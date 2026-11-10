@@ -1,4 +1,5 @@
 import i18n, { type TFunction } from 'i18next';
+import { resultText } from '../toolPresentation';
 /**
  * Centralized tool configuration registry
  * Defines display behavior for all tool types 
@@ -730,6 +731,21 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         planFilePath: result.planFilePath || '',
       }),
     }
+  },
+
+  // ============================================================================
+  // TASK TOOLS (managed background services)
+  // ============================================================================
+  task_preview: {
+    input: {
+      type: 'one-line',
+      getValue: (input) => String(input?.url || ''),
+    },
+    result: {
+      type: 'collapsible',
+      contentType: 'markdown',
+      getContentProps: (result) => ({ content: resultText(result?.content) }),
+    },
   },
 
   // ============================================================================
