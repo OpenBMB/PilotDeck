@@ -10,6 +10,20 @@ afterEach(() => {
 });
 
 describe('onboarding routes', () => {
+  it.each(['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-v3'])('skips image requests for known text-only %s on its official provider', async (modelId) => {
+    const probe = vi.fn().mockResolvedValue({ ok: true });
+    const { request } = await createOnboardingApp({ probe });
+    const result = await request('/api/v1/model-connection-tests', {
+      method: 'POST', body: JSON.stringify({ providerId: 'DeepSeek', apiKey: 'key', models: [modelId], retryPolicy: retryPolicy() }),
+    });
+    expect(result).toMatchObject({ status: 200, body: {
+      status: 'passed', manualInputRequired: false, error: null,
+      models: [{ modelId, textInput: 'supported', imageInput: 'unsupported', error: null }],
+    } });
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledWith(expect.objectContaining({ model: modelId, baseUrl: 'https://api.deepseek.com/v1' }));
+  });
+
   it.each([false, true])('saving onboarding preserves advanced features and channels enabled=%s', async (enabled) => {
     const { buildDefaultPilotDeckConfig } = await vi.importActual('../services/pilotdeckConfig.js');
     const config = buildDefaultPilotDeckConfig();
