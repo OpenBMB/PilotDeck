@@ -5,10 +5,124 @@ const viewport = (page) => page.locator('[data-chat-search-surface]');
 const top = (locator) => locator.evaluate((node) => node.scrollTop);
 const distance = (locator) => locator.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop);
 
+for (const [language, label] of [['en', 'The user stopped the conversation'], ['zh-CN', '用户终止了会话']]) {
+  test(`stopping folds the whole turn and leaves one translated notice outside it (${language})`, async ({ page, baseURL }) => {
+    await page.route('**/api/config', route => route.fulfill({ json: {} }));
+    await page.goto(new URL('/e2e/fixtures/streaming-scroll.html', baseURL).href);
+    await page.evaluate(language => {
+      window.streamFixture.setLanguage(language);
+      window.streamFixture.beginTurn();
+      window.streamFixture.think('Inspecting the implementation.');
+      for (let index = 0; index < 4; index++) {
+        window.streamFixture.tool(`stop-${index}`, 'read_file', { file_path: `example-${index}.ts` });
+        window.streamFixture.finishTool(`stop-${index}`, 'Synthetic file contents.');
+      }
+      window.streamFixture.text('A partial reply before the stop.');
+    }, language);
+    await expect(page.getByText('A partial reply before the stop.', { exact: true })).toBeVisible();
+    const header = page.locator('[data-turn-process-header] button').last();
+    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    // Both timed Gateway completions and older untimed stop frames must work.
+    await page.evaluate(timed => window.streamFixture.stop(timed), language === 'zh-CN');
+    await expect(header).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByText(label, { exact: true })).toHaveCount(1);
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+    const foldedReply = page.locator('[data-turn-process-region]').filter({ hasText: 'A partial reply before the stop.' });
+    await expect(foldedReply).toHaveAttribute('inert', '');
+    await expect.poll(() => foldedReply.evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(1);
+    await header.click();
+    await expect(page.getByText('A partial reply before the stop.', { exact: true })).toBeVisible();
+    await page.evaluate(timed => window.streamFixture.stop(timed), language === 'zh-CN');
+    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText(label, { exact: true })).toHaveCount(1);
+  });
+}
+
+test('code output consumes wheels inside its range and hands both edges to the conversation', async ({ page, baseURL }) => {
+  await page.route('**/api/config', route => route.fulfill({ json: {} }));
+  await page.goto(new URL('/e2e/fixtures/streaming-scroll.html', baseURL).href);
+  await expect(page.getByText('Question 23', { exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    window.streamFixture.beginTurn();
+    window.streamFixture.tool('scroll-code', 'read_file', { file_path: 'example.ts' });
+    window.streamFixture.finishTool('scroll-code', Array.from({ length: 100 }, (_, index) => `const line${index} = ${index};`).join('\n'));
+    window.streamFixture.text('After the code.\n\n'.repeat(25));
+  });
+  await expect(page.getByText('After the code.', { exact: true })).toHaveCount(25);
+  await page.locator('[data-process-block] > button[aria-expanded="false"]').evaluateAll(nodes => nodes.forEach(node => node.click()));
+  await page.locator('[data-tool-id="scroll-code"] > div > button[aria-expanded="false"]').evaluateAll(nodes => nodes.forEach(node => node.click()));
+  const code = page.locator('[data-tool-id="scroll-code"]').getByRole('region', { name: 'Tool details' }).last();
+  await expect.poll(() => code.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(300);
+  await viewport(page).evaluate(node => {
+    const code = node.querySelector('[data-tool-id="scroll-code"] [data-chat-scroll-region]');
+    node.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }));
+    node.scrollTop += code.getBoundingClientRect().top - node.getBoundingClientRect().top - 180;
+    node.dispatchEvent(new Event('scroll'));
+  });
+  await expect(code).toBeInViewport();
+  for (const direction of [-1, 1]) {
+    await code.evaluate(node => { node.scrollTop = 200; });
+    const reading = await top(viewport(page));
+    await code.hover();
+    await page.mouse.wheel(0, direction * 60);
+    await expect.poll(() => top(code)).toBeCloseTo(200 + direction * 60, 0);
+    expect(await top(viewport(page))).toBeCloseTo(reading, 0);
+    await code.evaluate((node, direction) => { node.scrollTop = direction < 0 ? 0 : node.scrollHeight; }, direction);
+    await page.mouse.wheel(0, direction * 60);
+    await expect.poll(() => top(viewport(page))).toBeCloseTo(reading + direction * 60, 0);
+    await page.waitForTimeout(400);
+    expect(await top(viewport(page))).toBeCloseTo(reading + direction * 60, 0);
+  }
+});
+
 async function open(page) {
   await page.goto(new URL('/e2e/fixtures/streaming-scroll.html', test.info().project.use.baseURL).href);
   await expect(page.getByText('Question 23', { exact: true })).toBeVisible();
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+}
+
+for (const working of [false, true]) {
+  test(`a busy main thread cannot undo a delayed native wheel in a ${working ? 'live' : 'completed'} long conversation`, async ({ page, baseURL }) => {
+    await page.route('**/api/config', route => route.fulfill({ json: {} }));
+    await page.goto(new URL('/e2e/fixtures/streaming-scroll.html?history=100', baseURL).href);
+    await expect(page.locator('[data-virtualized-messages="true"]')).toHaveCount(1);
+    await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+    if (working) {
+      await page.evaluate(() => {
+        window.streamFixture.beginTurn();
+        window.streamFixture.tool('busy-read', 'read_file', { file_path: 'example.ts' });
+        window.streamFixture.finishTool('busy-read', 'Synthetic file contents.');
+        window.streamFixture.text('Current output.\n\n'.repeat(12));
+      });
+      await expect(page.getByText('Current output.', { exact: true }).last()).toBeVisible();
+      await expect(page.getByText('Current output.', { exact: true })).toHaveCount(12);
+      await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
+    }
+    await viewport(page).hover({ position: { x: 60, y: 300 } });
+    await viewport(page).evaluate(node => {
+      const row = [...node.querySelectorAll('[data-message-key]')].find(item => !item.closest('[inert]')
+        && item.getBoundingClientRect().bottom > node.getBoundingClientRect().top);
+      window.delayedWheelAnchor = { key: row.dataset.messageKey, y: row.getBoundingClientRect().top };
+      node.addEventListener('wheel', () => {
+        // Model expensive Markdown/tool rendering after input is registered.
+        // A blocking listener makes native movement wait for the busy thread,
+        // exercising the event-after-input ordering on every platform.
+        const until = performance.now() + 400;
+        while (performance.now() < until) { /* deliberate main-thread stall */ }
+      }, { once: true, passive: false });
+    });
+    await page.mouse.wheel(0, -120);
+    const displacement = () => viewport(page).evaluate(node => {
+      const anchor = window.delayedWheelAnchor;
+      const row = [...node.querySelectorAll('[data-message-key]')].find(item => item.dataset.messageKey === anchor?.key);
+      return row ? row.getBoundingClientRect().top - anchor.y : NaN;
+    });
+    await expect.poll(displacement).toBeCloseTo(120, 0);
+    // Measurements may arrive after the native scroll appears to have landed.
+    await page.waitForTimeout(1000);
+    expect(await displacement()).toBeCloseTo(120, 0);
+    await expect(viewport(page)).toHaveAttribute('data-scroll-follow-paused', 'true');
+  });
 }
 
 test('small upward gestures win over text streaming and explicit resume follows again', async ({ page }) => {
@@ -342,6 +456,9 @@ test('ongoing generation permits bidirectional wheels and repeated middle-step d
   });
   const group = page.locator('[data-process-block] > button');
   await expect(group).toHaveAttribute('aria-expanded', 'false');
+  // Wait for the initial typewriter tail before requesting a large downward
+  // wheel; an unfinished reply can still make that target exceed native bounds.
+  await expect(page.getByText('Current streamed paragraph.', { exact: true })).toHaveCount(20);
   await expect.poll(() => distance(viewport(page))).toBeLessThan(3);
   await page.evaluate(() => {
     let tokens = 0;

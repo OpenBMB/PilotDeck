@@ -21,6 +21,7 @@ function Fixture() {
   const [working, setWorking] = useState(false);
   const [questions, setQuestions] = useState([]);
   const answerText = useRef('');
+  const turnStartedAt = useRef(timestamp);
   const [inline, setInline] = useState(true);
   const [mode, setMode] = useState('agent');
   const [olderMessages, setOlderMessages] = useState([]);
@@ -61,6 +62,7 @@ function Fixture() {
     },
     beginTurn(id = 'current-user', content = 'Inspect the implementation') {
       const at = new Date().toISOString();
+      turnStartedAt.current = at;
       store.appendRealtime(sid, { ...base, id, kind: 'text', role: 'user', content, timestamp: at });
       setWorking(true);
     },
@@ -108,6 +110,13 @@ function Fixture() {
       }] });
     },
     text(text) { setWorking(true); store.finalizeStreamingThinking(sid, 'live'); store.updateStreaming(sid, text, 'pilotdeck', 'live'); },
+    stop(withTiming = true) {
+      store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live');
+      const endedAt = new Date().toISOString();
+      store.appendRealtime(sid, { ...base, id: 'stopped-completion', kind: 'complete', timestamp: endedAt, finishReason: 'aborted',
+        ...(withTiming ? { turnTiming: { startedAt: turnStartedAt.current, completedAt: endedAt, finishReason: 'aborted' } } : {}) });
+      setWorking(false);
+    },
     complete(durationMs) {
       store.finalizeStreamingThinking(sid, 'live'); store.finalizeStreaming(sid, 'live');
       if (typeof durationMs === 'number') store.appendRealtime(sid, {

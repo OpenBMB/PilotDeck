@@ -711,8 +711,62 @@ describe('turn-wide process disclosure', () => {
     const raw = [user('u'), tool('call', 'Read')];
     if (kind !== 'unfinished') raw.push({ ...assistant('notice', 'Stopped'), type: kind === 'error' ? 'error' : 'assistant', isInterruptedNotice: kind === 'interrupted' });
     const items = project(raw);
-    expect(items[0].afterTurnProcess?.defaultExpanded).toBe(true);
+    expect(items[0].afterTurnProcess?.defaultExpanded).toBe(kind !== 'interrupted');
     expect(items.find(item => item.message.id === 'notice')?.processRun).toBeUndefined();
+  });
+  it('folds stopped partial replies and projects one notice outside the process when only a cancelled summary exists', () => {
+    const raw = [user('u'), thinking('t'), tool('read', 'Read'), assistant('partial', 'A partial reply'), {
+      ...assistant('summary', ''), isAgentActivitySummary: true, state: 'cancelled', durationMs: 90000,
+    }];
+    const items = project(raw);
+    const group = items[0].afterTurnProcess!;
+    expect(group).toMatchObject({ defaultExpanded: false, outcome: 'cancelled', durationMs: 90000 });
+    expect(items.find(item => item.message.id === 'partial')).toMatchObject({ processOutput: false, processRun: group });
+    expect(items.at(-1)?.message.isInterruptedNotice).toBe(true);
+    expect(items.at(-1)?.processRun).toBeUndefined();
+    const notice = { ...assistant('stop', ''), type: 'system' as const, isInterruptedNotice: true };
+    expect(project([...raw, notice]).filter(item => item.message.isInterruptedNotice)).toHaveLength(1);
+  });
+  it('folds pending questions after cancellation while keeping their recorded input inspectable', () => {
+    const question = { ...tool('question', 'AskUserQuestion'), toolResult: null };
+    const items = project([user('u'), question, {
+      ...assistant('summary', ''), isAgentActivitySummary: true, state: 'cancelled', durationMs: 1000,
+    }]);
+    expect(items[0].afterTurnProcess?.defaultExpanded).toBe(false);
+    expect(items.find(item => item.message.id === 'question')?.processRun).toBe(items[0].afterTurnProcess);
+  });
+  it('assigns a restored timing summary by run identity when execution started before the accepted input', () => {
+    const oldUser = { ...user('old-user'), runId: 'old' };
+    const nextUser = { ...user('next-user'), runId: 'next', timestamp: timestamp(1100) };
+    const summary = { ...assistant('status-timing', ''), type: 'system' as const, isAgentActivitySummary: true,
+      runId: 'next', state: 'cancelled', startedAt: timestamp(1000), endedAt: timestamp(3000), durationMs: 2000 };
+    const items = project([oldUser, { ...assistant('old-answer', 'Previous answer'), runId: 'old' }, summary,
+      nextUser, { ...tool('next-call', 'Read'), runId: 'next' }]);
+    const next = items.find(item => item.message.id === 'next-user')!.afterTurnProcess!;
+    expect(next).toMatchObject({ defaultExpanded: false, outcome: 'cancelled', durationMs: 2000 });
+    expect(items.find(item => item.message.id === 'old-user')?.afterTurnProcess?.outcome).not.toBe('cancelled');
+    expect(items.filter(item => item.message.isInterruptedNotice)).toHaveLength(1);
+    expect(items.at(-1)?.message.isInterruptedNotice).toBe(true);
+  });
+  it.each(['status', 'user'])('keeps a stopped steered run on its own boundaries with timing on %s', timingHost => {
+    const turnTiming = { startedAt: timestamp(1000), completedAt: timestamp(3000), finishReason: 'aborted_streaming' };
+    const messages: NormalizedMessage[] = [
+      { id: 'old-user', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'user', content: 'Previous request', runId: 'old', timestamp: timestamp(0) },
+      { id: 'old-answer', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'assistant', content: 'Previous answer', runId: 'old', timestamp: timestamp(100) },
+      ...(timingHost === 'status' ? [{ id: 'timing', sessionId: 'session', provider: 'pilotdeck' as const, kind: 'status' as const, runId: 'next', timestamp: timestamp(1000), turnTiming }] : []),
+      { id: 'next-user', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'user', content: 'Next request', runId: 'next', timestamp: timestamp(1200),
+        ...(timingHost === 'user' ? { turnTiming } : {}) },
+      { id: 'partial', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'assistant', content: 'Partial reply', runId: 'next', timestamp: timestamp(1500) },
+      { id: 'steer', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'user', content: 'Continue this way', runId: 'next', isSteer: true, timestamp: timestamp(2000) },
+      { id: 'call', sessionId: 'session', provider: 'pilotdeck', kind: 'tool_use', toolId: 'call', toolName: 'read_file', toolInput: { file_path: 'example.ts' }, runId: 'next', timestamp: timestamp(2500) },
+    ];
+    const items = project(normalizedToChatMessages(messages));
+    expect(items.find(item => item.message.id === 'old-user')?.afterTurnProcess?.outcome).not.toBe('cancelled');
+    expect(items.find(item => item.message.id === 'steer')?.afterTurnProcess).toMatchObject({ outcome: 'cancelled', defaultExpanded: false });
+    expect(items.find(item => item.message.id === 'next-user')?.afterTurnProcess).toMatchObject({ outcome: 'cancelled', defaultExpanded: false });
+    expect(items.find(item => item.message.id === 'partial')?.processOutput).toBe(false);
+    expect(items.filter(item => item.message.isInterruptedNotice)).toHaveLength(1);
+    expect(items.at(-1)?.message.isInterruptedNotice).toBe(true);
   });
   it('keeps pending questions and media outside the turn fold and tolerates invalid legacy timestamps', () => {
     const image = { ...tool('image', 'generate_image', { purpose: 'deliverable' }), toolResult: {

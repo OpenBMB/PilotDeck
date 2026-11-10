@@ -281,6 +281,7 @@ function convertSingleMessage(
     case 'interrupted':
       return {
         id: msg.id,
+        ...turnIdentity,
         type: 'system',
         content: msg.content || '[Request interrupted by user]',
         timestamp: msg.timestamp,
@@ -371,18 +372,27 @@ function convertSingleMessage(
       }
       return null;
 
+    case 'status':
     case 'complete': {
       const timing = msg.turnTiming;
-      if (!timing) return null;
+      // History may stamp execution bounds on an otherwise invisible status
+      // before the accepted user input. Retain those bounds as a turn summary.
+      if (msg.kind === 'status' && !timing) return null;
+      const reason = String(msg.finishReason || timing?.finishReason || 'completed');
+      const interrupted = reason.startsWith('aborted') ? {
+        id: msg.id, ...turnIdentity, type: 'system' as const, content: '', timestamp: msg.timestamp, isInterruptedNotice: true,
+      } : null;
+      // A user stop is meaningful even when the run ended before timing was
+      // recorded. Do not discard it with non-renderable completion frames.
+      if (!timing) return interrupted;
       const durationMs = Date.parse(timing.completedAt) - Date.parse(timing.startedAt);
-      if (!Number.isFinite(durationMs) || durationMs < 0) return null;
-      const reason = String(msg.finishReason || timing.finishReason || 'completed');
-      return { id: msg.id, ...turnIdentity, type: 'system', content: '', timestamp: timing.completedAt,
+      if (!Number.isFinite(durationMs) || durationMs < 0) return interrupted;
+      const { turnTiming: _timing, ...summaryIdentity } = turnIdentity;
+      return { id: msg.id, ...summaryIdentity, type: 'system', content: '', timestamp: timing.completedAt,
         isAgentActivitySummary: true, startedAt: timing.startedAt, endedAt: timing.completedAt, durationMs,
         state: reason === 'completed' ? 'completed' : reason.startsWith('aborted') ? 'cancelled' : 'failed' };
     }
     case 'stream_end':
-    case 'status':
     case 'permission_request':
     case 'permission_cancelled':
     case 'session_created':

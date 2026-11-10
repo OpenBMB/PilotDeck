@@ -14,7 +14,7 @@ export const test = process.env.PILOTDECK_SCROLL_ELECTRON === '1' ? browserTest.
     try {
       const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|SYSTEMROOT|WINDIR|TEMP|TMP|DISPLAY|XAUTHORITY|HOME|LANG)$/i.test(key)));
       app = await _electron.launch({
-        executablePath: createRequire(import.meta.url)(path.join(root, 'apps/desktop/node_modules/electron')),
+        executablePath: process.env.PILOTDECK_SCROLL_ELECTRON_PATH || createRequire(import.meta.url)(path.join(root, 'apps/desktop/node_modules/electron')),
         args: [path.join(root, 'ui/e2e/fixtures/scroll-electron.cjs')],
         env: { ...env, PILOTDECK_SCROLL_PROFILE: profile },
       });
