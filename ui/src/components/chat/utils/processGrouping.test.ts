@@ -748,6 +748,21 @@ describe('turn-wide process disclosure', () => {
     expect(items.filter(item => item.message.isInterruptedNotice)).toHaveLength(1);
     expect(items.at(-1)?.message.isInterruptedNotice).toBe(true);
   });
+  it('keeps a stopped steered run out of the previous request when its status precedes accepted input', () => {
+    const messages: NormalizedMessage[] = [
+      { id: 'old-user', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'user', content: 'Previous request', runId: 'old', timestamp: timestamp(0) },
+      { id: 'old-answer', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'assistant', content: 'Previous answer', runId: 'old', timestamp: timestamp(100) },
+      { id: 'timing', sessionId: 'session', provider: 'pilotdeck', kind: 'status', runId: 'next', timestamp: timestamp(1000), turnTiming: {
+        startedAt: timestamp(1000), completedAt: timestamp(3000), finishReason: 'aborted_streaming' } },
+      { id: 'next-user', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'user', content: 'Next request', runId: 'next', timestamp: timestamp(1200) },
+      { id: 'partial', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'assistant', content: 'Partial reply', runId: 'next', timestamp: timestamp(1500) },
+      { id: 'steer', sessionId: 'session', provider: 'pilotdeck', kind: 'text', role: 'user', content: 'Continue this way', runId: 'next', isSteer: true, timestamp: timestamp(2000) },
+      { id: 'call', sessionId: 'session', provider: 'pilotdeck', kind: 'tool_use', toolId: 'call', toolName: 'read_file', toolInput: { file_path: 'example.ts' }, runId: 'next', timestamp: timestamp(2500) },
+    ];
+    const items = project(normalizedToChatMessages(messages));
+    expect(items.find(item => item.message.id === 'old-user')?.afterTurnProcess?.outcome).not.toBe('cancelled');
+    expect(items.find(item => item.message.id === 'steer')?.afterTurnProcess).toMatchObject({ outcome: 'cancelled', defaultExpanded: false });
+  });
   it('keeps pending questions and media outside the turn fold and tolerates invalid legacy timestamps', () => {
     const image = { ...tool('image', 'generate_image', { purpose: 'deliverable' }), toolResult: {
       content: 'Image', toolUseResult: { imageGeneration: { imageId: 'image', sessionId: 'session', purpose: 'deliverable' } },

@@ -287,9 +287,10 @@ function attachSummariesToTurns(messages: ChatMessage[], turns: MessageTurn[]): 
     }) : [];
     const anchorTime = getSummaryAnchorTime(summary.message);
     const turnIndexFromTime = anchorTime == null ? -1 : findTurnIndexByTime(messages, turns, anchorTime);
-    // A run can start before its accepted-input timestamp. Prefer its stable
-    // identity over clock proximity; legacy/steered turns retain the fallback.
-    const turnIndex = matchingTurns.length === 1 ? matchingTurns[0] : turnIndexFromTime >= 0
+    // Terminal summaries belong to the final accepted input of their run,
+    // including mid-turn guidance. Its start can precede accepted_input, so
+    // clock proximity must never move a known run into a previous request.
+    const turnIndex = matchingTurns.length ? matchingTurns[matchingTurns.length - 1] : turnIndexFromTime >= 0
       ? turnIndexFromTime
       : findTurnIndexByPosition(turns, summary.originalIndex);
 

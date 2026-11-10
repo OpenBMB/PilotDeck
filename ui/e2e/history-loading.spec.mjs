@@ -216,8 +216,9 @@ for (const reason of ['aborted_streaming', 'model_error']) test(`restored ${reas
     { ...turn, id: 'timed-status', kind: 'status', text: 'Checkpoint saved', turnTiming: {
       startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: reason } },
     { ...turn, id: 'u', kind: 'text', role: 'user', content: 'Inspect partial work', timestamp: '2026-09-01T00:00:00.200Z' },
-    { ...turn, id: 'call', kind: 'tool_use', toolId: 'call', toolName: 'web_fetch', toolInput: { url: 'https://example.com' } },
-    { ...turn, id: 'partial', kind: 'text', role: 'assistant', content: 'Partial result remains available.' },
+    { ...turn, id: 'steer', kind: 'text', role: 'user', content: 'Include the redirected page', isSteer: true, timestamp: '2026-09-01T00:00:20Z' },
+    { ...turn, id: 'call', kind: 'tool_use', toolId: 'call', toolName: 'web_fetch', toolInput: { url: 'https://example.com' }, timestamp: '2026-09-01T00:00:30Z' },
+    { ...turn, id: 'partial', kind: 'text', role: 'assistant', content: 'Partial result remains available.', timestamp: '2026-09-01T00:00:40Z' },
   ];
   await serve(page, messages);
   await page.goto('/e2e/fixtures/history-loading.html');
