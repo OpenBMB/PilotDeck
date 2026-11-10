@@ -183,10 +183,12 @@ it('announces a first conversation while startup is delayed and acknowledges onl
     };
     const turn = runChatViaGateway('First message', { projectPath: '/tmp/sending-project', runId: 'delayed-start' },
         { send: frame => frames.push(frame) }, 'pilotdeck', { getGateway: () => startup.promise });
-    expect(frames.find(frame => frame.kind === 'session_created')?.newSessionId).toMatch(/^web:/);
+    const announcedSession = frames.find(frame => frame.kind === 'session_created')?.newSessionId;
+    expect(announcedSession).toMatch(/^web[:-]s_/);
     expect(frames.some(frame => frame.type === 'session-input-accepted')).toBe(false);
     startup.resolve(gateway);
     const result = await turn;
+    expect(result.sessionKey).toBe(announcedSession);
     expect(result.inputAccepted).toBe(true);
     expect(frames.filter(frame => frame.type === 'session-input-accepted')).toHaveLength(1);
 });
