@@ -82,7 +82,7 @@ export function MarkdownCodeBlock({ node, children, ...props }: ComponentProps<'
           <CopyButton label={t('copyBlock.code', { defaultValue: 'Copy code' })} onCopy={() => copyTextToClipboard(text)} />
         </div>
       </div>
-      <pre {...props} className={`${props.className || ''} !m-0 overflow-x-auto`}>
+      <pre {...props} data-chat-scroll-region className={`${props.className || ''} !m-0 overflow-x-auto overscroll-y-auto overscroll-x-contain`}>
         {children}
       </pre>
     </div>

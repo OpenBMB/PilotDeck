@@ -159,7 +159,7 @@ it.each(['completed', 'aborted_streaming', 'aborted_tools', 'model_error'])('use
   expect(live.durationMs).toBe(80000);
   expect(restored.durationMs).toBe(80000);
   expect(live.hasRecordedDuration).toBe(true);
-  expect(restored.defaultExpanded).toBe(finishReason !== 'completed');
+  expect(restored.defaultExpanded).toBe(finishReason !== 'completed' && !finishReason.startsWith('aborted'));
   expect(restored.outcome).toBe(finishReason === 'completed' ? 'completed' : finishReason.startsWith('aborted') ? 'cancelled' : 'failed');
 });
 

@@ -206,15 +206,30 @@ test('search/fetch summaries and recorded time remain correct after reload and l
   await expect(page.getByText('Processed 1m 20s', { exact: true })).toBeVisible();
 });
 
-for (const reason of ['aborted_streaming', 'model_error']) test(`restored ${reason} keeps partial work accessible and does not show a successful duration`, async ({ page }) => {
-  const messages = [{ ...base, id: 'u', kind: 'text', role: 'user', content: 'Inspect partial work', turnTiming: {
-    startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: reason } },
-  { ...base, id: 'call', kind: 'tool_use', toolId: 'call', toolName: 'web_fetch', toolInput: { url: 'https://example.com' } },
-  { ...base, id: 'partial', kind: 'text', role: 'assistant', content: 'Partial result remains available.' }];
+for (const reason of ['aborted_streaming', 'model_error']) test(`restored ${reason} keeps partial work inspectable with the correct terminal disclosure`, async ({ page }) => {
+  // The history reader can attach bounds to a status preceding accepted_input.
+  // Its run starts before the user timestamp, so clock-only ownership is wrong.
+  const turn = { ...base, turnId: 'restored-terminal-run', runId: 'restored-terminal-run' };
+  const messages = [
+    { ...base, id: 'earlier-user', kind: 'text', role: 'user', content: 'An earlier request', turnId: 'earlier' },
+    { ...base, id: 'earlier-answer', kind: 'text', role: 'assistant', content: 'An earlier answer', turnId: 'earlier' },
+    { ...turn, id: 'timed-status', kind: 'status', text: 'Checkpoint saved', turnTiming: {
+      startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: reason } },
+    { ...turn, id: 'u', kind: 'text', role: 'user', content: 'Inspect partial work', timestamp: '2026-09-01T00:00:00.200Z' },
+    { ...turn, id: 'call', kind: 'tool_use', toolId: 'call', toolName: 'web_fetch', toolInput: { url: 'https://example.com' } },
+    { ...turn, id: 'partial', kind: 'text', role: 'assistant', content: 'Partial result remains available.' },
+  ];
   await serve(page, messages);
   await page.goto('/e2e/fixtures/history-loading.html');
   await expect(page.getByText(reason === 'model_error' ? 'Process failed' : 'Process stopped', { exact: true })).toBeVisible();
-  await expect(page.locator('[data-turn-process-header] button')).toHaveAttribute('aria-expanded', 'true');
+  const header = page.locator('[data-turn-process-header] button').last();
+  await expect(header).toHaveAttribute('aria-expanded', reason === 'model_error' ? 'true' : 'false');
+  if (reason.startsWith('aborted')) {
+    await expect(page.getByText('The user stopped the conversation', { exact: true })).toBeVisible();
+    await header.click();
+  } else {
+    await expect(page.getByText('The user stopped the conversation', { exact: true })).toHaveCount(0);
+  }
   await expect(page.getByText('Partial result remains available.', { exact: true })).toBeVisible();
   await expect(page.getByText('Calling model...', { exact: true })).toHaveCount(0);
   await expect(page.locator('[data-process-live="true"]')).toHaveCount(0);

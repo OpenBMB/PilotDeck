@@ -141,7 +141,7 @@
     "openSettings": "前往设置"
   },
   "interrupted": {
-    "label": "已被用户暂停"
+    "label": "用户终止了会话"
   },
   "compact": {
     "label": "上下文已压缩",

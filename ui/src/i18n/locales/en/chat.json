@@ -142,7 +142,7 @@
     "openSettings": "Open Settings"
   },
   "interrupted": {
-    "label": "Interrupted by user"
+    "label": "The user stopped the conversation"
   },
   "compact": {
     "label": "Context compacted",

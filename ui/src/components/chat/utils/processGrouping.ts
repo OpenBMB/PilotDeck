@@ -280,9 +280,16 @@ function attachSummariesToTurns(messages: ChatMessage[], turns: MessageTurn[]): 
   );
 
   for (const summary of summaries) {
+    const identity = summary.message.turnId || summary.message.runId;
+    const matchingTurns = identity ? turns.flatMap((turn, index) => {
+      const anchor = messages[turn.start];
+      return anchor.type === 'user' && (anchor.turnId || anchor.runId) === identity ? [index] : [];
+    }) : [];
     const anchorTime = getSummaryAnchorTime(summary.message);
     const turnIndexFromTime = anchorTime == null ? -1 : findTurnIndexByTime(messages, turns, anchorTime);
-    const turnIndex = turnIndexFromTime >= 0
+    // A run can start before its accepted-input timestamp. Prefer its stable
+    // identity over clock proximity; legacy/steered turns retain the fallback.
+    const turnIndex = matchingTurns.length === 1 ? matchingTurns[0] : turnIndexFromTime >= 0
       ? turnIndexFromTime
       : findTurnIndexByPosition(turns, summary.originalIndex);
 
@@ -1094,6 +1101,7 @@ export function turnProcessRegionId(scope: string, group: TurnProcessGroup, memb
 function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessageItem[], working: boolean) {
   const turns = createMessageTurns(messages);
   attachSummariesToTurns(messages, turns);
+  const stopNotices: RenderableMessageItem[] = [];
   let cursor = 0;
   for (const [turnIndex, turn] of turns.entries()) {
     const turnItems: RenderableMessageItem[] = [];
@@ -1119,6 +1127,7 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
       : summaryState === 'cancelled' || raw.some(message => message.isInterruptedNotice) ? 'cancelled'
       : summaryState === 'failed' || raw.some(message => message.type === 'error') ? 'failed' : undefined;
     const interrupted = outcome === 'cancelled' || outcome === 'failed';
+    const cancelled = !running && outcome === 'cancelled';
     const finalReply = last?.type === 'assistant' && !last.isThinking && !last.isToolUse
       && !last.isSubagentContainer && !last.isInteractivePrompt && !last.isTaskNotification && !last.isStreaming
       && (Boolean(last.content?.trim()) || Boolean(last.artifacts?.length));
@@ -1127,16 +1136,16 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
       && !item.message.isThinking && !item.message.isToolUse && !item.message.isSubagentContainer
       && !item.message.isInteractivePrompt && !item.message.isTaskNotification
       && !item.message.isInterruptedNotice && !item.message.isAgentActivity && !item.message.isAgentActivitySummary;
-    const output = [...turnItems].reverse().find(isReply);
+    const output = cancelled ? undefined : [...turnItems].reverse().find(isReply);
     const seats = turnItems.filter(item => {
       if (item.mediaArtifact || item.message.type === 'error' || item.message.isInterruptedNotice) return false;
       if (item.turnTrace) return true;
       if (isReply(item)) return true;
-      // Pending questions/approvals and permission actions must remain reachable.
-      if (!completed && isPermissionToolError(item.message)) return false;
-      if (isUserVisibleTool(item.message) && !item.message.toolResult) return false;
+      // Pending questions/approvals stay reachable until the user stops the turn.
+      if (!completed && !cancelled && isPermissionToolError(item.message)) return false;
+      if (!cancelled && isUserVisibleTool(item.message) && !item.message.toolResult) return false;
       return Boolean(item.message.isThinking || item.message.isToolUse || item.message.isSubagentContainer
-        || (item.message.isInteractivePrompt && completed)
+        || (item.message.isInteractivePrompt && (completed || cancelled))
         || item.message.isTaskNotification || item.message.isCompactBoundary);
     });
     const members = seats.filter(item => item !== output);
@@ -1147,7 +1156,7 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
     const startedAtMs = parseMessageTime(anchor.timestamp);
     const group: TurnProcessGroup = {
       id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`,
-      isRunning: running, defaultExpanded: !completed && turnIndex === turns.length - 1, durationMs,
+      isRunning: running, defaultExpanded: !completed && !cancelled && turnIndex === turns.length - 1, durationMs,
       outcome,
       hasRecordedDuration: Boolean(timing) || (typeof turn.summary?.message.durationMs === 'number' && Number.isFinite(turn.summary.message.durationMs)),
       startedAt: timing ? new Date(timing.startedAt).toISOString() : turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
@@ -1160,8 +1169,19 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
       if (user) user.afterTurnProcess = group;
       else turnItems[0].beforeTurnProcess = group;
     }
+    // Timing summaries can confirm a stop without a separate transcript
+    // notice. Project one status row outside the fold; never persist or duplicate it.
+    if (cancelled && !turnItems.some(item => item.message.isInterruptedNotice)) {
+      const id = `${group.id}-interrupted`;
+      stopNotices.push({
+        message: { id, renderKey: id, type: 'system', content: '', isInterruptedNotice: true,
+          timestamp: turn.summary?.message.endedAt || reversed[0]?.timestamp || anchor.timestamp },
+        originalIndex: turn.end - 0.1,
+        beforeRunAttachment: null, afterRunAttachment: null, beforeProcessAttachments: [], afterProcessAttachments: [],
+      });
+    }
   }
-  return items;
+  return stopNotices.length ? [...items, ...stopNotices].sort((a, b) => a.originalIndex - b.originalIndex) : items;
 }
 
 export function getLiveProcessDetailMessages(messages: ChatMessage[]): ChatMessage[] {

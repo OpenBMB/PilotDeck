@@ -5,6 +5,7 @@ import { expandingDisclosure } from '../utils/disclosureInteraction';
 const BOTTOM_EPSILON = 2;
 const ANCHOR_EPSILON = 0.01;
 const VIEWPORT_SELECTOR = '[data-stream-scroll-viewport]';
+const SCROLL_SOURCE_SELECTOR = `${VIEWPORT_SELECTOR}, [data-chat-scroll-region]`;
 const FOLLOW_CHANGE = 'stream-scroll-follow-change';
 const LAYOUT_CHANGE = 'stream-scroll-layout-change';
 /** Virtual rows can redistribute height while the content's total stays equal. */
@@ -305,17 +306,22 @@ export function useScrollFollow({
     const supportsScrollEnd = 'onscrollend' in node;
     const gestureDeadline = () => supportsScrollEnd ? Infinity : Date.now() + GESTURE_IDLE_MS;
     const atBottom = () => node.scrollHeight - node.scrollTop - node.clientHeight <= BOTTOM_EPSILON;
-    const sourceViewport = (target: EventTarget | null) => {
-      let source = target instanceof Element ? target.closest<HTMLElement>(VIEWPORT_SELECTOR) ?? node : node;
-      // A short nested block cannot consume the gesture; its scrollable
-      // ancestor owns it. A nested block with overflow keeps that ownership.
-      while (source !== node && source.scrollHeight - source.clientHeight <= BOTTOM_EPSILON) {
-        source = source.parentElement?.closest<HTMLElement>(VIEWPORT_SELECTOR) ?? node;
+    const sourceViewport = (target: EventTarget | null, direction = 0) => {
+      let source = target instanceof Element ? target.closest<HTMLElement>(SCROLL_SOURCE_SELECTOR) ?? node : node;
+      // Native code/tool regions consume input until the directional edge,
+      // then let the browser chain it to the conversation. The parent must
+      // accept that displacement without resuming while only the child moves.
+      while (source !== node) {
+        const remaining = source.scrollHeight - source.clientHeight;
+        const atEdge = direction < 0 ? source.scrollTop <= BOTTOM_EPSILON
+          : direction > 0 && remaining - source.scrollTop <= BOTTOM_EPSILON;
+        if (remaining > BOTTOM_EPSILON && !(atEdge && source.hasAttribute('data-chat-scroll-region'))) break;
+        source = source.parentElement?.closest<HTMLElement>(SCROLL_SOURCE_SELECTOR) ?? node;
       }
       return source;
     };
     const beginUpwardInput = (target: EventTarget | null) => {
-      const source = sourceViewport(target);
+      const source = sourceViewport(target, -1);
       if (source.scrollHeight - source.clientHeight <= BOTTOM_EPSILON) return;
       setPaused(true);
       if (source === node) {
@@ -325,7 +331,7 @@ export function useScrollFollow({
       }
     };
     const beginDownwardInput = (target: EventTarget | null) => {
-      if (sourceViewport(target) !== node) return;
+      if (sourceViewport(target, 1) !== node) return;
       if (atBottom()) scrollToBottom();
       else {
         const moved = node.scrollTop !== metricsRef.current.top;

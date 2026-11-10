@@ -1750,12 +1750,21 @@ describe('MessagesPane render behavior', () => {
   it.each(['error', 'interrupted', 'no-final'])('keeps %s turns visible', (kind) => {
     const messages: ChatMessage[] = [makeMessage(0), { ...makeMessage(1), content: 'Working details.' }];
     if (kind === 'error') messages.push({ ...makeMessage(2), type: 'error', content: 'Connection failed.' });
-    if (kind === 'interrupted') messages.push({ ...makeMessage(2), type: 'assistant', isInterruptedNotice: true, content: 'Stopped.' });
+    if (kind === 'interrupted') messages.push({ ...makeMessage(2), type: 'system', isInterruptedNotice: true, content: 'Stopped.' });
     if (kind === 'no-final') messages.push({ ...makeMessage(2), type: 'assistant', isToolUse: true, toolName: 'Bash', toolInput: { command: 'pwd' }, content: '' });
     renderPane({ messages });
-    expect(screen.getByText('Working details.')).toBeTruthy();
+    if (kind !== 'interrupted') expect(screen.getByText('Working details.')).toBeTruthy();
     const header = document.querySelector('[data-turn-process-header] button');
-    if (header) expect(header.getAttribute('aria-expanded')).toBe('true');
+    if (header) {
+      expect(header.getAttribute('aria-expanded')).toBe(kind === 'interrupted' ? 'false' : 'true');
+      if (kind === 'interrupted') {
+        const notice = screen.getByText('The user stopped the conversation');
+        expect(notice.closest('[inert]')).toBeNull();
+        fireEvent.click(header);
+        expect(header.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByText('Working details.').closest('[inert]')).toBeNull();
+      }
+    }
   });
 
 });

@@ -53,6 +53,28 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('reader-owned scroll following', () => {
+  it.each([-1, 1])('accepts code-region boundary handoff without consuming its inner scroll (%s)', direction => {
+    const { node, metrics } = setup();
+    const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
+    row.getBoundingClientRect = () => ({ top: 400 - metrics.top, bottom: 1000 - metrics.top }) as DOMRect;
+    node.scrollTop = 500;
+    act(() => api.pauseAt('reading'));
+    const code = document.createElement('pre'); code.dataset.chatScrollRegion = '';
+    row.append(code);
+    Object.defineProperties(code, { scrollHeight: { value: 600 }, clientHeight: { value: 200 } });
+    code.scrollTop = 200;
+    fireEvent.wheel(code, { deltaY: direction * 40 });
+    code.scrollTop += direction * 40;
+    resize(); flush();
+    expect(node.scrollTop).toBe(500);
+    expect(api.isPaused).toBe(true);
+    code.scrollTop = direction < 0 ? 0 : 400;
+    fireEvent.wheel(code, { deltaY: direction * 40 });
+    node.scrollTop += direction * 40;
+    resize(); fireEvent.scroll(node); flush();
+    expect(node.scrollTop).toBe(500 + direction * 40);
+  });
+
   it.each([-1, 1])('anchors and ends a gesture whose compositor displacement preceded wheel (%s)', direction => {
     const { node, metrics } = setup();
     const row = node.querySelector<HTMLElement>('[data-message-key="reading"]')!;
