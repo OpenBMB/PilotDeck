@@ -34,9 +34,8 @@ import {
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
 import { suppressNextWatchEvent } from '../services/pilotdeckConfigWatcher.js';
 import { getPilotDeckGateway } from '../pilotdeck-bridge.js';
-import { lookupCatalogProvider, PROVIDER_CATALOG } from '../../../src/model/catalog/index.js';
+import { lookupCatalogModel, lookupCatalogProvider, PROVIDER_CATALOG } from '../../../src/model/catalog/index.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
-import { lookupCatalogModel } from '../../../src/model/catalog/lookup.js';
 import { probeModelConnection } from '../services/modelConnectionProbe.js';
 import {
   configuredModelIds,
