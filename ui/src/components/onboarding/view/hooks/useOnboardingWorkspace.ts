@@ -24,7 +24,7 @@ export default function useOnboardingWorkspace() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
-  const createdDraftsRef = useRef(new Set<string>());
+  const createdDraftsRef = useRef(new Map<string, Record<string, unknown> | undefined>());
   const inFlightRef = useRef<{
     fingerprint: string;
     promise: Promise<Record<string, unknown> | undefined>;
@@ -69,7 +69,7 @@ export default function useOnboardingWorkspace() {
       throw new Error('Workspace path is required.');
     }
     const fingerprint = JSON.stringify({ workspacePath, githubUrl });
-    if (createdDraftsRef.current.has(fingerprint)) return;
+    if (createdDraftsRef.current.has(fingerprint)) return createdDraftsRef.current.get(fingerprint);
     if (inFlightRef.current?.fingerprint === fingerprint) {
       return inFlightRef.current.promise;
     }
@@ -98,7 +98,7 @@ export default function useOnboardingWorkspace() {
 
     try {
       const result = await operation;
-      createdDraftsRef.current.add(fingerprint);
+      createdDraftsRef.current.set(fingerprint, result);
       return result;
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'Failed to create workspace';

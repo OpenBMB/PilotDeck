@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { authenticatedFetch } from '../../../utils/api';
 import { ONBOARDING_STEP_IDS, type OnboardingStepId } from './constants';
 import useLlmSetup from './hooks/useLlmSetup';
@@ -15,6 +16,7 @@ type OnboardingProps = {
 };
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<OnboardingStepId>('language');
   const [completeError, setCompleteError] = useState('');
   const [isFinishing, setIsFinishing] = useState(false);
@@ -56,11 +58,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     setIsFinishing(true);
     setCompleteError('');
     try {
-      await workspace.createWorkspace();
+      const project = await workspace.createWorkspace();
       const response = await authenticatedFetch('/api/user/complete-onboarding', { method: 'POST' });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to complete onboarding');
+      }
+      // Refreshing the auth gate can unmount onboarding immediately. Set the
+      // destination first so the shell resolves this workspace on its first render.
+      if (typeof project?.name === 'string' && project.name) {
+        navigate(`/p/${encodeURIComponent(project.name)}`, { replace: true });
       }
       await onComplete?.();
     } catch (caughtError) {
@@ -69,7 +76,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       finishingRef.current = false;
       setIsFinishing(false);
     }
-  }, [onComplete, workspace]);
+  }, [navigate, onComplete, workspace]);
 
   const handleSkipChat = useCallback(async () => {
     setCompleteError('');
