@@ -1,71 +1,89 @@
-# 并行准备工作区保护：改善大项目开始响应（#687）
+# Parallel workspace preparation
 
-本轮把「首请求前的文件产物基线扫描」移出模型请求的关键路径：输入持久化后立即启动
-准备任务，模型可以同时组装上下文并输出文字；工具、匹配的 hook 和各类写入入口在真正
-执行前等待保护就绪。检查点 `beginTurn` 仍在该准备任务内完成本轮基线记录的持久化。
+After accepted input is durable, one preparation task runs beside the model
+request. The task records the turn checkpoint and collects the file-artifact
+baseline. Tools, matching hooks, and terminal bookkeeping wait until that
+protection is ready. Model text can be emitted while preparation is still
+running.
 
 ```text
-输入持久化并确认 ─┬─ beginTurn（本轮检查点记录）→ 文件产物基线 → 保护就绪
-                 └─ 上下文 / 模型请求 → 首段文字 → 工具等待保护 → 执行
+input accepted --+-- beginTurn -> file-artifact baseline -> protection ready
+                 +-- context / model request -> first text -> tools wait -> execute
 ```
 
-> 说明：初始版本还包含「增量检查点复用」和「全量检查点基线扫描提前」。上游在
-> 2026-11-02 前后把检查点改为 journal v2（`beginTurn` 不再全量扫描工作区，改为命令帧
-> 增量记录），因此本次重新整理为只针对仍然存在的文件产物基线扫描和写入屏障。
+## Readiness
 
-## 保护边界与行为
+Each turn has one preparation task. `beginTurn` persists that turn's checkpoint
+record, then the file-artifact baseline is collected. Protection is ready when
+both have finished.
 
-- 每轮只有一个准备任务；工具、匹配的 hook 和结束收尾共享其完成状态。`beginTurn`
-  返回前仍会持久化本轮检查点记录，文件产物基线完成后才允许工具执行。
-- `ToolRuntime` 在 hook、参数自定义验证和工具执行之前等待保护。为避免错误判断工具
-  或插件的副作用，当前连只读工具也等待；Shell、Python、文件编辑、子 Agent、后台
-  任务和插件使用同一入口。嵌套工具保留同一等待函数，子 Agent 也继承它。
-- 没有匹配的 `UserPromptSubmit`、`InstructionsLoaded`、`PreModelRequest` hook 时，
-  请求可立即开始。有匹配 hook 时先完成保护再执行。未知的自定义 lifecycle 实现采用
-  保守等待策略。检查 hook 匹配不会执行 hook。
-- 上下文压缩引擎有独立的 hook 分发入口。配置了 `PreCompact` 或 `PostCompact` hook
-  时，本轮上下文流程整体先等待保护，即使本轮最终不触发压缩。该保守策略防止漏掉写入。
-- 上下文结束捕获、`Stop` 等后置 hook 也不能提前写入。`SessionStart` / `Setup`
-  保持原来的位置，在用户轮次接受前执行。
-- 模型文字可以在扫描结束前出现，但终态成功、文件产物和检查点收尾要等准备完成。
-  准备失败会中止进行中的模型请求，禁止工具执行，记录失败，并清理租约。已经输出的
-  文字无法撤回，因此失败状态仍会在流末尾明确发布。
-- 取消和提前关闭输出流会取消准备过程、关闭模型迭代器，并等待清理完成；文件基线
-  扫描支持协作取消。
-- 相同/重叠目录的操作继续串行保护写操作。等待期间模型可以先运行，但工具必须等到
-  自身保护就绪。已有跨轮后台任务的不确定修改处理保持不变。
+The model request starts immediately when no `UserPromptSubmit`,
+`InstructionsLoaded`, or `PreModelRequest` hook matches. A matching hook waits
+for protection before it runs. The match check does not execute the hook. A
+lifecycle implementation that cannot report matches waits as well.
 
-整个目录扫描不是文件系统原子快照，模型现在可能在采集过程中读取上下文；外部修改仍按
-实际采集版本和既有的写入前检查、恢复冲突校验处理。恢复/撤销文件格式不变。
+`SessionStart` and `Setup` run in `AgentSession` before the turn runner accepts
+input.
 
-## 验证方法
+`ToolRuntime` waits before hook dispatch, argument validation, and the tool
+body. Read-only tools wait as well, because their hooks can run arbitrary
+commands. Shell, Python, file edits, subagents, background tasks, and plugins
+use this entry. Nested tool calls keep the same wait, and a subagent inherits
+it.
 
-专项入口为 `npm run build && npm run test:checkpoints`。新增的并行准备测试使用生产
-`AgentLoop`、`ToolRuntime`、真实检查点和真实文件扫描，通过可控 Promise 检查执行顺序，
-避免依赖机器快慢设定耗时断言。覆盖：
+Context compaction uses its own hook entry. When `PreCompact` or `PostCompact`
+is configured, the turn waits before any context operation, including a turn
+that does not compact. A lifecycle that cannot report those hooks waits too.
 
-- 首段文字早于保护完成，终态成功等待保护。
-- 文件工具、Shell、Python、真实子 Agent、真实后台进程在保护完成前不能写入。
-- 真实 Shell hook、只读工具的 hook、模型前/结束 hook、压缩 hook 与未知分发器。
-- 检查点已记录但文件基线尚未完成、两阶段失败、模型流中止、排队指导信息保留。
-- 用户取消、提前关闭流、租约及 collector 清理、重叠工作区。
+`Stop` and the other post-request hooks wait when they match. When context
+capture is installed, it waits before it writes. Terminal success,
+file-artifact output, and checkpoint finalization wait for preparation.
 
-检查点恢复/撤销的断言仍由上游客服套件覆盖，本 PR 不再重复构造跨模型的还原场景。
+Operations on the same or overlapping directories stay serialized. The model
+may run while a tool is waiting for its own protection.
 
-## 性能复现
+These rules are exercised by `tests/session/workspace-preparation.spec.ts`.
+
+## Failure and cancellation
+
+If preparation fails, the turn aborts the in-flight model request and rejects
+the turn abort signal. Later tool calls stop with that failure. The turn
+records the error and completes as a failure. Text already sent stays in the
+stream, and the failure is reported when the stream ends. `beginTurn` releases
+its turn registration when it fails. Checkpoint finalization releases that
+registration after a failed turn.
+
+Cancelling the turn or closing the stream aborts preparation, closes the model
+iterator, and waits for cleanup. The file-artifact scan observes the abort
+signal during the directory walk. Finalization joins the preparation task, then releases
+the turn registration, so a late `beginTurn` cannot keep it.
+
+The baseline is a directory walk. The model may read the workspace while that
+walk is still running. External edits are resolved from the collected version,
+together with the existing pre-write checks and restore conflict checks.
+
+## Benchmark
+
+`scripts/benchmark-turn-startup.ts` runs the production turn, tool, hook, and
+file-protection path against a local model. The model waits for a fixed delay
+and makes no provider request. Times are measured from `input_accepted`.
 
 ```sh
 node --import tsx scripts/benchmark-turn-startup.ts \
-  --workspace /absolute/path/to/project --runs 7 --output /tmp/startup-after.json
+  --workspace /absolute/path/to/project \
+  --runs 7 \
+  --output /tmp/startup.json
 ```
 
-脚本运行真实的对话、工具、hook 和文件保护链路；模型端使用固定等待 50 ms 的本地
-实现，避免服务商和网络波动。记录的是生产链路中实际发生的首个 router 执行、文字事件、
-保护就绪、首次工具调用及终态时间，起点是 `input_accepted`。`--pre-request-hook` 可验证
-配置前置 hook 时仍会等待保护。
+`--runs` is an integer of at least 3 and defaults to 7. `--model-delay-ms`
+defaults to 50 and must be zero or greater. `--implementation-root` selects
+the source tree and defaults to this repository. `--pre-request-hook` installs
+a matching `UserPromptSubmit` hook, so the model request waits for protection.
 
-### 本机基准
-
-上游改为 journal v2 后，原先基于「全量检查点基线」的 macOS 采样不再适用，本 PR 未
-保留旧数据。合入前应在目标平台上重新采集：首个请求、首段文字、保护就绪、首次工具
-执行四项指标，并确认首个请求早于保护就绪、首次工具执行晚于保护就绪。
+The first run records the initial backup. Later runs use the unchanged
+workspace. The script prints each sample and the median of the unchanged runs:
+first router execution, first text, protection ready, first tool execution, and
+turn completion. It fails when a tool runs before protection is ready, or when
+the workspace changes. Repeat a changed run against an unchanged tree.
+`--output` writes the samples and that median as JSON. The median is also
+printed when `--output` is omitted.
