@@ -47,7 +47,7 @@ jobs:
       PILOTDECK_RELEASE_REVISION: ${{ inputs.revision }}
       PILOTDECK_COMMIT_SHA: ${{ github.sha }}
       PILOTDECK_DESKTOP_NODE_ARCH: ${{ matrix.arch }}
-      NODE_OPTIONS: --max-old-space-size=2560
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v7
         with:
@@ -181,7 +181,7 @@ jobs:
       PILOTDECK_COMMIT_SHA: ${{ github.sha }}
       PILOTDECK_DESKTOP_NODE_ARCH: ${{ matrix.arch }}
       USE_SYSTEM_FPM: "true"
-      NODE_OPTIONS: --max-old-space-size=2560
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - name: Bootstrap container tools
         run: dnf install -y git tar gzip xz which findutils
