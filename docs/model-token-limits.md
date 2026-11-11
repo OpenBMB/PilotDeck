@@ -34,8 +34,11 @@ The cache contains only model IDs and validated numeric limits, scoped by
 provider ID, protocol and endpoint. Inference and discovery URLs such as `/v1`
 and `/models` share a scope. Configuration parsing reads this cache synchronously
 without network access, so server restarts and headless use retain the metadata.
-A successful cache update requests a gateway configuration reload. Offline or
-damaged-cache reads fall back to the model catalog and protocol defaults.
+A successful cache update requests a gateway configuration reload. A later
+discovery merges into the existing per-model record: only validated fields in
+the new response replace stored values, and an omitted field keeps its last
+known value. Offline or damaged-cache reads fall back to the model catalog and
+protocol defaults.
 
 ## Saving and legacy configuration
 
@@ -86,7 +89,8 @@ No #682 commit is required for this branch to build or run.
 Targeted tests cover provider field maps, per-field fallback, user priority,
 legacy-pair recovery and deliberate pins, metadata persistence and endpoint
 isolation, damaged/offline caches, pagination, DashScope enrichment, on-demand
-Ollama metadata, source labels, asynchronous dialog updates, and automatic-value
+Ollama metadata, the show-then-list runtime round trip, partial cache updates,
+source labels, asynchronous dialog updates, and automatic-value
 omission on save. Tests inject provider responses; they do not make paid model
 requests or claim validation against every live provider.
 

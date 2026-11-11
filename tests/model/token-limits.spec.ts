@@ -115,3 +115,56 @@ test("Ollama show is on demand and num_ctx wins over architecture context, witho
   assert.deepEqual(await discoverOllamaModel({ protocol: "openai", baseUrl: "http://localhost:11434/v1", fetchImpl }, "local"), { id: "local", displayName: "local", maxContextTokens: 8192 });
   assert.equal(calls[1], "http://localhost:11434/api/show");
 });
+
+test("Ollama show limits survive an ID-only model list through runtime config", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "pilot-limits-"));
+  const env = { PILOT_HOME: directory };
+  const scope = { providerId: "ollama", protocol: "openai" as const, baseUrl: "http://localhost:11434/v1" };
+  const calls: string[] = [];
+  const fetchImpl = (async (url, init) => {
+    calls.push(String(url));
+    if (init?.method === "GET") return reply({ data: [{ id: "synthetic-local" }] });
+    return reply({ parameters: "num_ctx 8192\n", model_info: { "general.architecture": "llama", "llama.context_length": 131072 } });
+  }) as typeof fetch;
+  try {
+    writeProviderModelLimits(scope, [await discoverOllamaModel({ ...scope, fetchImpl }, "synthetic-local")], env);
+    calls.length = 0;
+    const listed = await discoverProviderModels({ ...scope, fetchImpl });
+    assert.equal(listed.find(model => model.id === "synthetic-local")?.maxContextTokens, undefined);
+    assert.ok(calls.every(call => !call.includes("/api/show")));
+    writeProviderModelLimits(scope, listed, env);
+    const model = parseModelConfig({
+      providers: { ollama: { url: scope.baseUrl, models: { "synthetic-local": {} } } },
+    }, { env }).providers.ollama.models["synthetic-local"];
+    assert.equal(model.capabilities.maxContextTokens, 8192);
+    assert.equal(model.capabilities.maxOutputTokens, protocolTokenLimits("openai").maxOutputTokens);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a partial metadata update replaces only the validated limit it contains", () => {
+  const directory = mkdtempSync(join(tmpdir(), "pilot-limits-"));
+  const env = { PILOT_HOME: directory };
+  const scope = { providerId: "ollama", protocol: "openai" as const, baseUrl: "http://localhost:11434/v1" };
+  const model = (id: string, limits: { maxContextTokens?: number; maxOutputTokens?: number }) => ({ id, displayName: id, ...limits });
+  try {
+    writeProviderModelLimits(scope, [
+      model("synthetic-local", { maxContextTokens: 8192, maxOutputTokens: 2048 }),
+      model("other-local", { maxContextTokens: 4096 }),
+    ], env);
+    writeProviderModelLimits(scope, [model("synthetic-local", { maxContextTokens: 0, maxOutputTokens: 4096 })], env);
+    assert.deepEqual(readProviderModelLimits(scope, env), {
+      "synthetic-local": { maxContextTokens: 8192, maxOutputTokens: 4096 },
+      "other-local": { maxContextTokens: 4096 },
+    });
+    writeProviderModelLimits(scope, [model("synthetic-local", { maxContextTokens: 16384 })], env);
+    const parsed = parseModelConfig({
+      providers: { ollama: { url: scope.baseUrl, models: { "synthetic-local": {} } } },
+    }, { env }).providers.ollama.models["synthetic-local"];
+    assert.equal(parsed.capabilities.maxContextTokens, 16384);
+    assert.equal(parsed.capabilities.maxOutputTokens, 4096);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

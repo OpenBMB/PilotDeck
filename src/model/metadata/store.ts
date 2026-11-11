@@ -3,7 +3,12 @@ import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSyn
 import { dirname, join } from "node:path";
 import { resolvePilotHome } from "../../pilot/paths.js";
 import type { ModelProtocol } from "../protocol/canonical.js";
-import { normalizeProviderTokenLimits, type ProviderModelMetadata, type TokenLimits } from "./tokenLimits.js";
+import {
+  normalizeProviderTokenLimits,
+  TOKEN_LIMIT_KEYS,
+  type ProviderModelMetadata,
+  type TokenLimits,
+} from "./tokenLimits.js";
 
 type Scope = { providerId: string; protocol: ModelProtocol; baseUrl: string };
 type Cache = Record<string, Record<string, TokenLimits>>;
@@ -43,12 +48,33 @@ export function readProviderModelLimits(scope: Scope, env?: Env): Record<string,
   } catch { return {}; }
 }
 
+/** Keep a known limit when a later response omits it. A present, validated value replaces that field. */
+function mergeValidatedTokenLimits(current: TokenLimits | undefined, incoming: TokenLimits): TokenLimits {
+  const merged = normalizeProviderTokenLimits(current);
+  for (const key of TOKEN_LIMIT_KEYS) {
+    const value = incoming[key];
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
+}
+
+function mergeCachedModelLimits(
+  existing: Record<string, TokenLimits> | undefined,
+  models: ProviderModelMetadata[],
+): Record<string, TokenLimits> {
+  const merged: Record<string, TokenLimits> = { ...existing };
+  for (const model of models) {
+    merged[model.id] = mergeValidatedTokenLimits(merged[model.id], normalizeProviderTokenLimits(model));
+  }
+  return merged;
+}
+
 /** Persist metadata separately from user configuration; never store credentials or raw responses. */
 export function writeProviderModelLimits(scope: Scope, models: ProviderModelMetadata[], env?: Env): void {
   const file = cachePath(env), temporary = `${file}.${randomUUID()}.tmp`;
   try {
     const cache = readCache(env), key = scopeKey(scope);
-    cache[key] = { ...cache[key], ...Object.fromEntries(models.map(model => [model.id, normalizeProviderTokenLimits(model)])) };
+    cache[key] = mergeCachedModelLimits(cache[key], models);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(temporary, JSON.stringify({ version: 1, scopes: cache }), { mode: 0o600 });
     renameSync(temporary, file);
