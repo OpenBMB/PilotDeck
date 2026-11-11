@@ -27,6 +27,7 @@ test("TurnRunner emits and persists file artifacts before completing the turn", 
     };
     const fakeLoop = {
       async *run(input: AgentLoopInput): AsyncGenerator<AgentEvent, AgentLoopRunResult, unknown> {
+        await input.workspaceReady?.();
         await mkdir(join(projectRoot, "app"), { recursive: true });
         await writeFile(join(projectRoot, "app", "page.tsx"), "export default function Page() {}\n");
         await writeFile(join(projectRoot, "app", "globals.css"), "body { margin: 0; }\n");

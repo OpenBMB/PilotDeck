@@ -7,6 +7,14 @@ import { emptyLifecycleDispatchResult } from "../protocol/payloads.js";
 export class LifecycleRuntime {
   constructor(private readonly hooks = new HookRuntime()) {}
 
+  /** Unknown dispatch implementations are conservatively treated as hooks. */
+  hasHooks(input: LifecycleDispatchInput): boolean {
+    if (this.dispatch !== LifecycleRuntime.prototype.dispatch) return true;
+    return this.hooks.hasHooks?.({ event: input.event,
+      hookInput: createHookInput(input.event, input.baseInput, input.payload),
+      matchQuery: input.matchQuery, cwd: input.baseInput.cwd }) ?? true;
+  }
+
   async dispatch(input: LifecycleDispatchInput): Promise<LifecycleDispatchResult> {
     const hookInput = createHookInput(input.event, input.baseInput, input.payload);
     const hookResult = await this.hooks.run({
@@ -36,6 +44,18 @@ export class NullLifecycleRuntime extends LifecycleRuntime {
   override async dispatch(): Promise<LifecycleDispatchResult> {
     return emptyLifecycleDispatchResult();
   }
+
+  override hasHooks(): boolean { return this.dispatch !== NullLifecycleRuntime.prototype.dispatch; }
+}
+
+/** Matching hooks may execute arbitrary workspace commands, including on read-only tools. */
+export async function dispatchWithWorkspaceProtection(
+  runtime: LifecycleRuntime | undefined, input: LifecycleDispatchInput, ready?: () => Promise<void>, ignoreHookErrors = false,
+): Promise<LifecycleDispatchResult> {
+  if (!runtime) return emptyLifecycleDispatchResult();
+  if (ready && runtime.hasHooks?.(input) !== false) await ready();
+  try { return await runtime.dispatch(input); }
+  catch (error) { if (!ignoreHookErrors) throw error; return emptyLifecycleDispatchResult(); }
 }
 
 function createMessagesFromEffects(effects: LifecycleDispatchResult["effects"]): CanonicalMessage[] {
