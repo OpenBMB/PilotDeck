@@ -29,4 +29,5 @@ export type McpServerForm = {
   perSession: boolean;
   url: string;
   headers: KeyValueRow[];
+  oauth?: { credentialId: string };
 };

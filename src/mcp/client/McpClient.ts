@@ -25,6 +25,9 @@
  * error, so the caller can map them back to `PilotDeckToolErrorCode`.
  */
 
+import { McpOAuthManager } from "../oauth/manager.js";
+import { resolvePilotHome } from "../../pilot/paths.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -157,7 +160,9 @@ export class McpClient {
         throw new McpClientError("MCP client closed during connection", "mcp_handshake_failed", this.spec.id);
       }
     } catch (err) {
-      if (closeVersion === this.closeVersion) this.status = "error";
+      if (closeVersion === this.closeVersion) {
+        this.status = err instanceof UnauthorizedError ? "needs-auth" : "error";
+      }
       try { await client.close(); } catch { /* best effort cleanup of a failed handshake */ }
       removeSessionDirectory(ownedDirectory);
       if (this.perSessionDir === ownedDirectory) this.perSessionDir = null;
@@ -195,9 +200,7 @@ export class McpClient {
     }
     if (this.spec.transport === "streamable_http") {
       const url = new URL(this.spec.url);
-      return new StreamableHTTPClientTransport(url, {
-        requestInit: { headers: this.spec.headers ?? {} },
-        fetch: (input, init) => {
+      const send: typeof fetch = (input, init) => {
           const method = String(init?.method ?? "GET").toUpperCase();
           const fetchImpl = this.options.fetch;
           return (fetchImpl ?? networkFetch)(input as RequestInfo, init, {
@@ -210,7 +213,15 @@ export class McpClient {
               maxDelayMs: 5_000,
             },
           });
-        },
+        };
+      if (this.spec.oauth && Object.keys(this.spec.headers ?? {}).some(key => key.toLowerCase() === 'authorization')) {
+        throw new Error('Choose OAuth or a static Authorization header, not both.');
+      }
+      return new StreamableHTTPClientTransport(url, {
+        requestInit: { headers: this.spec.headers ?? {} },
+        fetch: this.spec.oauth
+          ? new McpOAuthManager(resolvePilotHome(), send).authenticatedFetch(this.spec.oauth.credentialId, this.spec.url, send)
+          : send,
       });
     }
     const fallback = this.spec as PilotDeckMcpServerSpec;
