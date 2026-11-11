@@ -42,6 +42,12 @@ html[data-desktop-platform="darwin"] .workspace-header {
   -webkit-app-region: drag;
   user-select: none;
 }
+/* Only the session text needs double-click hit testing. The remaining title
+   column stays available for window dragging, including beside short titles. */
+html[data-desktop-platform="darwin"] .workspace-header h1[data-desktop-no-drag] {
+  width: fit-content;
+  max-width: min(100%, 34rem);
+}
 html[data-desktop-platform="darwin"] .app-shell .project-sidebar + .sidebar-resizer {
   margin-top: var(--desktop-toolbar-height);
   /* Keep the drag target wide without painting a second border beside the

@@ -24,8 +24,12 @@ describe('useOnboardingWorkspace retry safety', () => {
     const { result } = renderHook(() => useOnboardingWorkspace());
     act(() => result.current.setWorkspacePath('/workspace/demo'));
 
-    await act(async () => result.current.createWorkspace());
-    await act(async () => result.current.createWorkspace());
+    let created, retried;
+    await act(async () => { created = await result.current.createWorkspace(); });
+    await act(async () => { retried = await result.current.createWorkspace(); });
+
+    expect(created).toEqual({ name: 'demo' });
+    expect(retried).toBe(created);
 
     expect(mocks.createWorkspaceRequest).toHaveBeenCalledTimes(1);
     expect(mocks.createWorkspaceRequest).toHaveBeenCalledWith({
@@ -45,6 +49,19 @@ describe('useOnboardingWorkspace retry safety', () => {
     expect(mocks.createWorkspaceRequest).toHaveBeenCalledTimes(2);
   });
 
+  it('allows a failed creation to retry instead of caching the failure', async () => {
+    mocks.createWorkspaceRequest.mockRejectedValueOnce(new Error('Workspace unavailable'));
+    const { result } = renderHook(() => useOnboardingWorkspace());
+    act(() => result.current.setWorkspacePath('/workspace/demo'));
+    await act(async () => {
+      await expect(result.current.createWorkspace()).rejects.toThrow('Workspace unavailable');
+    });
+    await act(async () => {
+      expect(await result.current.createWorkspace()).toEqual({ name: 'demo' });
+    });
+    expect(mocks.createWorkspaceRequest).toHaveBeenCalledTimes(2);
+  });
+
   it('preserves GitHub authentication when cloning an HTTPS repository', async () => {
     const { result } = renderHook(() => useOnboardingWorkspace());
     act(() => {
@@ -55,6 +72,11 @@ describe('useOnboardingWorkspace retry safety', () => {
     });
 
     await act(async () => result.current.createWorkspace());
+    await act(async () => {
+      expect(await result.current.createWorkspace()).toEqual({ name: 'demo' });
+    });
+
+    expect(mocks.cloneWorkspaceWithProgress).toHaveBeenCalledTimes(1);
 
     expect(mocks.cloneWorkspaceWithProgress).toHaveBeenCalledWith(
       {

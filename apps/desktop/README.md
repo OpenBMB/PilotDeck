@@ -56,6 +56,8 @@ Use palette tokens for interactive accents (links, selection, focus, switches, p
 
 ## Validation
 
+On macOS, the preload caption covers the sidebar's full top edge (or the native-controls width when collapsed). The workspace toolbar owns the remaining drag region; only session-title text and interactive controls opt out so double-click renaming and toolbar actions remain usable. Browser geometry coverage runs in `ui/e2e/desktop-drag-regions.spec.mjs`; native hit testing still requires the desktop chrome acceptance below on macOS.
+
 The Node helper suite is collected by the test command above. [Desktop chrome acceptance](../../ui/e2e/desktop-chrome.smoke.mjs), [lifecycle acceptance](scripts/verify-desktop-lifecycle.cjs) and native installer checks need their stated build/platform prerequisites and isolated profiles. They do not establish that a particular published package is signed; [release verification](../../docs/release.md) checks the actual payload.
 
 Caption-menu changes also require `pnpm --dir ui exec vitest run --project server server/services/windowsCaptionMenu.test.ts`; these fake-clock integration cases complement the desktop helper's real event-loop tests.

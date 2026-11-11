@@ -148,7 +148,8 @@ try {
   if (mac) {
     expect(mainHeader).toEqual({ top: 0, bottom: 52 });
     await expect(page.locator('html')).toHaveAttribute('data-desktop-toolbar', '');
-    await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('width', '100px');
+    await expect.poll(async () => page.locator('#pilotdeck-window-caption').evaluate(el => el.getBoundingClientRect().width))
+      .toBe(await page.locator('.project-sidebar').evaluate(el => el.getBoundingClientRect().width));
     const verifyToolbarHitTargets = async () => {
       const targets = await page.locator('.workspace-header button, .workspace-header input, .compact-brand').evaluateAll(elements =>
         elements.filter(el => el.getBoundingClientRect().width && el.getBoundingClientRect().height).map(el => {
@@ -168,6 +169,7 @@ try {
       expect(await page.locator('.sidebar-brand-row, .compact-brand').evaluate(el => el.getBoundingClientRect().bottom)).toBe(110);
       expect(await page.locator('.workspace-title').evaluate(el => el.getBoundingClientRect().left)).toBeGreaterThanOrEqual(100);
       await verifyToolbarHitTargets();
+      await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('width', `${Math.max(100, width)}px`);
       if (width === 76) await page.screenshot({ path: path.join(artifactDir, 'mac-compact-sidebar.png') });
     }
     await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -282,6 +284,13 @@ try {
   // DOM dblclick alone cannot detect Electron's native hit-test interception.
   expect(await title.evaluate(el => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
   expect(await page.locator('.workspace-header').evaluate(el => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
+  if (mac) {
+    const titleWidth = await title.evaluate(el => {
+      const text = document.createRange(); text.selectNodeContents(el);
+      return { box: el.getBoundingClientRect().width, text: text.getBoundingClientRect().width };
+    });
+    expect(titleWidth.box).toBeLessThanOrEqual(Math.ceil(titleWidth.text) + 1);
+  }
   await title.dblclick();
   await expect(page.getByRole('textbox', { name: 'Rename Session' })).toBeVisible();
   await page.keyboard.press('Escape');
