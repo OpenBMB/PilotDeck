@@ -2,11 +2,12 @@
 
 from pathlib import Path
 
+import yaml
 
 
 def parse_skill_md(skill_path: Path) -> tuple[str, str, str]:
     """Parse a SKILL.md file, returning (name, description, full_content)."""
-    content = (skill_path / "SKILL.md").read_text()
+    content = (skill_path / "SKILL.md").read_text(encoding="utf-8")
     lines = content.split("\n")
 
     if lines[0].strip() != "---":
@@ -21,27 +22,11 @@ def parse_skill_md(skill_path: Path) -> tuple[str, str, str]:
     if end_idx is None:
         raise ValueError("SKILL.md missing frontmatter (no closing ---)")
 
-    name = ""
-    description = ""
-    frontmatter_lines = lines[1:end_idx]
-    i = 0
-    while i < len(frontmatter_lines):
-        line = frontmatter_lines[i]
-        if line.startswith("name:"):
-            name = line[len("name:"):].strip().strip('"').strip("'")
-        elif line.startswith("description:"):
-            value = line[len("description:"):].strip()
-            # Handle YAML multiline indicators (>, |, >-, |-)
-            if value in (">", "|", ">-", "|-"):
-                continuation_lines: list[str] = []
-                i += 1
-                while i < len(frontmatter_lines) and (frontmatter_lines[i].startswith("  ") or frontmatter_lines[i].startswith("\t")):
-                    continuation_lines.append(frontmatter_lines[i].strip())
-                    i += 1
-                description = " ".join(continuation_lines)
-                continue
-            else:
-                description = value.strip('"').strip("'")
-        i += 1
-
+    frontmatter = yaml.safe_load("\n".join(lines[1:end_idx]) + "\n")
+    if not isinstance(frontmatter, dict):
+        raise ValueError("SKILL.md frontmatter must be a YAML dictionary")
+    name = frontmatter.get("name", "")
+    description = frontmatter.get("description", "")
+    if not isinstance(name, str) or not isinstance(description, str):
+        raise ValueError("SKILL.md name and description must be strings")
     return name, description, content
