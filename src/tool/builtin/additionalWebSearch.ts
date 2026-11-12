@@ -1,9 +1,9 @@
 import { isSerpApiEngine, type SerpApiEngine } from "../../pilot/config/webSearchProviders.js";
 import type { WebSearchOrganicResult } from "./webSearch.js";
 
-export type AdditionalSearchProvider = "deepseek" | "baidu" | "bocha" | "exa" | "serpapi";
+export type AdditionalSearchProvider = "deepseek" | "baidu" | "bocha" | "exa" | "serpapi" | "outcrawl";
 export function isAdditionalSearchProvider(value: unknown): value is AdditionalSearchProvider {
-  return value === "deepseek" || value === "baidu" || value === "bocha" || value === "exa" || value === "serpapi";
+  return value === "deepseek" || value === "baidu" || value === "bocha" || value === "exa" || value === "serpapi" || value === "outcrawl";
 }
 
 /** Used by both real searches and the settings connection probe. */
@@ -36,6 +36,9 @@ export function additionalSearchRequest(provider: AdditionalSearchProvider, opti
   } else if (provider === "bocha") {
     headers.Authorization = `Bearer ${apiKey}`;
     body = { query, count: limit, freshness: "noLimit", summary: true };
+  } else if (provider === "outcrawl") {
+    headers.Authorization = `Bearer ${apiKey}`;
+    body = { query, limit };
   } else {
     headers["x-api-key"] = apiKey;
     body = { query, numResults: limit, type: "auto", contents: { highlights: true, text: false } };
@@ -56,7 +59,7 @@ export function additionalSearchResults(provider: AdditionalSearchProvider, raw:
   if (provider === "serpapi" && record(raw.search_metadata) && raw.search_metadata.status === "Error") throw new Error("SerpAPI search failed.");
   const data = provider === "bocha" && record(raw.data) ? raw.data : raw;
   const pages = record(data.webPages) ? data.webPages.value : undefined;
-  const items = provider === "baidu" ? raw.references : provider === "bocha" ? pages : (provider === "exa" || provider === "deepseek") ? raw.results : raw.organic_results;
+  const items = provider === "baidu" ? raw.references : provider === "bocha" ? pages : provider === "outcrawl" ? raw.hits : (provider === "exa" || provider === "deepseek") ? raw.results : raw.organic_results;
   // SerpAPI legitimately omits organic_results for a query with no organic hits.
   if (!Array.isArray(items)) {
     if (provider === "serpapi" && record(raw.search_metadata) && raw.search_metadata.status === "Success") return [];

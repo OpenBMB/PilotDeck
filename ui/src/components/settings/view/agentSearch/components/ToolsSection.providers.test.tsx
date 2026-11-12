@@ -26,7 +26,7 @@ it.each(["en", "zh-CN"])("shows readable provider/engine labels in %s and tests 
   await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("SerpAPI"));
   fireEvent.keyDown(help, { key: "Escape" });
   expect(screen.queryByRole("tooltip")).toBe(null);
-  expect(provider.querySelectorAll("option")).toHaveLength(10);
+  expect(provider.querySelectorAll("option")).toHaveLength(11);
   for (const option of provider.querySelectorAll("option")) expect(option.textContent).not.toContain("pilotDeckConfig.");
   expect(screen.getByRole("option", { name: "Serper (Google)" })).toBeTruthy();
   expect(screen.getByRole("option", { name: "Brave Search" })).toBeTruthy();

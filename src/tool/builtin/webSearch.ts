@@ -86,7 +86,7 @@ export function createWebSearchTool(
 - Use this tool when API/SDK/framework usage is unknown, version-sensitive, or likely changed since training. Search with package/service name, version, framework, and the specific method/option/error.
 
 Usage notes:
-  - Configure \`tools.webSearch.provider\` as \`deepseek\`, \`glm\`, \`tavily\`, \`serper\`, \`brave\`, \`baidu\`, \`bocha\`, \`exa\`, \`serpapi\`, or \`custom\` in \`pilotdeck.yaml\`
+  - Configure \`tools.webSearch.provider\` as \`deepseek\`, \`glm\`, \`tavily\`, \`serper\`, \`brave\`, \`baidu\`, \`bocha\`, \`exa\`, \`serpapi\`, \`outcrawl\`, or \`custom\` in \`pilotdeck.yaml\`
   - Custom HTTP templates and response mappings are applied automatically; pass query/gl normally and never supply credentials in tool arguments
   - Requires \`tools.webSearch.apiKey\`, the provider API key environment variable, or \`CUSTOM_WEB_SEARCH_API_KEY\` unless custom auth is \`none\`
   - The optional \`gl\` parameter is forwarded only by providers that support localization
@@ -263,6 +263,7 @@ function resolveProvider(
     ["BOCHA_API_KEY", "bocha"],
     ["EXA_API_KEY", "exa"],
     ["SERPAPI_API_KEY", "serpapi"],
+    ["OUTCRAWL_API_KEY", "outcrawl"],
     ["DEEPSEEK_API_KEY", "deepseek"],
   ];
   for (const [name, provider] of envProviders) {
@@ -289,6 +290,7 @@ function resolveApiKey(
   if (provider === "exa") return readEnv(context, "EXA_API_KEY");
   if (provider === "deepseek") return readEnv(context, "DEEPSEEK_API_KEY");
   if (provider === "serpapi") return readEnv(context, "SERPAPI_API_KEY");
+  if (provider === "outcrawl") return readEnv(context, "OUTCRAWL_API_KEY");
   return readEnv(context, "GLM_WEB_SEARCH_API_KEY") ?? readEnv(context, "ZAI_API_KEY");
 }
 

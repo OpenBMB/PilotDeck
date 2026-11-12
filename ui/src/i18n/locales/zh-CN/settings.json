@@ -1591,6 +1591,7 @@
           "bocha": "博查 Web 搜索",
           "exa": "Exa",
           "serpapi": "SerpAPI",
+          "outcrawl": "Outcrawl",
           "docs": "API 文档与密钥申请",
           "docsHint": "查看{{provider}}帮助文档与密钥申请（新窗口打开）",
           "docsLabel": "打开{{provider}}帮助文档与密钥申请"

@@ -1591,6 +1591,7 @@
           "bocha": "Bocha Web Search",
           "exa": "Exa",
           "serpapi": "SerpAPI",
+          "outcrawl": "Outcrawl",
           "docs": "API documentation and keys",
           "docsHint": "View {{provider}} documentation and key setup (opens a new window)",
           "docsLabel": "Open {{provider}} documentation and key setup"

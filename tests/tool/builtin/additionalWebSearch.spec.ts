@@ -29,6 +29,20 @@ for (const [provider, response, requestBody, header] of [
     assert.equal(result.data?.organic[0]?.publishedAt, "2026-09-30");
   });
 }
+test("outcrawl uses bearer auth and a query/limit body, and maps hits to citations", async () => {
+  const fetchImpl: typeof fetch = async (url, init) => {
+    assert.equal(String(url), "https://api.outcrawl.ai/v1/search");
+    assert.equal(init?.method, "POST");
+    assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer key");
+    assert.deepEqual(JSON.parse(String(init?.body)), { query: "你好", limit: 8 });
+    return json({ hits: [{ url: "https://example.test", title: "Outcrawl", snippet: "摘要", rank: 1 }, { url: "https://example.test/2", title: "Second", snippet: "two", rank: 2 }], usage: { credits: "1" } });
+  };
+  const result = await createWebSearchTool({ provider: "outcrawl", apiKey: "key", fetchImpl }).execute({ query: " 你好 " }, context);
+  assert.equal(result.data?.organic.length, 2);
+  assert.equal(result.data?.organic[0]?.title, "Outcrawl");
+  assert.equal(result.data?.organic[0]?.link, "https://example.test");
+  assert.equal(result.data?.organic[0]?.snippet, "摘要");
+});
 for (const engine of SERPAPI_ENGINES) {
   test(`SerpAPI ${engine} uses the correct query parameter and caps organic results`, async () => {
     const fetchImpl: typeof fetch = async (value, init) => {
@@ -52,6 +66,7 @@ test("new provider errors and query-authenticated network errors never expose AP
     ["baidu", { code: "InvalidAuth", message: "bad key+/ with key%2B%2F" }],
     ["bocha", { code: 401, msg: "key+/ unauthorized" }],
     ["exa", { error: "key+/ invalid" }],
+    ["outcrawl", { code: "unauthorized", message: "authentication failed key+/" }],
     ["serpapi", { error: "key+/ exhausted" }],
   ] as const) {
     await assert.rejects(createWebSearchTool({ provider, apiKey: "key+/", fetchImpl: async () => json(response) }).execute({ query: "test" }, context), error => {
@@ -64,7 +79,7 @@ test("new provider errors and query-authenticated network errors never expose AP
   });
 });
 test("new providers reject malformed success payloads and accept real empty results", async () => {
-  for (const provider of ["baidu", "bocha", "exa", "serpapi"] as const) {
+  for (const provider of ["baidu", "bocha", "exa", "serpapi", "outcrawl"] as const) {
     await assert.rejects(createWebSearchTool({ provider, apiKey: "key", fetchImpl: async () => json({}) }).execute({ query: "test" }, context), /missing its result list/);
   }
   const result = await createWebSearchTool({ provider: "serpapi", apiKey: "key", fetchImpl: async () => json({ search_metadata: { status: "Success" } }) }).execute({ query: "test" }, context);
@@ -83,7 +98,7 @@ test("new providers keep retry, timeout and caller cancellation behavior", async
   await assert.rejects(createWebSearchTool({ provider: "serpapi", apiKey: "key", fetchImpl: hanging }).execute({ query: "test" }, { ...context, abortSignal: abort.signal }), { code: "tool_execution_failed" });
 });
 test("new provider environment keys are isolated and preserve existing provider precedence", async () => {
-  for (const [provider, name] of [["baidu", "BAIDU_WEB_SEARCH_API_KEY"], ["bocha", "BOCHA_API_KEY"], ["exa", "EXA_API_KEY"], ["serpapi", "SERPAPI_API_KEY"]] as const) {
+  for (const [provider, name] of [["baidu", "BAIDU_WEB_SEARCH_API_KEY"], ["bocha", "BOCHA_API_KEY"], ["exa", "EXA_API_KEY"], ["serpapi", "SERPAPI_API_KEY"], ["outcrawl", "OUTCRAWL_API_KEY"]] as const) {
     assert.equal((await createWebSearchTool({ provider }).checkAvailability?.({ ...context, env: { [name]: "key" } }))?.ok, true);
     assert.equal((await createWebSearchTool({ provider }).checkAvailability?.({ ...context, env: { TAVILY_API_KEY: "other" } }))?.ok, false);
   }
