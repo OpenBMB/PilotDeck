@@ -6,6 +6,7 @@ import {
   buildRenderableMessageItems,
   groupProcessIntervals,
   getLiveProcessGroups,
+  getProcessToolKind,
   hasPendingWebFetchInRunningGroup,
   shouldShowWebFetchWaitingHint,
   splitLiveProcessGroupDetailMessages,
@@ -14,6 +15,10 @@ import {
 } from './processGrouping';
 
 const baseTime = Date.parse('2026-05-18T08:00:00.000Z');
+
+it.each(['cron_create', 'cron_update', 'cron_run_now'])('keeps %s out of file and command activity summaries', toolName => {
+  expect(getProcessToolKind({ type: 'assistant', timestamp: new Date(baseTime).toISOString(), toolName })).toBe('tool');
+});
 
 describe('turn file result placement', () => {
   it('keeps early artifacts at the turn tail and hides them until execution stops', () => {

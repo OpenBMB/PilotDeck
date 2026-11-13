@@ -1,56 +1,108 @@
-# Cron scheduling and the version 3 upgrade
+# Scheduled tasks
 
-## Runtime configuration
+Scheduled tasks are owned by `pilotdeck server`. Keep the server and computer
+running for local work. The Web page, Agent tools and Gateway share `CronManager`
+and its project runtimes; the old UI daemon helpers are not used.
 
-Cron is enabled by default while `pilotdeck server` is running. Omitting the
-`cron` section, leaving it empty (`cron:` or `cron: {}`), or omitting
-`cron.enabled` keeps the runtime enabled. After initial model setup, users can
-create scheduled tasks from the UI or ask an agent to create them without
-enabling an additional switch.
+## Configuration and permissions
 
-To disable scheduling and the agent's Cron tools, set:
+Cron is enabled by default. Set `cron.enabled: false` to disable scheduling and
+Agent scheduling tools. Defaults are timezone `UTC`, `maxConcurrentRuns: 1`
+(across projects), and `runTimeoutMinutes: 60`. Configuration hot reload rebuilds
+the runtime and interrupts active runs; their records remain available.
 
-```yaml
-cron:
-  enabled: false
-```
+New tasks default to the existing restricted permission rules, not Full Access.
+`mode: plan` allows read-only work; `bypassPermissions` is an explicit Full Access
+choice. Execution sets `canPrompt: false`; requests for approval or input become
+visible blocked results. A task's project identity and execution directory are
+separate. General uses its configuration-home identity and managed workspace,
+never the configuration directory as its working directory.
 
-The default timezone is `UTC`, the maximum concurrent runs is `1`, and the run
-timeout is `60` minutes. Cron configuration changes are applied through the
-server's configuration hot reload.
+## Timing
 
-## Schedule expressions
+Creation accepts `once` (an RFC 3339 instant with an offset), `delay` (positive
+amount and second/minute/hour/day unit), `cron`, `interval`, and `monthly`.
+Delays normalize to one-time instants. Intervals use an integer `everySeconds`
+of at least 60 and a persisted `anchorAt`; late execution never moves the anchor.
+Monthly weekday rules specify `ordinal` (1–4 or -1 for last), Sunday-based
+`weekday` (0–6), `hour`, `minute`, and an IANA `timezone`.
 
-Recurring schedules use five numeric fields: `minute hour day-of-month month
-day-of-week`. Sunday is `0` or `7`. Times are interpreted in the task's timezone.
+Cron uses five numeric fields: minute, hour, day-of-month, month, day-of-week.
+Sunday is 0 or 7. Wildcards, lists, ranges, and wildcard/range steps are supported.
+Names, macros, seconds, malformed numeric tokens and single-value steps reject.
+When neither day field starts with `*`, the day fields match with **OR**; when
+either starts with `*` (including `*/n`), they match with **AND**. Thus
+`0 9 1 * 1` means every Monday or the first day of a month. Use a typed monthly
+weekday rule for the first Monday instead of `0 9 1-7 * 1`.
 
-When neither day field starts with `*`, day-of-month and day-of-week match with
-**OR**. When either starts with `*`, including `*/n`, they match with **AND**.
-This follows Cronie's matching rule. An explicit full range such as `0-6` or
-`1-31` is not a wildcard. Month, hour, and minute must always match.
+Each project waits for its nearest due task, with periodic clock rechecks. Busy
+execution slots leave the original occurrence unchanged. Missed recurring
+occurrences produce one execution and advance to the first future occurrence
+when it finishes, rather than replaying every missed run. New one-time tasks
+more than one minute overdue at server startup become `missed` for manual action.
+The preview endpoint uses the same evaluator as execution.
 
-For example, `0 9 1 * 1` runs at 09:00 on every Monday and on the first of each
-month. `0 9 1-7 * 1` runs on days 1–7 and every Monday; it does **not** mean the
-first Monday of the month. For that requirement, calculate the intended dates
-and create explicit one-time schedules instead of using this expression.
+The version-3 day matching migration preserves cached pending occurrences and
+applies corrected OR semantics to existing tasks. It does not replay historical
+occurrences missed under the older intersection rule.
 
-## Compatibility notice
+## Task and execution lifecycle
 
-Version 2 incorrectly required both restricted day fields to match. Version 3
-applies the corrected OR rule to **existing as well as new recurring tasks**.
-There is no legacy AND mode. Existing tasks with two restricted day fields can
-therefore run more often after upgrading. Review and replace any such schedules
-that relied on the old intersection behavior before upgrading, especially tasks
-that perform unattended writes or other external actions.
+Tasks retain `scheduled`, `running`, `paused`, `completed`, `failed`, or `missed`
+status. `enabled` controls future triggers independently of the active run.
+Pausing a running task lets that run finish; stopping cancels only that run.
+One-time tasks remain after completion, failure or interruption. Resume requires
+a future occurrence; manual retry works without changing the saved schedule.
+Description-only edits preserve the committed occurrence. Edits require an
+`expectedRevision`; concurrent changes reject with a conflict.
 
-On the first startup after upgrading from version 2, the scheduler preserves
-cached runs for expressions whose day-matching rule is unchanged. For changed
-expressions, it chooses the earlier of the cached pending run and the next run
-under the OR rule. This preserves overdue runs and runs deferred by the
-concurrency limit, even when their deferred execution time is still in the
-future. Subsequent runs use the corrected matching rule.
+Execution modes:
 
-Migration updates the computation version and task revision once. Subsequent
-restarts reuse the migrated cache. One-time schedules are unaffected. This
-upgrade does not replay every historical occurrence that the old AND rule
-missed.
+- `independent`: a fresh `cron:<taskId>:<runId>` conversation for each run (default).
+- `conversation`: wait for an existing target conversation to become idle, then
+  continue with its history. The scheduler never closes the target conversation.
+- `persistent`: reuse one dedicated task conversation (legacy default).
+
+Independent Git tasks can select `workspaceMode: worktree`. Worktrees start at
+committed HEAD, exclude dirty local work, and are retained for review. The
+scheduler never stages or commits the user's checkout. Other tasks use the
+selected working directory. A model override can be stored per task.
+
+Manual execution creates a Run under the existing task ID and preserves its
+schedule. Admission prevents overlapping executions of that task and enforces
+the shared concurrency limit. Each run records the instruction snapshot,
+trigger source, intended and actual times, execution conversation, output, file
+artifacts, outcome and result delivery status.
+
+Results always remain in the task history. `notificationPolicy` controls source
+result delivery: `all`, `findings`, or `failures`. Independent tasks created in
+Web chat can append a durable result notification to their source conversation;
+conversation-mode output is already in the execution conversation. Delivery
+failures remain separate from execution failures, retry three times, and can be
+retried manually without executing the task again. Delivery across independent
+stores/channels is at least once, not exactly once.
+
+## Storage and interfaces
+
+Tasks are in `<PILOT_HOME>/cron/projects/<projectId>/tasks.json`, with a `.cwd`
+project marker. JSON writes use a serialized mutation queue and atomic replace.
+Unreadable, unsupported or damaged stores reject writes and preserve their bytes.
+Running records recover after restart; a committed terminal result is retained
+rather than executed again. Run history uses JSONL with bounded retention (200
+runs per task and 30 days, always retaining the latest); superseded updates of a
+run are compacted. Pruning removes old event logs, never retained worktrees.
+
+Agent tools are `cron_create`, `cron_list`, `cron_get`, `cron_update`,
+`cron_run_now`, `cron_stop`, and `cron_delete`. Creation defaults to the current
+project and captures the actual working directory. Lists default to the current
+project; `scope: all` enables a host-wide query. Detail queries provide cursor
+pagination. Source session and project identity are supplied by the host.
+
+Web APIs keep `/api/always-on/cron-jobs` compatibility. Task detail is
+`GET /api/always-on/cron-jobs/:taskId`; history pagination uses `beforeRunId`.
+`POST /api/always-on/cron-preview` validates and previews without creating work.
+The existing PATCH, run-now, stop and DELETE routes operate on the same tasks.
+A run-now request with `retryDeliveryRunId` retries only result delivery.
+
+Validate with `tests/cron`, `tests/gateway/cron-defaults.spec.ts`, Web route and
+Cron panel tests. See [testing](testing.md) for runners and isolation requirements.

@@ -461,6 +461,7 @@ export function getProcessToolKind(
   if (/(?:^|__)(?:browser_navigate|browser_open)$/.test(toolName)) return 'browse';
   if (/(?:^|__)(?:browser|computer)_/.test(toolName)) return 'interaction';
   if (toolName === 'save_generated_image' || toolName === 'save_generated_video') return 'edit';
+  if (/^cron_?(?:create|update|list|get|stop|delete|run_?now)$/.test(toolName)) return 'tool';
   if (/^(task_?(?:create|update|list|get|stop|output|wait)|todo_?(?:write|read))$/.test(toolName)) return 'tool';
   if (isWebFetchToolMessage(message)) return 'fetch';
   if (toolName === 'str_replace_editor' && getToolInputString(message, 'command') === 'view') {

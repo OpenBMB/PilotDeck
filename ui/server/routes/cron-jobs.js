@@ -38,6 +38,8 @@ export function createCronUpdateHandler({ getGateway }) {
                 message,
                 schedule,
                 timezone,
+                ...Object.fromEntries(['name', 'enabled', 'executionMode', 'notificationPolicy', 'mode', 'workspaceMode', 'modelSelection', 'targetSessionKey']
+                    .filter(key => Object.hasOwn(req.body, key)).map(key => [key, req.body[key]])),
             });
             if (!result.updated) {
                 if (result.reason === 'running') {
@@ -78,6 +80,9 @@ function isCronTaskSchedule(schedule) {
             && schedule.expression.trim().length > 0
             && !hasInvalidTimezone(schedule);
     }
+    if (schedule.type === 'interval') return Number.isSafeInteger(schedule.everySeconds) && schedule.everySeconds >= 60 && typeof schedule.anchorAt === 'string';
+    if (schedule.type === 'monthly') return [1, 2, 3, 4, -1].includes(schedule.ordinal) && Number.isInteger(schedule.weekday)
+        && Number.isInteger(schedule.hour) && Number.isInteger(schedule.minute) && typeof schedule.timezone === 'string';
     return false;
 }
 

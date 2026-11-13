@@ -36,7 +36,7 @@ export interface ToolDisplayConfig {
     title?: string | ((result: any) => string);
     defaultOpen?: boolean;
     // Special result handlers
-    contentType?: 'markdown' | 'file-list' | 'todo-list' | 'text' | 'success-message' | 'task' | 'question-answer' | 'plan-card';
+    contentType?: 'markdown' | 'file-list' | 'todo-list' | 'text' | 'success-message' | 'task' | 'question-answer' | 'plan-card' | 'scheduled-task';
     getMessage?: (result: any) => string;
     getContentProps?: (result: any) => any;
   };
@@ -388,13 +388,11 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
     input: {
       type: 'one-line',
       label: 'CronCreate',
-      getValue: (input) => input.prompt || t('common:uiText.scheduleJob'),
+      getValue: (input) => input.name || input.message || input.prompt || t('common:uiText.scheduleJob'),
       getSecondary: (input) => {
-        const cadence = input.recurring === false ? 'one-shot' : 'recurring';
-        const storage = input.durable ? 'durable' : 'session';
-        return input.cron
-          ? `${input.cron} · ${cadence} · ${storage}`
-          : `${cadence} · ${storage}`;
+        const schedule = input.schedule;
+        return schedule?.type === 'cron' ? `${schedule.expression} · ${schedule.timezone || input.timezone || 'UTC'}`
+          : schedule?.runAt || schedule?.type || input.cron;
       },
       action: 'none',
       colorScheme: {
@@ -404,6 +402,24 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
         icon: 'text-amber-500 dark:text-amber-400'
       }
     },
+    result: {
+      type: 'card',
+      contentType: 'scheduled-task',
+      getContentProps: (result) => ({ result }),
+    }
+  },
+
+  CronUpdate: {
+    input: { type: 'one-line', label: 'Update scheduled task', getValue: (input) => input.taskId, action: 'none' },
+    result: {
+      type: 'card',
+      contentType: 'scheduled-task',
+      getContentProps: (result) => ({ result }),
+    }
+  },
+
+  CronAction: {
+    input: { type: 'one-line', getValue: (input) => input.taskId || input.runId || '', action: 'none' },
     result: {
       type: 'collapsible',
       defaultOpen: false,
@@ -765,6 +781,13 @@ export const TOOL_CONFIGS = createToolConfigs(((...args: Parameters<TFunction>) 
 const translatedConfigs = new WeakMap<TFunction, Record<string, ToolDisplayConfig>>();
 
 const TOOL_NAME_ALIASES: Record<string, string> = {
+  cron_create: 'CronCreate',
+  cron_update: 'CronUpdate',
+  cron_get: 'CronAction',
+  cron_run_now: 'CronAction',
+  cron_stop: 'CronAction',
+  cron_list: 'CronList',
+  cron_delete: 'CronDelete',
   agent: 'Task',
   ask_user_question: 'AskUserQuestion',
   bash: 'Bash',

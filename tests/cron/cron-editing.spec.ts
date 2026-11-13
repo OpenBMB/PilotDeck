@@ -52,7 +52,7 @@ function createFire(
   now: () => Date,
   onTurnEvent?: (sessionKey: string, channelKey: string, event: GatewayEvent) => void,
 ): CronFire {
-  const activeRuns = new Map<string, { runId: string; taskId: string; sessionKey: string; scheduleType: "once" | "cron"; stopRequested: boolean }>();
+  const activeRuns = new Map<string, { runId: string; taskId: string; sessionKey: string; scheduleType: CronTask["schedule"]["type"]; stopRequested: boolean }>();
   return new CronFire({
     gateway,
     store,
@@ -512,9 +512,10 @@ for (const expression of ["0 9 * * *", "0 9 1 * 1"]) {
     try {
       await store.putTask(makeTask({
         schedule: { type: "cron", expression, timezone: "UTC" },
-        nextRunAt: now.toISOString(),
+        // Persist a real v2 deferred cache; the new scheduler deliberately never rewrites due times when busy.
+        nextRunAt: "2026-06-01T09:01:00.000Z",
+        revision: 1,
       }));
-      // The v2 scheduler defers an already-due run before the process upgrades.
       await beforeUpgrade.runTickOnce();
       await beforeUpgrade.stop();
       assert.equal((await store.getTask("task-1"))?.nextRunAt, "2026-06-01T09:01:00.000Z");

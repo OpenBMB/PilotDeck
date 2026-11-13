@@ -123,6 +123,10 @@ import { createUsageRouter } from './routes/usage.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
+import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
+import { resolvePilotHome } from './utils/pilotPaths.js';
+import { normalizeSchedule } from '../../src/cron/runtime/CronRuntime.js';
+import { previewCronSchedule } from '../../src/cron/runtime/CronSchedule.js';
 import {
     OFFICE_PREVIEW_SERVICE_BUILTIN,
     OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
@@ -766,18 +770,69 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
         }
 
         const gateway = await getPilotDeckGateway();
+        if (req.body?.executionMode === 'conversation') {
+            const sessions = await gateway.listSessions({ projectKey, limit: 1000 });
+            if (!sessions.sessions.some(session => (session.sessionKey || session.sessionId) === req.body?.sessionKey)) {
+                res.status(400).json({ error: 'Select an existing conversation in this workspace.' });
+                return;
+            }
+        }
         const result = await gateway.cronCreate({
             message,
             projectKey,
             schedule,
             timezone,
             channelKey: 'web',
+            name: req.body?.name,
+            workspaceCwd: projectKey === resolvePilotHome(process.env) ? await ensureGeneralWorkspaceDirectory(process.env) : req.body?.workspaceCwd,
+            executionMode: req.body?.executionMode,
+            sessionKey: req.body?.sessionKey,
+            targetSessionKey: req.body?.sessionKey,
+            notificationPolicy: req.body?.notificationPolicy,
+            mode: req.body?.mode,
+            workspaceMode: req.body?.workspaceMode,
+            modelSelection: req.body?.modelSelection,
         });
         res.json(result);
     } catch (error) {
         console.error('[always-on-cron-create] failed:', error);
-        res.status(500).json({ error: error?.message || 'cron create failed' });
+        res.status(/^(Invalid Cron|Cron |One-time Cron)/i.test(error?.message || '') ? 400 : 500).json({ error: error?.message || 'cron create failed' });
     }
+});
+
+app.get('/api/always-on/cron-options', authenticateToken, async (req, res) => {
+    try {
+        const gateway = await getPilotDeckGateway();
+        const [sessions, models] = await Promise.all([
+            gateway.listSessions({ projectKey: req.query.projectKey, limit: 1000 }),
+            gateway.modelCatalogList?.({ projectKey: req.query.projectKey }),
+        ]);
+        res.json({ sessions: sessions.sessions.map(session => ({ id: session.sessionKey || session.sessionId,
+            title: session.summary || session.firstPrompt || session.sessionId })), models: models?.items || [] });
+    } catch (error) { res.status(500).json({ error: error?.message || 'Failed to load task execution options.' }); }
+});
+
+app.post('/api/always-on/cron-preview', authenticateToken, async (req, res) => {
+    try {
+        const now = new Date();
+        const timezone = req.body?.timezone || 'UTC';
+        const schedule = normalizeSchedule(req.body, timezone, now);
+        const nextRuns = previewCronSchedule(schedule, now, timezone);
+        if (!nextRuns.length) return res.status(400).json({ error: 'The schedule has no future occurrence.' });
+        res.json({ schedule, timezone, nextRuns });
+    } catch (error) { res.status(400).json({ error: error?.message || 'Invalid schedule.' }); }
+});
+
+app.get('/api/always-on/cron-jobs/:taskId', authenticateToken, async (req, res) => {
+    try {
+        const gateway = await getPilotDeckGateway();
+        const result = await gateway.cronList({ taskId: req.params.taskId, projectKey: req.query.projectKey || undefined,
+            includeHistory: true, limit: 20, beforeRunId: req.query.beforeRunId || undefined });
+        const task = result.tasks[0];
+        if (!task) return res.status(404).json({ error: 'Scheduled task was not found.' });
+        res.json({ task, runs: result.recentRuns || [], nextBeforeRunId: result.nextBeforeRunId,
+            nextRuns: task.enabled !== false && task.status === 'scheduled' ? previewCronSchedule(task.schedule, new Date(), task.timezone) : [] });
+    } catch (error) { res.status(500).json({ error: error?.message || 'Failed to load scheduled task.' }); }
 });
 
 app.patch('/api/always-on/cron-jobs/:taskId', authenticateToken, createCronUpdateHandler({ getGateway: getPilotDeckGateway }));
@@ -788,6 +843,7 @@ app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, requestL
         const result = await gateway.cronRunNow({
             taskId: req.params.taskId,
             projectKey: req.body?.projectKey || req.query?.projectKey || undefined,
+            retryDeliveryRunId: req.body?.retryDeliveryRunId,
         });
         res.json(result);
     } catch (error) {

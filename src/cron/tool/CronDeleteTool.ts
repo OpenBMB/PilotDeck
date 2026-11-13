@@ -15,6 +15,7 @@ export function createCronDeleteTool(runtime: CronToolRuntime): PilotDeckToolDef
       properties: {
         taskId: { type: "string" },
         stopRunning: { type: "boolean" },
+        projectKey: { type: "string" },
       },
     },
     isReadOnly: () => false,
@@ -23,7 +24,7 @@ export function createCronDeleteTool(runtime: CronToolRuntime): PilotDeckToolDef
     execute: async (input, context) => {
       const result = await runtime.deleteTask({
         ...input,
-        projectKey: context.cwd,
+        projectKey: input.projectKey,
       });
       return {
         content: [{ type: "json", value: result }],

@@ -199,8 +199,13 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  cronRunNow: (taskId) =>
-    authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/run-now`, { method: 'POST' }),
+  cronPreview: (payload, options = {}) => authenticatedFetch('/api/always-on/cron-preview', {
+    method: 'POST', body: JSON.stringify(payload), ...options,
+  }),
+  cronOptions: (projectKey) => authenticatedFetch(`/api/always-on/cron-options?${new URLSearchParams({ projectKey })}`),
+  cronDetail: (taskId, projectKey, beforeRunId) => authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}?${new URLSearchParams({ ...(projectKey ? { projectKey } : {}), ...(beforeRunId ? { beforeRunId } : {}) })}`),
+  cronRunNow: (taskId, payload) =>
+    authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/run-now`, { method: 'POST', ...(payload ? { body: JSON.stringify(payload) } : {}) }),
   cronStop: (taskId) =>
     authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/stop`, { method: 'POST' }),
   cronDelete: (taskId) =>

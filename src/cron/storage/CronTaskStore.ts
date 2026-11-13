@@ -4,6 +4,8 @@ import { dirname } from "node:path";
 import type { GatewayEvent } from "../../gateway/index.js";
 import type { CronRunRecord, CronTask } from "../protocol/types.js";
 import { cronRunEventsPath, type CronPaths } from "./CronPaths.js";
+import { isValidCronExpression } from "../runtime/CronSchedule.js";
+import { isValidCronTimezone } from "../CronTimezone.js";
 
 type CronTaskFile = {
   schemaVersion: 1;
@@ -76,11 +78,35 @@ export class CronTaskStore {
   }
 
   async appendRun(record: CronRunRecord): Promise<void> {
-    await mkdir(dirname(this.paths.runHistoryFile), { recursive: true });
-    await appendFile(this.paths.runHistoryFile, `${JSON.stringify(record)}\n`, "utf-8");
+    const key = this.paths.runHistoryFile;
+    const previous = taskFileMutationTails.get(key) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      await mkdir(dirname(key), { recursive: true });
+      await appendFile(key, `${JSON.stringify(record)}\n`, "utf-8");
+      if (!record.finishedAt) return;
+      const runs = await this.listRuns(Number.MAX_SAFE_INTEGER);
+      const counts = new Map<string, number>();
+      const cutoff = Date.parse(record.finishedAt) - 30 * 24 * 60 * 60_000;
+      const kept = runs.filter((run) => {
+        const count = counts.get(run.taskId) ?? 0;
+        if (count >= 200 || (count > 0 && Date.parse(run.startedAt) < cutoff)) return false;
+        counts.set(run.taskId, count + 1);
+        return true;
+      });
+      const temp = `${key}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(temp, kept.reverse().map((run) => JSON.stringify(run)).join("\n") + "\n", "utf-8");
+        await rename(temp, key);
+      } finally { await unlink(temp).catch(() => undefined); }
+      const ids = new Set(kept.map((run) => run.runId));
+      await Promise.all(runs.filter((run) => !ids.has(run.runId)).map((run) => unlink(cronRunEventsPath(this.paths, run.runId)).catch(() => undefined)));
+    });
+    const tail = operation.then(() => undefined, () => undefined);
+    taskFileMutationTails.set(key, tail);
+    try { await operation; } finally { if (taskFileMutationTails.get(key) === tail) taskFileMutationTails.delete(key); }
   }
 
-  async listRuns(limit = 50): Promise<CronRunRecord[]> {
+  async listRuns(limit = 50, taskId?: string, beforeRunId?: string): Promise<CronRunRecord[]> {
     let raw: string;
     try {
       raw = await readFile(this.paths.runHistoryFile, "utf-8");
@@ -101,7 +127,14 @@ export class CronTaskStore {
           return [];
         }
       });
-    return records.slice(-Math.max(0, limit)).reverse();
+    const unique = new Map<string, CronRunRecord>();
+    for (const record of records) unique.set(record.runId, record);
+    let runs = [...unique.values()].reverse().filter((run) => !taskId || run.taskId === taskId);
+    if (beforeRunId) {
+      const index = runs.findIndex((run) => run.runId === beforeRunId);
+      runs = index < 0 ? [] : runs.slice(index + 1);
+    }
+    return runs.slice(0, Math.max(0, limit));
   }
 
   async appendRunEvent(runId: string, event: GatewayEvent): Promise<void> {
@@ -124,14 +157,17 @@ export class CronTaskStore {
     try {
       const parsed = JSON.parse(raw) as Partial<CronTaskFile>;
       if (parsed.schemaVersion !== 1 || !Array.isArray(parsed.tasks)) {
-        return { schemaVersion: 1, tasks: [] };
+        throw new Error("Unsupported task store schema.");
       }
+      const tasks = parsed.tasks.map(normalizeTask);
+      if (tasks.some((task) => !task)) throw new Error("Invalid task record.");
+      if (new Set(tasks.map((task) => task!.taskId)).size !== tasks.length) throw new Error("Duplicate task identity.");
       return {
         schemaVersion: 1,
-        tasks: parsed.tasks.flatMap((task) => (normalizeTask(task) ? [normalizeTask(task)!] : [])),
+        tasks: tasks as CronTask[],
       };
-    } catch {
-      return { schemaVersion: 1, tasks: [] };
+    } catch (error) {
+      throw new Error(`Cron task store is damaged; the original file was preserved: ${this.paths.tasksFile}`, { cause: error });
     }
   }
 
@@ -198,12 +234,33 @@ function normalizeTask(value: unknown): CronTask | undefined {
   if (candidate.schedule.type === "cron" && typeof candidate.schedule.expression !== "string") {
     return undefined;
   }
+  if (!["once", "cron", "interval", "monthly"].includes(candidate.schedule.type)) return undefined;
+  if (candidate.schedule.type === "once" && !Number.isFinite(Date.parse(candidate.schedule.runAt))) return undefined;
+  if (candidate.schedule.type === "cron" && !isValidCronExpression(candidate.schedule.expression)) return undefined;
+  if (candidate.schedule.type === "monthly" && (![1, 2, 3, 4, -1].includes(candidate.schedule.ordinal)
+    || !Number.isInteger(candidate.schedule.weekday) || candidate.schedule.weekday < 0 || candidate.schedule.weekday > 6
+    || !Number.isInteger(candidate.schedule.hour) || candidate.schedule.hour < 0 || candidate.schedule.hour > 23
+    || !Number.isInteger(candidate.schedule.minute) || candidate.schedule.minute < 0 || candidate.schedule.minute > 59
+    || !isValidCronTimezone(candidate.schedule.timezone))) return undefined;
+  if (candidate.schedule.type === "interval"
+    && (!Number.isSafeInteger(candidate.schedule.everySeconds) || candidate.schedule.everySeconds < 60
+      || !Number.isFinite(Date.parse(candidate.schedule.anchorAt)))) return undefined;
   return {
     schemaVersion: 1,
     taskId: candidate.taskId,
+    name: typeof candidate.name === "string" ? candidate.name : candidate.message.trim().split(/\r?\n/, 1)[0].slice(0, 120),
     message: candidate.message,
     schedule: candidate.schedule,
-    status: candidate.status === "running" ? "running" : "scheduled",
+    status: ["scheduled", "running", "paused", "completed", "failed", "missed"].includes(candidate.status!) ? candidate.status! : "scheduled",
+    enabled: typeof candidate.enabled === "boolean" ? candidate.enabled : !["paused", "completed", "failed", "missed"].includes(candidate.status!),
+    executionMode: candidate.executionMode ?? "persistent",
+    workspaceCwd: typeof candidate.workspaceCwd === "string" ? candidate.workspaceCwd : undefined,
+    targetSessionKey: candidate.targetSessionKey,
+    notificationPolicy: candidate.notificationPolicy ?? "all",
+    workspaceMode: candidate.workspaceMode ?? "local",
+    modelSelection: candidate.modelSelection,
+    statusDetail: candidate.statusDetail,
+    lastRun: candidate.lastRun ? normalizeRun(candidate.lastRun) : undefined,
     sessionKey: candidate.sessionKey,
     channelKey: candidate.channelKey,
     projectKey: typeof candidate.projectKey === "string" ? candidate.projectKey : undefined,
@@ -220,6 +277,7 @@ function normalizeTask(value: unknown): CronTask | undefined {
       ? candidate.scheduleComputationVersion
       : undefined,
     originSessionKey: typeof candidate.originSessionKey === "string" ? candidate.originSessionKey : undefined,
+    originProjectKey: typeof candidate.originProjectKey === "string" ? candidate.originProjectKey : undefined,
     originChannelKey: typeof candidate.originChannelKey === "string" ? candidate.originChannelKey : undefined,
   };
 }
@@ -243,6 +301,15 @@ function normalizeRun(value: unknown): CronRunRecord | undefined {
     sessionKey: candidate.sessionKey,
     projectKey: typeof candidate.projectKey === "string" ? candidate.projectKey : undefined,
     startedAt: candidate.startedAt,
+    scheduledAt: candidate.scheduledAt,
+    trigger: candidate.trigger,
+    taskName: candidate.taskName,
+    message: candidate.message,
+    output: candidate.output,
+    artifacts: candidate.artifacts,
+    workspaceCwd: candidate.workspaceCwd,
+    deliveryStatus: candidate.deliveryStatus,
+    deliveryError: candidate.deliveryError,
     finishedAt: typeof candidate.finishedAt === "string" ? candidate.finishedAt : undefined,
     outcome: candidate.outcome,
     error: candidate.error,

@@ -2332,6 +2332,7 @@ export class AgentLoop {
       // a single batch — semantic match to legacy "rewind by messageId".
       messageId: input.turnId,
       cwd: this.config.cwd,
+      projectKey: this.config.projectKey,
       abortSignal: input.abortSignal,
       subagentTimeoutMs: this.config.subagentTimeoutMs,
       toolAliases: this.config.toolAliases,

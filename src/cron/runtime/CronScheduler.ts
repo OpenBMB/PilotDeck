@@ -25,6 +25,8 @@ export class CronScheduler {
   private running = false;
   private stopped = false;
   private tickInProgress: Promise<void> | undefined;
+  private generation = 0;
+  private poked = false;
 
   constructor(private readonly deps: CronSchedulerDependencies) {}
 
@@ -37,11 +39,12 @@ export class CronScheduler {
     }
     this.running = true;
     await this.recalculateAllNextRuns();
-    this.scheduleNextTick();
+    await this.scheduleNextTick();
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
+    this.generation += 1;
     this.running = false;
     if (this.timer) {
       clearTimeout(this.timer);
@@ -60,7 +63,8 @@ export class CronScheduler {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
-    this.scheduleNextTick(0);
+    if (this.tickInProgress) { this.poked = true; return; }
+    void this.scheduleNextTick(0);
   }
 
   /** Public for tests; runs a single scheduler tick. */
@@ -68,25 +72,31 @@ export class CronScheduler {
     await this.tick();
   }
 
-  private scheduleNextTick(delayMs?: number): void {
+  private async scheduleNextTick(delayMs?: number): Promise<void> {
     if (this.stopped || !this.running || !this.deps.config.enabled) return;
-    const waitMs = Math.max(MIN_TIMER_MS, delayMs ?? this.computeDelayMs());
+    const generation = ++this.generation;
+    let waitMs = delayMs;
+    if (waitMs === undefined) {
+      const tasks = await this.deps.store.listTasks();
+      const next = tasks.filter((task) => task.status === "scheduled" && task.enabled !== false && task.nextRunAt)
+        .reduce((at, task) => Math.min(at, Date.parse(task.nextRunAt!)), Infinity);
+      waitMs = Number.isFinite(next) ? Math.max(0, next - this.deps.now().getTime()) : DEFAULT_IDLE_POLL_MS;
+      if (waitMs <= 0 && this.deps.activeRunCount() >= this.deps.config.maxConcurrentRuns) waitMs = 1_000;
+    }
+    if (generation !== this.generation || this.stopped) return;
+    if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = undefined;
       this.tickInProgress = this.tick().catch((error: unknown) => {
-        this.deps.logger?.warn("cron scheduler tick failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }) as Promise<void>;
-      void this.tickInProgress.then(() => {
-        this.tickInProgress = undefined;
-        this.scheduleNextTick();
+        this.deps.logger?.warn("cron scheduler tick failed", { error: String(error) });
       });
-    }, waitMs);
-  }
-
-  private computeDelayMs(): number {
-    return DEFAULT_IDLE_POLL_MS;
+      void this.tickInProgress.finally(() => {
+        this.tickInProgress = undefined;
+        const delay = this.poked ? 0 : undefined;
+        this.poked = false;
+        void this.scheduleNextTick(delay).catch((error) => this.deps.logger?.warn("cron timer failed", { error: String(error) }));
+      });
+    }, Math.max(MIN_TIMER_MS, Math.min(DEFAULT_IDLE_POLL_MS, waitMs)));
   }
 
   private async tick(): Promise<void> {
@@ -95,7 +105,6 @@ export class CronScheduler {
     const dueTasks = tasks.filter((task) => isDue(task, now));
     for (const task of dueTasks) {
       if (this.deps.activeRunCount() >= this.deps.config.maxConcurrentRuns) {
-        await this.delayTask(task, now);
         continue;
       }
       const runId = this.deps.uuid();
@@ -114,7 +123,8 @@ export class CronScheduler {
     const tasks = await this.deps.store.listTasks();
     await Promise.all(
       tasks.map(async (task) => {
-        if (task.schedule.type === "once") {
+        if (task.status !== "scheduled" || task.enabled === false) return;
+        if (task.schedule.type !== "cron") {
           if (task.nextRunAt) {
             return;
           }
@@ -173,22 +183,11 @@ export class CronScheduler {
     );
   }
 
-  private async delayTask(task: CronTask, now: Date): Promise<void> {
-    const nextRunAt = new Date(now.getTime() + DEFAULT_IDLE_POLL_MS).toISOString();
-    await this.deps.store.updateTask(task.taskId, (current) => {
-      if (!matchesTaskSnapshot(current, task) || current.status !== "scheduled") return current;
-      return {
-        ...current,
-        nextRunAt,
-        revision: (current.revision ?? 0) + 1,
-        updatedAt: now.toISOString(),
-      };
-    });
-  }
+
 }
 
 function isDue(task: CronTask, now: Date): boolean {
-  if (task.status === "running") {
+  if (task.status !== "scheduled" || task.enabled === false) {
     return false;
   }
   if (!task.nextRunAt) {

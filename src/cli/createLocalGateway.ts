@@ -1826,6 +1826,7 @@ class ProjectRuntimeRegistry {
       model: agent.model.model,
       modelMultimodal,
       cwd,
+      projectKey: runtime.projectRoot,
       permissionMode,
       jsonSelfCorrect: true,
       ...(subagentRuntimeModel ? { subagentModel: subagentRuntimeModel } : {}),

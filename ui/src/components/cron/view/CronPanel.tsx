@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
 import {
@@ -21,6 +21,9 @@ import type { CronJobOverview, CronJobSchedule, CronJobsOverviewResponse, Projec
 import { cn } from '../../../lib/utils.js';
 import { api } from '../../../utils/api';
 import DateTimeField from '../../ui/DateTimeField';
+import { isValidCronExpression } from '../../../../../src/cron/runtime/CronSchedule';
+import CronTaskDetails from './CronTaskDetails';
+import CronExecutionFields, { type CronExecutionDraft } from './CronExecutionFields';
 import {
   buildSimpleCronExpression,
   getYearlyMonthDayCount,
@@ -34,6 +37,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const TIMEZONE_OFFSET_SAMPLE_HOURS = [-36, -24, -12, 0, 12, 24, 36] as const;
 
 type CronSubTab = 'list' | 'create';
+type RecurrenceMode = SimpleRecurrenceMode | 'custom' | 'interval' | 'monthly-weekday';
 type ScheduleKind = 'once' | 'cron';
 type EditDisabledReason = 'running' | 'unsupported' | 'incomplete';
 
@@ -44,7 +48,7 @@ type CronFormValues = {
   scheduleDate: string;
   scheduleTime: string;
   timezone: string;
-  recurrenceMode: SimpleRecurrenceMode;
+  recurrenceMode: RecurrenceMode;
   weekday: number;
   dayOfMonth: number;
   monthOfYear: number;
@@ -64,6 +68,7 @@ function getSimpleCronSchedule(draft: RecurringScheduleDraft): SimpleCronSchedul
       return { mode: 'monthly', time: draft.scheduleTime, dayOfMonth: draft.dayOfMonth };
     case 'yearly':
       return { mode: 'yearly', time: draft.scheduleTime, dayOfMonth: draft.dayOfMonth, monthOfYear: draft.monthOfYear };
+    default: throw new Error('A custom rule cannot be converted to a basic rule.');
   }
 }
 
@@ -76,7 +81,7 @@ function buildSimpleExpression(draft: RecurringScheduleDraft): string {
 }
 
 const SIMPLE_RECURRENCE_MODES: {
-  id: SimpleRecurrenceMode;
+  id: RecurrenceMode;
   labelKey: string;
   defaultLabel: string;
 }[] = [
@@ -84,6 +89,9 @@ const SIMPLE_RECURRENCE_MODES: {
   { id: 'weekly', labelKey: 'cron.create.schedule.weekly', defaultLabel: 'Weekly' },
   { id: 'monthly', labelKey: 'cron.create.schedule.monthly', defaultLabel: 'Monthly' },
   { id: 'yearly', labelKey: 'cron.create.schedule.yearly', defaultLabel: 'Yearly' },
+  { id: 'interval', labelKey: 'cron.create.schedule.interval', defaultLabel: 'Fixed interval' },
+  { id: 'monthly-weekday', labelKey: 'cron.create.schedule.monthlyWeekday', defaultLabel: 'Weekday of month' },
+  { id: 'custom', labelKey: 'cron.create.schedule.custom', defaultLabel: 'Custom Cron' },
 ];
 
 const WEEKDAY_OPTIONS = [
@@ -121,15 +129,23 @@ const COL = {
   createdAt: 'w-[150px] shrink-0',
   nextRunAt: 'w-[150px] shrink-0',
   status: 'w-[140px] shrink-0',
-  actions: 'w-[180px] shrink-0',
+  actions: 'w-[250px] shrink-0',
 } as const;
 
-const CRON_STATUS_STYLE: Record<'scheduled' | 'running', string> = {
+const CRON_STATUS_STYLE: Record<CronJobOverview['status'], string> = {
+  paused: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300',
+  completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  missed: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   scheduled: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   running: 'bg-[var(--pd-accent-soft,#e0e7ff)] text-[var(--pd-accent-strong,#4338ca)] dark:bg-[var(--pd-accent-soft,#312e81)] dark:text-[var(--pd-accent-strong,#a5b4fc)]',
 };
 
-const CRON_STATUS_LABEL: Record<'scheduled' | 'running', { key: string; defaultValue: string }> = {
+const CRON_STATUS_LABEL: Record<CronJobOverview['status'], { key: string; defaultValue: string }> = {
+  paused: { key: 'cron.status.paused', defaultValue: 'Paused' },
+  completed: { key: 'cron.status.completed', defaultValue: 'Completed' },
+  failed: { key: 'cron.status.failed', defaultValue: 'Failed' },
+  missed: { key: 'cron.status.missed', defaultValue: 'Missed' },
   scheduled: { key: 'cron.status.scheduled', defaultValue: 'Scheduled' },
   running: { key: 'cron.status.running', defaultValue: 'Running' },
 };
@@ -369,8 +385,10 @@ function getFormValues(job: CronJobOverview | null): CronFormValues {
     };
   }
 
+  if (job.schedule.type === 'interval') return { ...defaults, message: job.prompt, projectKey: job.projectKey, timezone, scheduleKind: 'cron', recurrenceMode: 'interval' };
+  if (job.schedule.type === 'monthly') return { ...defaults, message: job.prompt, projectKey: job.projectKey, timezone, scheduleKind: 'cron', recurrenceMode: 'monthly-weekday', weekday: job.schedule.weekday, scheduleTime: `${String(job.schedule.hour).padStart(2, '0')}:${String(job.schedule.minute).padStart(2, '0')}` };
   const parsed = parseSimpleCronExpression(job.schedule.expression);
-  if (!parsed) return defaults;
+  if (!parsed) return { ...defaults, message: job.prompt, projectKey: job.projectKey, timezone, scheduleKind: 'cron', recurrenceMode: 'custom', advancedExpression: job.schedule.expression };
   const values: CronFormValues = {
     ...defaults,
     message: job.prompt,
@@ -394,14 +412,14 @@ function getFormValues(job: CronJobOverview | null): CronFormValues {
 
 function getEditDisabledReason(job: CronJobOverview): EditDisabledReason | null {
   if (job.status === 'running') return 'running';
-  if (job.status !== 'scheduled' || !job.projectKey || typeof job.revision !== 'number' || !Number.isInteger(job.revision) || job.revision < 0) {
+  if (!job.projectKey || typeof job.revision !== 'number' || !Number.isInteger(job.revision) || job.revision < 0) {
     return 'incomplete';
   }
   if (!job.schedule) return 'incomplete';
   if (job.schedule.type === 'once') {
     return Number.isNaN(Date.parse(job.schedule.runAt)) ? 'unsupported' : null;
   }
-  return parseSimpleCronExpression(job.schedule.expression) ? null : 'unsupported';
+  return null;
 }
 
 function addCalendarDay(scheduleDate: string): string {
@@ -427,6 +445,27 @@ export default function CronPanel() {
   const [jobs, setJobs] = useState<CronJobOverview[]>([]);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [editingJob, setEditingJob] = useState<CronJobOverview | null>(null);
+  const [detailJob, setDetailJob] = useState<CronJobOverview | null>(null);
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [seenRuns, setSeenRuns] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('pilotdeck-cron-seen-runs') || '{}'); } catch { return {}; }
+  });
+  const openDetails = (job: CronJobOverview) => {
+    setDetailJob(job);
+    if (job.lastRun?.runId) {
+      const next = { ...seenRuns, [job.id]: job.lastRun.runId };
+      setSeenRuns(next);
+      try { localStorage.setItem('pilotdeck-cron-seen-runs', JSON.stringify(next)); } catch { /* Private browsing may disable storage. */ }
+    }
+  };
+  const openedRequestedTask = useRef(false);
+  useEffect(() => {
+    if (openedRequestedTask.current) return;
+    const requested = new URLSearchParams(window.location.search).get('taskId');
+    const task = jobs.find(job => job.id === requested);
+    if (task) { openedRequestedTask.current = true; setDetailJob(task); }
+  }, [jobs]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -468,7 +507,11 @@ export default function CronPanel() {
 
     const result = new Map<string, ProjectGroup>();
     for (const job of jobs) {
-      if (job.status !== 'scheduled' && job.status !== 'running') continue;
+      if (filter === 'active' && !['scheduled', 'running'].includes(job.status)) continue;
+      if (filter === 'attention' && !(['failed', 'missed'].includes(job.status) || (job.lastRun?.outcome && job.lastRun.outcome !== 'completed') || job.lastRun?.deliveryStatus === 'failed')) continue;
+      if (filter === 'paused' && job.status !== 'paused') continue;
+      if (filter === 'ended' && !['completed', 'failed', 'missed'].includes(job.status)) continue;
+      if (query && !`${job.name || ''} ${job.prompt}`.toLowerCase().includes(query.toLowerCase())) continue;
 
       const projectName = job.projectKey
         ? (projectKeyToName.get(job.projectKey) || job.projectKey)
@@ -493,7 +536,7 @@ export default function CronPanel() {
     }
 
     return result;
-  }, [jobs, projects, t]);
+  }, [jobs, projects, t, filter, query]);
 
   const totalItems = useMemo(() => {
     let count = 0;
@@ -538,6 +581,13 @@ export default function CronPanel() {
         })}
       </div>
 
+      {subTab === 'list' && <div className="flex flex-wrap items-center gap-3 px-8 pt-4">
+        <input className="pd-form-field max-w-sm" aria-label={t('cron.search', { defaultValue: 'Search tasks' })} placeholder={t('cron.search', { defaultValue: 'Search tasks' })} value={query} onChange={event => setQuery(event.target.value)} />
+        <select className="pd-form-field w-auto" aria-label={t('cron.filter', { defaultValue: 'Task status' })} value={filter} onChange={event => setFilter(event.target.value)}>
+          {['all', 'active', 'paused', 'attention', 'ended'].map(value => <option key={value} value={value}>{t(`cron.filters.${value}`, { defaultValue: value })}</option>)}
+        </select>
+      </div>}
+      {detailJob && <CronTaskDetails job={detailJob} projects={projects} onClose={() => setDetailJob(null)} onRefresh={refresh} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {subTab === 'list' ? (
           <CronListView
@@ -548,6 +598,8 @@ export default function CronPanel() {
             totalItems={totalItems}
             collapsedProjects={collapsedProjects}
             onRefresh={refresh}
+            onDetails={openDetails}
+            seenRuns={seenRuns}
             onToggleProject={toggleProject}
             onEdit={(job) => {
               setEditingJob(job);
@@ -585,6 +637,8 @@ function CronListView({
   collapsedProjects,
   onRefresh,
   onToggleProject,
+  onDetails,
+  seenRuns,
   onEdit,
 }: {
   t: (key: string, opts?: Record<string, string>) => string;
@@ -595,6 +649,8 @@ function CronListView({
   collapsedProjects: Set<string>;
   onRefresh: () => Promise<void>;
   onToggleProject: (key: string) => void;
+  onDetails: (job: CronJobOverview) => void;
+  seenRuns: Record<string, string>;
   onEdit: (job: CronJobOverview) => void;
 }) {
   return (
@@ -643,7 +699,7 @@ function CronListView({
             return (
               <div
                 key={projectKey}
-                className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950"
+                className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950"
               >
                 <button
                   type="button"
@@ -674,6 +730,8 @@ function CronListView({
                           t={t}
                           onRefresh={onRefresh}
                           onEdit={onEdit}
+                          onDetails={onDetails}
+                          unread={Boolean(job.lastRun?.finishedAt && seenRuns[job.id] !== job.lastRun.runId && (job.notificationPolicy !== 'failures' || job.lastRun.outcome !== 'completed') && (job.notificationPolicy !== 'findings' || job.lastRun.output !== '[NO_UPDATE]'))}
                         />
                       ))}
                     </div>
@@ -704,6 +762,16 @@ function CronCreateView({
   const initialValues = useMemo(() => getFormValues(editingJob), [editingJob]);
   const isEditing = editingJob !== null;
   const [message, setMessage] = useState(initialValues.message);
+  const [name, setName] = useState(editingJob?.name || '');
+  const [execution, setExecution] = useState<CronExecutionDraft>({
+    executionMode: editingJob?.executionMode || 'independent', sessionKey: editingJob?.targetSessionKey || editingJob?.originSessionKey || '',
+    notificationPolicy: editingJob?.notificationPolicy || 'all', mode: editingJob?.mode || 'default',
+    workspaceMode: editingJob?.workspaceMode || 'local', modelSelection: editingJob?.modelSelection,
+  });
+  const [intervalMinutes, setIntervalMinutes] = useState(editingJob?.schedule?.type === 'interval' ? editingJob.schedule.everySeconds / 60 : 60);
+  const [ordinal, setOrdinal] = useState<number>(editingJob?.schedule?.type === 'monthly' ? editingJob.schedule.ordinal : 1);
+  const [preview, setPreview] = useState<string[]>([]);
+  const [intervalAnchor] = useState(() => editingJob?.schedule?.type === 'interval' ? editingJob.schedule.anchorAt : new Date().toISOString());
   const [projectKey, setProjectKey] = useState(initialValues.projectKey);
   const [scheduleKind, setScheduleKind] = useState<ScheduleKind>(initialValues.scheduleKind);
   const [onceDraft, setOnceDraft] = useState<OnceScheduleDraft>({
@@ -732,21 +800,24 @@ function CronCreateView({
     () => parseSimpleCronExpression(advancedExpression),
     [advancedExpression],
   );
-  const advancedExpressionIsValid = parsedAdvancedExpression !== undefined;
+  const advancedExpressionIsValid = isValidCronExpression(advancedExpression);
   const normalizedAdvancedExpression = parsedAdvancedExpression
     ? buildSimpleCronExpression(parsedAdvancedExpression)
-    : '';
+    : advancedExpression.trim();
 
   const updateRecurringDraft = (updates: Partial<RecurringScheduleDraft>) => {
     setRecurringDraft((current) => {
       const next = { ...current, ...updates };
-      return { ...next, advancedExpression: buildSimpleExpression(next) };
+      return { ...next, advancedExpression: ['custom', 'interval', 'monthly-weekday'].includes(next.recurrenceMode) ? next.advancedExpression : buildSimpleExpression(next) };
     });
     setHasRecurringDraft(true);
   };
 
   const scheduleDescription = useMemo(() => {
     switch (recurrenceMode) {
+      case 'custom': return advancedExpression;
+      case 'interval': return t('cron.create.plan.interval', { defaultValue: 'Every {{minutes}} minutes', minutes: String(intervalMinutes) });
+      case 'monthly-weekday': return t('cron.create.plan.monthlyWeekday', { defaultValue: 'Selected weekday of each month at {{time}}', time: scheduleTime });
       case 'daily':
         return t('cron.create.plan.daily', { defaultValue: 'Daily at {{time}}', time: scheduleTime });
       case 'weekly': {
@@ -762,7 +833,7 @@ function CronCreateView({
       case 'yearly':
         return t('cron.create.plan.yearly', { defaultValue: 'Yearly on {{month}}/{{day}} at {{time}}', month: String(monthOfYear), day: String(dayOfMonth), time: scheduleTime });
     }
-  }, [dayOfMonth, monthOfYear, recurrenceMode, scheduleTime, t, weekday]);
+  }, [dayOfMonth, monthOfYear, recurrenceMode, scheduleTime, t, weekday, advancedExpression, intervalMinutes]);
   const scheduleDescriptionWithTimezone = timezone.trim()
     ? `${scheduleDescription} (${timezone.trim()})`
     : scheduleDescription;
@@ -775,6 +846,7 @@ function CronCreateView({
   const resetForm = () => {
     const defaults = getDefaultFormValues();
     setMessage(defaults.message);
+    setName('');
     setProjectKey(defaults.projectKey);
     setScheduleKind(defaults.scheduleKind);
     setOnceDraft({ scheduleDate: defaults.scheduleDate, scheduleTime: defaults.scheduleTime });
@@ -817,7 +889,7 @@ function CronCreateView({
     setFormError(null);
     const parsed = parseSimpleCronExpression(expression);
     setRecurringDraft((current) => {
-      if (!parsed) return { ...current, advancedExpression: expression };
+      if (!parsed) return { ...current, recurrenceMode: isValidCronExpression(expression) ? 'custom' : current.recurrenceMode, advancedExpression: expression };
       return {
         ...current,
         advancedExpression: expression,
@@ -832,6 +904,7 @@ function CronCreateView({
   };
 
   const validate = () => {
+    if (execution.executionMode === 'conversation' && !execution.sessionKey) return t('cron.execution.chooseConversation', { defaultValue: 'Choose a conversation.' });
     if (!message.trim()) {
       return t('cron.create.validation.messageRequired', { defaultValue: 'Prompt is required.' });
     }
@@ -864,15 +937,44 @@ function CronCreateView({
         return t('cron.create.validation.runAtFuture', { defaultValue: 'Run time must be in the future.' });
       }
     } else {
-      if (!scheduleTime) {
+      if (!['interval', 'custom'].includes(recurrenceMode) && !scheduleTime) {
         return t('cron.create.validation.timeRequired', { defaultValue: 'Time is required.' });
       }
-      if (!advancedExpressionIsValid) {
+      if (!['interval', 'monthly-weekday'].includes(recurrenceMode) && !advancedExpressionIsValid) {
         return t('cron.create.validation.expressionInvalid', { defaultValue: 'Cron expression format is invalid.' });
       }
     }
+    if (scheduleKind === 'cron' && recurrenceMode === 'interval' && (!Number.isSafeInteger(intervalMinutes) || intervalMinutes < 1)) return t('cron.create.validation.interval', { defaultValue: 'Enter a positive number of minutes.' });
     return null;
   };
+
+  const buildSchedule = (): CronJobSchedule | null => {
+    if (scheduleKind === 'once') {
+      const runAt = resolveOneTimeRunAt(editingJob, onceDraft.scheduleDate, onceDraft.scheduleTime, timezone.trim());
+      return runAt ? { type: 'once', runAt } : null;
+    }
+    if (recurrenceMode === 'interval') return { type: 'interval', everySeconds: intervalMinutes * 60,
+      anchorAt: intervalAnchor };
+    if (recurrenceMode === 'monthly-weekday') {
+      const [hour, minute] = scheduleTime.split(':').map(Number);
+      return { type: 'monthly', ordinal: ordinal as 1 | 2 | 3 | 4 | -1, weekday, hour, minute, timezone: timezone.trim() };
+    }
+    return { type: 'cron', expression: normalizedAdvancedExpression, timezone: timezone.trim() };
+  };
+  const scheduleKey = JSON.stringify(buildSchedule());
+  useEffect(() => {
+    setPreview([]);
+    if (typeof api.cronPreview !== 'function') return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const schedule = JSON.parse(scheduleKey);
+      if (!schedule) return;
+      void api.cronPreview({ schedule, timezone }, { signal: controller.signal })
+        .then(async (response: Response) => { if (response.ok) { const data = await response.json(); if (!controller.signal.aborted) setPreview(data.nextRuns || []); } })
+        .catch(() => undefined);
+    }, 350);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [scheduleKey, timezone]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -895,29 +997,15 @@ function CronCreateView({
     setSubmitting(true);
     setFormError(null);
     try {
-      let schedule: CronJobSchedule;
-      if (scheduleKind === 'once') {
-        const runAt = resolveOneTimeRunAt(
-          editingJob,
-          onceDraft.scheduleDate,
-          onceDraft.scheduleTime,
-          timezone.trim(),
-        );
-        if (!runAt) {
-          setFormError(t('cron.create.validation.runAtInvalid', { defaultValue: 'Run time does not exist in the selected timezone.' }));
-          return;
-        }
-        schedule = { type: 'once', runAt };
-      } else {
-        schedule = {
-          type: 'cron',
-          expression: normalizedAdvancedExpression,
-          timezone: timezone.trim(),
-        };
-      }
+      const schedule = buildSchedule();
+      if (!schedule) return;
       const payload = {
+        name: name.trim() || message.trim().split('\n')[0].slice(0, 120),
         message: message.trim(),
         projectKey,
+        workspaceCwd: projects.find(project => (project.fullPath || project.name) === projectKey)?.workspaceCwd || projectKey,
+        ...execution,
+        ...(editingJob ? { targetSessionKey: execution.sessionKey || undefined, modelSelection: execution.modelSelection ?? null } : {}),
         schedule,
         timezone: timezone.trim() || undefined,
       };
@@ -983,6 +1071,10 @@ function CronCreateView({
           </div>
         ) : null}
 
+        <label className="block">
+          <span className="text-[13px] font-medium">{t('cron.create.fields.name', { defaultValue: 'Task name' })}</span>
+          <input className="pd-form-field mt-1.5" maxLength={120} value={name} onChange={event => setName(event.target.value)} placeholder={t('cron.create.placeholders.name', { defaultValue: 'For example, daily sales report' })} />
+        </label>
         <label className="block">
           <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">
             {t('cron.create.fields.prompt', { defaultValue: 'Prompt' })}
@@ -1099,7 +1191,7 @@ function CronCreateView({
                 <select
                   value={recurrenceMode}
                   onChange={(event) => {
-                    const nextMode = event.target.value as SimpleRecurrenceMode;
+                    const nextMode = event.target.value as RecurrenceMode;
                     updateRecurringDraft({
                       recurrenceMode: nextMode,
                       dayOfMonth: nextMode === 'yearly' ? Math.min(dayOfMonth, getYearlyMonthDayCount(monthOfYear)) : dayOfMonth,
@@ -1123,7 +1215,15 @@ function CronCreateView({
                   <div className="mt-1.5 flex h-9 items-center rounded-md border border-neutral-200 bg-neutral-50 px-3 text-[13px] text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
                     {t('cron.create.options.everyDay', { defaultValue: 'Every day' })}
                   </div>
-                ) : recurrenceMode === 'weekly' ? (
+                ) : recurrenceMode === 'interval' ? (
+                  <label className="block"><span className="sr-only">{t('cron.create.fields.intervalMinutes', { defaultValue: 'Interval in minutes' })}</span><input className="pd-form-field mt-1.5" type="number" min="1" step="1" value={intervalMinutes} onChange={event => setIntervalMinutes(Number(event.target.value))} /></label>
+                ) : recurrenceMode === 'monthly-weekday' ? (
+                  <div className="mt-1.5 flex gap-2"><select aria-label={t('cron.create.fields.ordinal', { defaultValue: 'Week of month' })} className="pd-form-field" value={ordinal} onChange={event => setOrdinal(Number(event.target.value))}>
+                    {[1, 2, 3, 4, -1].map(value => <option key={value} value={value}>{t(`cron.ordinals.${value}`, { defaultValue: String(value) })}</option>)}
+                  </select><select aria-label={t('cron.create.fields.weekday', { defaultValue: 'Day of week' })} className="pd-form-field" value={weekday} onChange={event => updateRecurringDraft({ weekday: Number(event.target.value) })}>
+                    {WEEKDAY_OPTIONS.map(option => <option key={option.value} value={option.value}>{t(option.labelKey, { defaultValue: option.defaultLabel })}</option>)}
+                  </select></div>
+                ) : recurrenceMode === 'custom' ? <p className="mt-3 text-xs text-neutral-500">{t('cron.create.help.custom', { defaultValue: 'Edit the expression below.' })}</p> : recurrenceMode === 'weekly' ? (
                   <select
                     aria-label={t('cron.create.fields.weekday', { defaultValue: 'Day of week' })}
                     value={weekday}
@@ -1181,7 +1281,7 @@ function CronCreateView({
                 )}
               </div>
 
-              <label className="block min-w-0">
+              {!['interval', 'custom'].includes(recurrenceMode) && <label className="block min-w-0">
                 <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">
                   {t('cron.create.fields.time', { defaultValue: 'Time' })}
                 </span>
@@ -1192,7 +1292,7 @@ function CronCreateView({
                   onValueChange={(value) => updateRecurringDraft({ scheduleTime: value })}
                   className="pd-form-field mt-1.5"
                 />
-              </label>
+              </label>}
 
               <label className="block min-w-0">
                 <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">
@@ -1218,7 +1318,7 @@ function CronCreateView({
               </p>
             ) : null}
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 dark:border-blue-900 dark:bg-blue-950/20">
+            {!['interval', 'monthly-weekday'].includes(recurrenceMode) && <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 dark:border-blue-900 dark:bg-blue-950/20">
               <button
                 type="button"
                 aria-expanded={advancedExpanded}
@@ -1271,10 +1371,13 @@ function CronCreateView({
                   )}
                 </div>
               ) : null}
-            </div>
+            </div>}
           </div>
         )}
 
+        <CronExecutionFields value={execution} onChange={setExecution} project={projects.find(project => (project.fullPath || project.name) === projectKey)} editing={isEditing} />
+        {preview.length > 0 && <div className="rounded-lg bg-neutral-50 p-3 text-xs dark:bg-neutral-900"><p className="mb-1 font-medium">{t('cron.preview', { defaultValue: 'Next runs' })} · {timezone}</p>{preview.map(time => <p key={time}>{new Date(time).toLocaleString(undefined, { timeZone: timezone })}</p>)}</div>}
+        <p className="text-xs text-neutral-500">{t('cron.localNotice', { defaultValue: 'Keep this computer and the PilotDeck server running for local scheduled tasks.' })}</p>
         <div className="flex items-center justify-end gap-2 pt-1">
           {isEditing ? (
             <button
@@ -1339,17 +1442,23 @@ function CronJobRow({
   t,
   onRefresh,
   onEdit,
+  onDetails,
+  unread,
 }: {
   job: CronJobOverview;
   t: (key: string, opts?: Record<string, string>) => string;
   onRefresh: () => Promise<void>;
   onEdit: (job: CronJobOverview) => void;
+  onDetails: (job: CronJobOverview) => void;
+  unread: boolean;
 }) {
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const status = job.status === 'running' ? 'running' : 'scheduled';
+  const status = job.status;
   const meta = CRON_STATUS_LABEL[status];
+  const canResume = job.enabled === false || ['paused', 'failed', 'missed', 'completed'].includes(status);
   const editDisabledReason = getEditDisabledReason(job);
   const editTitle = editDisabledReason === 'running'
     ? t('cron.edit.disabled.running', { defaultValue: 'Stop the running task before editing.' })
@@ -1362,6 +1471,7 @@ function CronJobRow({
   const runAction = async (action: 'runNow' | 'stop') => {
     if (busy) return;
     setBusy(true);
+    setActionError(null);
     try {
       const response = action === 'runNow'
         ? await api.cronRunNow(job.id)
@@ -1370,9 +1480,11 @@ function CronJobRow({
         const body = await response.json().catch(() => ({})) as { error?: string };
         throw new Error(body?.error || `HTTP ${response.status}`);
       }
+      const result = await response.json();
+      if (result.started === false || result.stopped === false) throw new Error(t(`cron.errors.${result.reason || 'not_running'}`, { defaultValue: result.reason || 'This task is no longer running.' }));
       await onRefresh();
-    } catch {
-      // The next refresh or global toast surface carries the visible error.
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
     }
@@ -1415,7 +1527,10 @@ function CronJobRow({
     <>
       <div className="flex items-center gap-4 px-5 py-2.5 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-900/40">
         <div className={cn(COL.title, 'truncate text-[13px] text-neutral-900 dark:text-neutral-100')}>
-          {job.prompt || '—'}
+          <button type="button" aria-label={t('cron.history.detailsFor', { defaultValue: 'View task details: {{name}}', name: job.name || job.prompt })} className="block w-full truncate text-left font-medium hover:underline" onClick={() => onDetails(job)}>{unread && <span aria-label={t('cron.unread', { defaultValue: 'Unread result' })} className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />}{job.name || job.prompt || '—'}</button>
+          <p className="truncate text-[11px] text-neutral-500">{job.schedule?.type === 'cron' ? job.schedule.expression : job.schedule?.type === 'interval' ? `${job.schedule.everySeconds / 60} min` : job.schedule?.type === 'monthly' ? t('cron.create.schedule.monthlyWeekday', { defaultValue: 'Weekday of month' }) : t('cron.create.schedule.once', { defaultValue: 'One-time' })} · {job.timezone}</p>
+          {job.lastRun && <p className={cn('truncate text-[11px]', job.lastRun.outcome === 'completed' ? 'text-emerald-600' : 'text-amber-600')}>{t('cron.latestResult', { defaultValue: 'Latest result' })}: {job.lastRun.outcome ? t(`cron.runStatus.${job.lastRun.outcome}`, { defaultValue: job.lastRun.outcome }) : t('cron.status.running', { defaultValue: 'Running' })}</p>}
+          {actionError && <p role="alert" className="whitespace-normal text-xs text-red-600">{actionError}</p>}
         </div>
         <div className={cn(COL.createdAt, 'font-mono text-xxs tabular-nums text-neutral-500 dark:text-neutral-400')}>
           {formatAbsoluteTime(job.createdAt)}
@@ -1428,7 +1543,16 @@ function CronJobRow({
             {t(meta.key, { defaultValue: meta.defaultValue })}
           </span>
         </div>
-        <div className={cn(COL.actions, 'flex items-center gap-1.5')}>
+        <div className={cn(COL.actions, 'flex flex-wrap items-center gap-1.5')}>
+          {(job.schedule?.type !== 'once' || ['scheduled', 'running', 'paused'].includes(status) || Date.parse(job.schedule.runAt) > Date.now()) && <button type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={async () => {
+            setBusy(true); setActionError(null);
+            try {
+              const response = await api.cronUpdate(job.id, { projectKey: job.projectKey, expectedRevision: job.revision, message: job.prompt, schedule: job.schedule, timezone: job.timezone, enabled: canResume });
+              const result = await response.json();
+              if (!response.ok || !result.updated) throw new Error(result.error || t('cron.errors.conflict', { defaultValue: 'The task changed. Refresh and try again.' }));
+              await onRefresh();
+            } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); }
+          }}>{canResume ? t('cron.actions.resume', { defaultValue: 'Resume' }) : t('cron.actions.pause', { defaultValue: 'Pause' })}</button>}
           {status === 'running' ? (
             <button
               type="button"

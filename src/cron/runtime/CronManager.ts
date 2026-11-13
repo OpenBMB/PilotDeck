@@ -1,6 +1,7 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import type { Dirent } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import { homedir } from "node:os";
 import type { SessionConfigOverrides } from "../../always-on/runtime/SessionConfigOverrides.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
@@ -24,10 +25,7 @@ import type {
   CronUpdateResult,
 } from "../protocol/types.js";
 import { resolveCronPaths } from "../storage/CronPaths.js";
-import { createCronCreateTool } from "../tool/CronCreateTool.js";
-import { createCronDeleteTool } from "../tool/CronDeleteTool.js";
-import { createCronListTool } from "../tool/CronListTool.js";
-import { createCronStopTool } from "../tool/CronStopTool.js";
+import { createCronTools } from "../tool/createCronTools.js";
 import { migrateCronStores } from "../storage/CronStoreMigration.js";
 import { CronRuntime, type CronRuntimeLogger } from "./CronRuntime.js";
 import type { CronTurnEventHandler } from "./CronFire.js";
@@ -57,12 +55,7 @@ export class CronManager {
   constructor(private readonly options: CreateCronManagerOptions) {
     this.config = options.config;
     this.pilotHome = resolve(options.pilotHome);
-    this.tools = [
-      createCronCreateTool(this),
-      createCronListTool(this),
-      createCronDeleteTool(this),
-      createCronStopTool(this),
-    ];
+    this.tools = createCronTools(this);
   }
 
   getTools(): PilotDeckToolDefinition[] {
@@ -91,7 +84,8 @@ export class CronManager {
     this.started = true;
     const projectKeys = await discoverCronProjectKeys(this.pilotHome, this.options.logger);
     for (const projectKey of projectKeys) {
-      await this.ensureRuntime(projectKey);
+      try { await this.ensureRuntime(projectKey); }
+      catch (error) { this.options.logger?.warn("cron project could not start; its store was preserved", { projectKey, error: String(error) }); }
     }
     this.options.logger?.info("cron manager started", { projectCount: this.runtimes.size });
   }
@@ -107,12 +101,35 @@ export class CronManager {
   }
 
   async createTask(input: CronCreateInput): Promise<CronCreateResult> {
-    const projectKey = requireProjectKey(input.projectKey);
+    if (!this.config.enabled) throw new Error("Cron is disabled. Enable it in pilotdeck.yaml to create tasks.");
+    const projectKey = input.projectKey === "general" ? this.pilotHome : requireProjectKey(input.projectKey);
+    let workspaceCwd = input.workspaceCwd;
+    if (projectKey === this.pilotHome && !workspaceCwd) {
+      const configured = process.env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY?.trim();
+      if (configured) workspaceCwd = configured.startsWith("~/") ? resolve(homedir(), configured.slice(2)) : configured;
+      else {
+        try {
+          const state = JSON.parse(await readFile(resolve(this.pilotHome, "general-workspace.json"), "utf-8"));
+          if (state.version === 1 && typeof state.directory === "string") workspaceCwd = state.directory;
+        } catch (error) {
+          throw new Error("Cron General workspace is unavailable. Open General in the Web UI to prepare it.", { cause: error });
+        }
+      }
+    }
+    if (projectKey === this.pilotHome) {
+      if (!workspaceCwd || !isAbsolute(workspaceCwd)) throw new Error("Cron General workspace is unavailable.");
+      const [home, workspace] = await Promise.all([realpath(this.pilotHome), realpath(workspaceCwd)]);
+      const outside = (root: string, path: string) => { const rel = relative(root, path); return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel); };
+      if (!outside(home, workspace) || !outside(workspace, home)) throw new Error("Cron General workspace must be separate from the configuration directory.");
+      workspaceCwd = workspace;
+    }
+    if (input.executionMode === "conversation" && input.targetSessionKey) await this.validateTarget(projectKey, input.targetSessionKey);
     const runtime = await this.ensureRuntime(projectKey);
-    return runtime.createTask({ ...input, projectKey });
+    return runtime.createTask({ ...input, projectKey, workspaceCwd });
   }
 
   async listTasks(input: CronListInput = {}): Promise<CronListResult> {
+    if (input.projectKey === "general") input = { ...input, projectKey: this.pilotHome };
     if (input.projectKey) {
       const runtime = await this.ensureRuntime(input.projectKey);
       return runtime.listTasks(input);
@@ -131,11 +148,14 @@ export class CronManager {
       result.recentRuns = runs
         .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
         .slice(0, input.limit ?? 50);
+      if (input.taskId && runs.length >= (input.limit ?? 50)) result.nextBeforeRunId = result.recentRuns.at(-1)?.runId;
     }
     return result;
   }
 
   async updateTask(input: CronUpdateInput): Promise<CronUpdateResult> {
+    if (input.projectKey === "general") input = { ...input, projectKey: this.pilotHome };
+    if (input.targetSessionKey) await this.validateTarget(input.projectKey, input.targetSessionKey);
     const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
     if (!runtime) return { updated: false, reason: "not_found" };
     return runtime.updateTask(input);
@@ -173,7 +193,7 @@ export class CronManager {
   }
 
   private async ensureRuntime(projectKeyInput: string): Promise<CronRuntime> {
-    const projectKey = resolve(projectKeyInput);
+    const projectKey = projectKeyInput === "general" ? this.pilotHome : resolve(projectKeyInput);
     const existing = this.runtimes.get(projectKey);
     if (existing) {
       await this.starting.get(projectKey);
@@ -192,6 +212,7 @@ export class CronManager {
       onResultDelivery: this.options.onResultDelivery,
       onTurnEvent: this.options.onTurnEvent,
       activeRunCount: () => this.activeRunCount(),
+      onRunFinished: () => { for (const loaded of this.runtimes.values()) loaded.poke(); },
       skipToolCreation: true,
     });
     if (this.gateway) runtime.bindGateway(this.gateway);
@@ -212,6 +233,14 @@ export class CronManager {
       count += runtime.getActiveRunCount();
     }
     return count;
+  }
+
+  private async validateTarget(projectKey: string, sessionKey: string): Promise<void> {
+    if (!this.gateway) throw new Error("Cron gateway is unavailable.");
+    const sessions = await this.gateway.listSessions({ projectKey, limit: 1000 });
+    if (!sessions.sessions.some(session => (session.sessionKey ?? session.sessionId) === sessionKey)) {
+      throw new Error("Cron target conversation was not found in this project.");
+    }
   }
 
   private async resolveTaskRuntime(

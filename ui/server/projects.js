@@ -644,13 +644,25 @@ async function getProjectCronJobsOverview(projectName) {
                 schedule: task.schedule,
                 timezone: task.timezone || task.schedule?.timezone || null,
                 revision: Number.isSafeInteger(task.revision) && task.revision >= 0 ? task.revision : 0,
+                name: task.name || task.message?.split('\n')[0]?.slice(0, 120) || '',
                 prompt: task.message || '',
+                workspaceCwd: task.workspaceCwd || task.projectKey,
+                executionMode: task.executionMode || 'persistent',
+                enabled: task.enabled !== false,
+                notificationPolicy: task.notificationPolicy || 'all',
+                workspaceMode: task.workspaceMode || 'local',
+                mode: task.mode || 'default',
+                modelSelection: task.modelSelection,
+                originSessionKey: task.originSessionKey,
+                targetSessionKey: task.targetSessionKey,
+                lastRun: task.lastRun || latestRun,
+                statusDetail: task.statusDetail,
                 createdAt: task.createdAt,
                 nextRunAt: task.nextRunAt,
-                recurring: isCron,
-                permanent: isCron,
+                recurring: task.schedule?.type !== 'once',
+                permanent: task.schedule?.type !== 'once',
                 manualOnly: false,
-                status: task.status === 'running' ? 'running' : 'scheduled',
+                status: task.status,
                 lastFiredAt: latestRun?.startedAt ? new Date(latestRun.startedAt).getTime() : undefined,
                 latestRun: latestRun ? {
                     status: mapCronRunOutcome(latestRun.outcome, latestRun.finishedAt),
@@ -663,8 +675,8 @@ async function getProjectCronJobsOverview(projectName) {
         });
         return { jobs };
     } catch (error) {
-        console.warn('[projects] cronList via gateway failed, returning empty:', error?.message);
-        return { jobs: [] };
+        console.warn('[projects] cronList via gateway failed:', error?.message);
+        throw error;
     }
 }
 

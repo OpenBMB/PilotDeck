@@ -1,37 +1,31 @@
 import type { GatewayChannelKey, GatewayMode } from "../../gateway/index.js";
 
-export type CronTaskSchedule =
-  | {
-      type: "once";
-      runAt: string;
-    }
-  | {
-      type: "cron";
-      expression: string;
-      timezone?: string;
-    };
+import type { CronTaskSchedule, CronCreateSchedule } from "./schedules.js";
+export type { CronTaskSchedule, CronCreateSchedule, CronSchedule } from "./schedules.js";
 
-export type CronCreateSchedule =
-  | CronTaskSchedule
-  | {
-      type: "delay";
-      amount: number;
-      unit: "second" | "minute" | "hour" | "day";
-    };
-
-export type CronSchedule = CronCreateSchedule;
-
-export type CronTaskStatus = "scheduled" | "running";
+export type CronTaskStatus = "scheduled" | "running" | "paused" | "completed" | "failed" | "missed";
+export type CronExecutionMode = "independent" | "conversation" | "persistent";
+export type CronNotificationPolicy = "all" | "findings" | "failures";
 
 export type CronTask = {
   schemaVersion: 1;
   taskId: string;
+  name?: string;
   message: string;
   schedule: CronTaskSchedule;
   status: CronTaskStatus;
   sessionKey: string;
   channelKey: GatewayChannelKey;
   projectKey?: string;
+  workspaceCwd?: string;
+  targetSessionKey?: string;
+  executionMode?: CronExecutionMode;
+  enabled?: boolean;
+  notificationPolicy?: CronNotificationPolicy;
+  workspaceMode?: "local" | "worktree";
+  modelSelection?: { provider: string; model: string };
+  statusDetail?: string;
+  lastRun?: CronRunRecord;
   mode?: GatewayMode;
   timezone?: string;
   createdAt: string;
@@ -41,15 +35,18 @@ export type CronTask = {
   revision?: number;
   scheduleComputationVersion?: 2 | 3;
   originSessionKey?: string;
+  originProjectKey?: string;
   originChannelKey?: GatewayChannelKey;
 };
 
 export type CronResultDelivery = {
   taskId: string;
+  taskName?: string;
   runId: string;
   sessionKey: string;
   channelKey: GatewayChannelKey;
   originSessionKey?: string;
+  originProjectKey?: string;
   originChannelKey?: GatewayChannelKey;
   projectKey?: string;
   outcome: CronRunOutcome;
@@ -60,9 +57,9 @@ export type CronResultDelivery = {
   };
 };
 
-export type CronResultDeliveryHandler = (delivery: CronResultDelivery) => Promise<void> | void;
+export type CronResultDeliveryHandler = (delivery: CronResultDelivery) => Promise<void | boolean> | void | boolean;
 
-export type CronRunOutcome = "completed" | "failed" | "aborted" | "stopped";
+export type CronRunOutcome = "completed" | "failed" | "aborted" | "stopped" | "blocked";
 
 export type CronRunRecord = {
   schemaVersion: 1;
@@ -71,6 +68,15 @@ export type CronRunRecord = {
   sessionKey: string;
   projectKey?: string;
   startedAt: string;
+  scheduledAt?: string;
+  trigger?: "scheduled" | "manual";
+  taskName?: string;
+  message?: string;
+  output?: string;
+  artifacts?: Array<{ id: string; name: string; path: string; size: number; mimeType?: string }>;
+  workspaceCwd?: string;
+  deliveryStatus?: "pending" | "sent" | "failed" | "skipped";
+  deliveryError?: string;
   finishedAt?: string;
   outcome?: CronRunOutcome;
   error?: {
@@ -80,17 +86,26 @@ export type CronRunRecord = {
 };
 
 export type CronCreateInput = {
+  name?: string;
   message: string;
   schedule: CronCreateSchedule;
   sessionKey?: string;
+  targetSessionKey?: string;
+  originProjectKey?: string;
   channelKey?: GatewayChannelKey;
   projectKey?: string;
+  workspaceCwd?: string;
+  executionMode?: CronExecutionMode;
+  notificationPolicy?: CronNotificationPolicy;
+  workspaceMode?: "local" | "worktree";
+  modelSelection?: { provider: string; model: string };
   mode?: GatewayMode;
   timezone?: string;
 };
 
 export type CronCreateResult = {
   task: CronTask;
+  nextRuns?: string[];
 };
 
 export type CronUpdateInput = {
@@ -100,6 +115,14 @@ export type CronUpdateInput = {
   message: string;
   schedule: CronTaskSchedule;
   timezone?: string;
+  name?: string;
+  enabled?: boolean;
+  executionMode?: CronExecutionMode;
+  targetSessionKey?: string;
+  notificationPolicy?: CronNotificationPolicy;
+  mode?: GatewayMode;
+  workspaceMode?: "local" | "worktree";
+  modelSelection?: { provider: string; model: string } | null;
 };
 
 export type CronUpdateResult =
@@ -114,6 +137,8 @@ export type CronUpdateResult =
 
 export type CronListInput = {
   projectKey?: string;
+  taskId?: string;
+  beforeRunId?: string;
   includeHistory?: boolean;
   limit?: number;
 };
@@ -121,6 +146,7 @@ export type CronListInput = {
 export type CronListResult = {
   tasks: CronTask[];
   recentRuns?: CronRunRecord[];
+  nextBeforeRunId?: string;
 };
 
 export type CronDeleteInput = {
@@ -150,12 +176,14 @@ export type CronStopResult = {
 export type CronRunNowInput = {
   taskId: string;
   projectKey?: string;
+  retryDeliveryRunId?: string;
 };
 
 export type CronRunNowResult = {
   started: boolean;
-  reason?: "not_found" | "already_running";
+  reason?: "not_found" | "already_running" | "concurrency_limit" | "disabled";
   taskId?: string;
+  runId?: string;
 };
 
 export type CronRunOutcomeStatus = "completed" | "failed" | "running";
@@ -171,6 +199,6 @@ export function mapCronRunOutcome(
 ): CronRunOutcomeStatus {
   if (!outcome) return finishedAt ? "completed" : "running";
   if (outcome === "completed") return "completed";
-  if (outcome === "failed" || outcome === "aborted" || outcome === "stopped") return "failed";
+  if (outcome === "failed" || outcome === "aborted" || outcome === "stopped" || outcome === "blocked") return "failed";
   return "completed";
 }

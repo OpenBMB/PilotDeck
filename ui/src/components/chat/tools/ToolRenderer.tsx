@@ -4,6 +4,7 @@ import type { Project } from '../../../types/app';
 import type { SubagentChildTool } from '../types/types';
 import { getCanonicalToolName, getToolConfig } from './configs/toolConfigs';
 import { TodoToolContent } from './components/ContentRenderers/TodoToolContent';
+import ScheduledTaskCard from './components/ContentRenderers/ScheduledTaskCard';
 import { OneLineDisplay, CollapsibleDisplay, ToolDiffViewer, MarkdownContent, FileListContent, TodoListContent, TaskListContent, TextContent, QuestionAnswerContent, SubagentContainer, PlanApprovedCard } from './components';
 
 type DiffLine = {
@@ -378,6 +379,9 @@ const ToolRendererInner: React.FC<ToolRendererProps> = ({
 
     let cardComponent: React.ReactNode = null;
     switch (displayConfig.contentType) {
+      case 'scheduled-task':
+        cardComponent = <ScheduledTaskCard result={contentProps.result} />;
+        break;
       case 'plan-card':
         cardComponent = (
           <PlanApprovedCard

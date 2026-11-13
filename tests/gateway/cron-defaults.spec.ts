@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createLocalGateway } from "../../src/cli/createLocalGateway.js";
 import { createCronManager } from "../../src/cron/index.js";
 import { createModelRuntime, type CanonicalModelEvent, type CanonicalModelRequest } from "../../src/model/index.js";
+import { createProjectId } from "../../src/pilot/paths.js";
 import { loadPilotConfig } from "../../src/pilot/config/loadPilotConfig.js";
 
 const BASE = `
@@ -37,6 +38,11 @@ for (const [name, yaml, enabled] of [
   test(`${name}: Gateway creation and agent Cron tools agree`, async (t) => {
     const home = await mkdtemp(join(tmpdir(), "pilotdeck-cron-defaults-"));
     t.after(() => rm(home, { recursive: true, force: true }));
+    const project = join(home, "workspace");
+    await mkdir(project);
+    const projectRecord = join(home, "projects", createProjectId(project));
+    await mkdir(projectRecord, { recursive: true });
+    await writeFile(join(projectRecord, ".cwd"), project);
     const configPath = join(home, "pilotdeck.yaml");
     await writeFile(configPath, BASE + yaml);
     await mkdir(join(home, "skills"));
@@ -48,7 +54,7 @@ for (const [name, yaml, enabled] of [
     const schedule = { type: "once" as const, runAt: new Date(Date.now() + 86_400_000).toISOString() };
     const local = createLocalGateway({
       pilotHome: home,
-      projectRoot: home,
+      projectRoot: project,
       builtinSkillsRoot: join(home, "skills"),
       env,
       cron,
@@ -80,7 +86,7 @@ for (const [name, yaml, enabled] of [
     try {
       cron.bindGateway(local.gateway);
       await cron.start();
-      const input = { projectKey: home, message: "Manual reminder", channelKey: "web" as const, schedule };
+      const input = { projectKey: project, message: "Manual reminder", channelKey: "web" as const, schedule };
       if (enabled) {
         const { task } = await local.gateway.cronCreate(input);
         assert.equal(task.message, input.message);
@@ -91,7 +97,7 @@ for (const [name, yaml, enabled] of [
 
       const events = [];
       for await (const event of local.gateway.submitTurn({
-        projectKey: home,
+        projectKey: project,
         sessionKey: "web:cron-defaults",
         channelKey: "web",
         message: "Create a reminder for tomorrow",
@@ -103,7 +109,7 @@ for (const [name, yaml, enabled] of [
       for (const name of ["cron_create", "cron_list", "cron_delete", "cron_stop"]) {
         assert.equal(requests[0]?.tools?.some(tool => tool.name === name), enabled, name);
       }
-      const { tasks } = await local.gateway.cronList({ projectKey: home });
+      const { tasks } = await local.gateway.cronList({ projectKey: project });
       assert.deepEqual(tasks.map(task => task.message).sort(), enabled ? ["Agent reminder", "Manual reminder"] : []);
       if (enabled) {
         assert.equal(tasks.find(task => task.message === "Agent reminder")?.originSessionKey, "web:cron-defaults");

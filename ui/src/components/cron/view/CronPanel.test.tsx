@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CronJobOverview, Project } from '../../../types/app';
 import CronPanel from './CronPanel';
+import { MemoryRouter } from 'react-router-dom';
 
 const apiMock = vi.hoisted(() => ({
   projects: vi.fn(),
@@ -13,6 +14,7 @@ const apiMock = vi.hoisted(() => ({
   cronDelete: vi.fn(),
   cronRunNow: vi.fn(),
   cronStop: vi.fn(),
+  cronDetail: vi.fn(),
 }));
 
 vi.mock('../../../utils/api', () => ({
@@ -59,17 +61,103 @@ function makeJob(overrides: Partial<CronJobOverview>): CronJobOverview {
   };
 }
 
-function setup(jobs: CronJobOverview[]) {
-  apiMock.projects.mockResolvedValue(jsonResponse([project]));
+function setup(jobs: CronJobOverview[], projectEntries: Project[] = [project]) {
+  apiMock.projects.mockResolvedValue(jsonResponse(projectEntries));
   apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs }));
   apiMock.cronCreate.mockResolvedValue(jsonResponse({ task: { taskId: 'created-task' } }));
-  apiMock.cronUpdate.mockResolvedValue(jsonResponse({ task: { taskId: 'updated-task' } }));
-  apiMock.cronRunNow.mockResolvedValue(jsonResponse({ triggered: true }));
+  apiMock.cronUpdate.mockResolvedValue(jsonResponse({ updated: true, task: { taskId: 'updated-task' } }));
+  apiMock.cronRunNow.mockResolvedValue(jsonResponse({ started: true, taskId: 'job-1', runId: 'manual-run' }));
   apiMock.cronStop.mockResolvedValue(jsonResponse({ stopped: true }));
   apiMock.cronDelete.mockResolvedValue(jsonResponse({ deleted: true }));
 
-  return render(<CronPanel />);
+  return render(<MemoryRouter><CronPanel /></MemoryRouter>);
 }
+
+describe('scheduled task management', () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+  it('edits a task created by Agent with a complex rule without converting the rule', async () => {
+    setup([makeJob({ name: 'Agent task', prompt: 'Old instruction', schedule: { type: 'cron', expression: '*/5 9-17 * * 1-5', timezone: 'Asia/Shanghai' }, timezone: 'Asia/Shanghai', executionMode: 'persistent' })]);
+    await screen.findByText('Agent task');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect((screen.getByLabelText('Repeat period') as HTMLSelectElement).value).toBe('custom');
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Updated instruction' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-1', expect.objectContaining({
+      name: 'Agent task', message: 'Updated instruction', executionMode: 'persistent',
+      schedule: { type: 'cron', expression: '*/5 9-17 * * 1-5', timezone: 'Asia/Shanghai' },
+    })));
+  });
+
+  it('creates a General task using its execution directory rather than its configuration directory', async () => {
+    setup([], [{ ...project, fullPath: '/state/general', workspaceCwd: '/work/general', kind: 'general' }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    await screen.findByText('Create Cron Task');
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: '/state/general' } });
+    fireEvent.change(screen.getByLabelText('Task name'), { target: { value: 'General report' } });
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Summarize the day' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
+    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({ projectKey: '/state/general', workspaceCwd: '/work/general', name: 'General report' })));
+  });
+
+  it('creates fixed intervals and monthly ordinal weekdays using typed schedules', async () => {
+    setup([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    await screen.findByText('Create Cron Task');
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: project.fullPath } });
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Interval report' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+    fireEvent.change(screen.getByLabelText('Repeat period'), { target: { value: 'interval' } });
+    fireEvent.change(screen.getByLabelText('Interval in minutes'), { target: { value: '30' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
+    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({ schedule: expect.objectContaining({ type: 'interval', everySeconds: 1800 }) })));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    await screen.findByText('Create Cron Task');
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: project.fullPath } });
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Last Friday report' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+    fireEvent.change(screen.getByLabelText('Repeat period'), { target: { value: 'monthly-weekday' } });
+    fireEvent.change(screen.getByLabelText('Week of month'), { target: { value: '-1' } });
+    fireEvent.change(screen.getByLabelText('Day of week'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:30' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
+    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({ schedule: expect.objectContaining({ type: 'monthly', ordinal: -1, weekday: 5, hour: 9, minute: 30 }) })));
+  });
+
+  it('pauses future occurrences without stopping the active run', async () => {
+    setup([makeJob({ status: 'running', enabled: true, revision: 4 })]);
+    await screen.findByText('Run hourly report');
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-1', expect.objectContaining({ enabled: false, expectedRevision: 4 })));
+    expect(apiMock.cronStop).not.toHaveBeenCalled();
+  });
+
+  it('shows admission failures instead of silently treating an HTTP 200 as started', async () => {
+    setup([makeJob({})]);
+    apiMock.cronRunNow.mockResolvedValue(jsonResponse({ started: false, reason: 'concurrency_limit' }));
+    await screen.findByText('Run hourly report');
+    fireEvent.click(screen.getByRole('button', { name: 'Run Now' }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('alert').textContent).toContain('concurrency_limit');
+  });
+
+  it('opens saved results and instruction snapshots for a finished task', async () => {
+    const job = makeJob({ status: 'failed', enabled: false, name: 'Failed task' });
+    apiMock.cronDetail.mockResolvedValue(jsonResponse({ task: { message: job.prompt }, nextRuns: [], runs: [{
+      runId: 'run-1', taskId: job.id, sessionKey: 'cron:job-1:run-1', startedAt: '2026-01-01T09:00:00Z', finishedAt: '2026-01-01T09:00:10Z',
+      trigger: 'manual', outcome: 'failed', message: 'Original instructions', output: 'Partial report', error: { code: 'offline', message: 'Synthetic outage' }, deliveryStatus: 'skipped',
+    }] }));
+    setup([job]);
+    await screen.findByText('Failed task');
+    fireEvent.click(screen.getByRole('button', { name: 'View task details: Failed task' }));
+    await screen.findByRole('dialog');
+    await screen.findByText('Partial report');
+    expect(screen.getByText('Synthetic outage')).toBeTruthy();
+    expect(screen.getByText('Original instructions')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open execution conversation and files' }).getAttribute('href')).toContain('/p/general/c/');
+  });
+});
 
 describe('CronPanel', () => {
   beforeEach(() => {
@@ -99,7 +187,7 @@ describe('CronPanel', () => {
     expect(screen.getByText(formatExpectedTime('2026-01-01T01:00:00.000Z'))).toBeTruthy();
     expect(screen.getByText('Unassigned')).toBeTruthy();
     expect(screen.getByText('Unassigned check')).toBeTruthy();
-    expect(screen.queryByText('Completed old job')).toBeNull();
+    expect(screen.getByText('Completed old job')).toBeTruthy();
   });
 
   it('shows cron sub-navigation and defaults to the task list', async () => {
@@ -352,14 +440,14 @@ describe('CronPanel', () => {
     });
   });
 
-  it('rejects unsupported cron rules and keeps the last valid standard fields', async () => {
+  it('rejects malformed cron rules and keeps the last valid standard fields', async () => {
     setup([]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
     await screen.findByText('Create Cron Task');
     fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: '/project/general' } });
     fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
-    fireEvent.change(screen.getByLabelText('Cron expression'), { target: { value: '*/15 9-17/2 * * 1-5' } });
+    fireEvent.change(screen.getByLabelText('Cron expression'), { target: { value: '*/15x 9-17/2 * * 1-5' } });
 
     expect(screen.getByText('Cron expression format is invalid.')).toBeTruthy();
     expect((screen.getByLabelText('Repeat period') as HTMLSelectElement).value).toBe('daily');
@@ -528,6 +616,15 @@ describe('CronPanel', () => {
 
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-edit', {
+        name: 'Updated weekly report',
+        executionMode: 'independent',
+        sessionKey: '',
+        notificationPolicy: 'all',
+        mode: 'default',
+        workspaceMode: 'local',
+        modelSelection: null,
+        targetSessionKey: undefined,
+        workspaceCwd: '/project/general',
         message: 'Updated weekly report',
         projectKey: '/project/general',
         expectedRevision: 7,
@@ -614,6 +711,15 @@ describe('CronPanel', () => {
 
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-once-to-cron', {
+        name: 'Convert to recurring',
+        executionMode: 'independent',
+        sessionKey: '',
+        notificationPolicy: 'all',
+        mode: 'default',
+        workspaceMode: 'local',
+        modelSelection: null,
+        targetSessionKey: undefined,
+        workspaceCwd: '/project/general',
         message: 'Convert to recurring',
         projectKey: '/project/general',
         expectedRevision: 2,
@@ -644,6 +750,15 @@ describe('CronPanel', () => {
 
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once', {
+        name: 'Convert to one-time',
+        executionMode: 'independent',
+        sessionKey: '',
+        notificationPolicy: 'all',
+        mode: 'default',
+        workspaceMode: 'local',
+        modelSelection: null,
+        targetSessionKey: undefined,
+        workspaceCwd: '/project/general',
         message: 'Convert to one-time',
         projectKey: '/project/general',
         expectedRevision: 2,
@@ -675,6 +790,15 @@ describe('CronPanel', () => {
 
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-date-boundary', {
+        name: 'Convert across date boundary',
+        executionMode: 'independent',
+        sessionKey: '',
+        notificationPolicy: 'all',
+        mode: 'default',
+        workspaceMode: 'local',
+        modelSelection: null,
+        targetSessionKey: undefined,
+        workspaceCwd: '/project/general',
         message: 'Convert across date boundary',
         projectKey: '/project/general',
         expectedRevision: 2,
@@ -750,6 +874,15 @@ describe('CronPanel', () => {
 
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-fallback', {
+        name: 'Convert fallback task',
+        executionMode: 'independent',
+        sessionKey: '',
+        notificationPolicy: 'all',
+        mode: 'default',
+        workspaceMode: 'local',
+        modelSelection: null,
+        targetSessionKey: undefined,
+        workspaceCwd: '/project/general',
         message: 'Convert fallback task',
         projectKey: '/project/general',
         expectedRevision: 4,
@@ -873,7 +1006,7 @@ describe('CronPanel', () => {
     expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
   });
 
-  it('disables editing for running, unsupported, and incomplete tasks with explanations', async () => {
+  it('disables running and incomplete edits while allowing advanced cron tasks', async () => {
     setup([
       makeJob({ id: 'job-running-edit', prompt: 'Running task', status: 'running' }),
       makeJob({
@@ -887,7 +1020,8 @@ describe('CronPanel', () => {
 
     await screen.findByText('Running task');
     expect((within(screen.getByTitle('Stop the running task before editing.')).getByRole('button') as HTMLButtonElement).disabled).toBe(true);
-    expect((within(screen.getByTitle('This task uses a schedule that cannot be edited on this page.')).getByRole('button') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTitle('This task uses a schedule that cannot be edited on this page.')).toBeNull();
+    expect((screen.getAllByRole('button', { name: 'Edit' })[1] as HTMLButtonElement).disabled).toBe(false);
     expect((within(screen.getByTitle('This task is missing the details required for editing.')).getByRole('button') as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -907,7 +1041,7 @@ describe('CronPanel', () => {
     setup([makeJob({ id: 'job-stop', prompt: 'Stop this job', status: 'running' })]);
 
     await screen.findByText('Stop this job');
-    fireEvent.click(screen.getByRole('button', { name: /Stop/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
 
     await waitFor(() => {
       expect(apiMock.cronStop).toHaveBeenCalledWith('job-stop');
@@ -998,9 +1132,11 @@ describe('CronPanel', () => {
     expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an empty state when there are no active cron jobs', async () => {
+  it('shows an empty active view while preserving finished tasks in the full catalog', async () => {
     setup([makeJob({ id: 'job-complete', prompt: 'Past job', status: 'completed' })]);
 
+    await screen.findByText('Past job');
+    fireEvent.change(screen.getByLabelText('Task status'), { target: { value: 'active' } });
     await screen.findByText('No active cron jobs found.');
     expect(screen.queryByText('Past job')).toBeNull();
   });

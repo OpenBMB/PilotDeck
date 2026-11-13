@@ -8,6 +8,7 @@ export type AgentRuntimeConfig = {
   /** Multimodal constraints of the selected model (absent = text-only). */
   modelMultimodal?: MultimodalConstraints;
   cwd: string;
+  projectKey?: string;
   systemPrompt?: string;
   maxOutputTokens?: number;
   thinking?: CanonicalThinkingConfig;

@@ -1,6 +1,18 @@
 export const CRON_SCHEDULE_SCHEMA = {
   anyOf: [
     {
+      type: "object", required: ["type", "everySeconds"], additionalProperties: false,
+      properties: { type: { const: "interval" }, everySeconds: { type: "integer", minimum: 60 }, anchorAt: { type: "string" } },
+    },
+    {
+      type: "object", required: ["type", "ordinal", "weekday", "hour", "minute", "timezone"], additionalProperties: false,
+      properties: {
+        type: { const: "monthly" }, ordinal: { type: "integer", enum: [1, 2, 3, 4, -1] },
+        weekday: { type: "integer", minimum: 0, maximum: 6, description: "0=Sunday, 1=Monday." },
+        hour: { type: "integer", minimum: 0, maximum: 23 }, minute: { type: "integer", minimum: 0, maximum: 59 }, timezone: { type: "string" },
+      },
+    },
+    {
       type: "object",
       required: ["type", "runAt"],
       additionalProperties: false,
@@ -17,7 +29,7 @@ export const CRON_SCHEDULE_SCHEMA = {
         type: { type: "string", const: "cron" },
         expression: {
           type: "string",
-          description: "Five numeric fields: minute hour day-of-month month day-of-week (0 or 7 = Sunday). If neither day field starts with '*', they match with OR; if either starts with '*' (including */n), they match with AND. Explicit full ranges are not wildcards. '0 9 1 * 1' means the 1st of each month OR every Monday, not their intersection. Do not use '0 9 1-7 * 1' for the first Monday; schedule explicit one-time dates instead.",
+          description: "Five numeric fields: minute hour day-of-month month day-of-week (0 or 7 = Sunday). Restricted day fields match with OR; wildcard day fields match with AND. Use type=monthly for the first or last weekday of a month, and type=interval for elapsed-time intervals.",
         },
         timezone: { type: "string" },
       },
