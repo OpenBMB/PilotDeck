@@ -34,6 +34,7 @@ import {
   useCustomNamesVersion,
 } from '../../lib/customNames';
 import { compareProjectsBySidebarOrder, isGeneralProject } from './appShellSelection';
+import { useCronSidebar } from '../cron/CronSidebarContext';
 
 const asTimestamp = (value: unknown): number => {
   if (typeof value === 'number') return value;
@@ -296,6 +297,7 @@ export default function Sidebar({
   onLoadMoreSessions,
   loadingMoreProjectIds,
 }: SidebarProps) {
+  const cronSidebar = useCronSidebar();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const desktopOpenDirectory = window.pilotdeckDesktop?.openDirectory;
@@ -353,7 +355,7 @@ export default function Sidebar({
     return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed));
   });
   const [isResizing, setIsResizing] = useState(false);
-  const isCompact = !isMobile && sidebarWidth <= SIDEBAR_COMPACT_THRESHOLD;
+  const isCompact = activeTab !== 'cron' && !isMobile && sidebarWidth <= SIDEBAR_COMPACT_THRESHOLD;
   useEffect(() => {
     const panel = projectsConversationsSplitRef.current;
     if (!panel || typeof ResizeObserver === 'undefined') return;
@@ -1127,7 +1129,7 @@ export default function Sidebar({
       <aside
       ref={sidebarRootRef}
       data-sidebar-root
-      style={{ width: `${sidebarWidth}px` }}
+      style={{ width: `${activeTab === 'cron' ? Math.max(220, sidebarWidth) : sidebarWidth}px` }}
       className={cn(
         // On mobile the parent wraps this aside in an overlay constrained
         // to 85vw, so force the inline width style off with !w-full there.
@@ -1219,7 +1221,7 @@ export default function Sidebar({
       </nav>
       {isCompact ? <span className="compact-divider" /> : null}
 
-      {isCompact ? (
+      {activeTab === 'cron' ? <div ref={cronSidebar?.setHost} className="cron-task-slot" data-cron-sidebar-slot /> : isCompact ? (
         <nav
           className="recent-list"
           aria-label={t('sidebar:projects.recent', { defaultValue: 'Recently opened' }) as string}

@@ -145,7 +145,7 @@
       "missed": "Missed"
     },
     "create": {
-      "title": "Create scheduled task",
+      "title": "New scheduled task",
       "subtitle": "Describe the work, choose a workspace and set its schedule.",
       "success": "Scheduled task created.",
       "fields": {
@@ -244,7 +244,7 @@
       }
     },
     "edit": {
-      "title": "Edit Cron Task",
+      "title": "Edit scheduled task",
       "subtitle": "Update the prompt or schedule for this task.",
       "disabled": {
         "running": "Stop the running task before editing.",
@@ -273,7 +273,7 @@
     "preview": "Next runs",
     "latestResult": "Latest result",
     "unread": "Unread result",
-    "localNotice": "Keep this computer and the PilotDeck server running. Missed recurring occurrences are merged into one run.",
+    "localNotice": "Keep this computer and PilotDeck running for local tasks.",
     "ordinals": {
       "1": "First",
       "2": "Second",
@@ -310,7 +310,7 @@
       "resultsNotice": "Every result is saved here. Tasks created in chat can also report back to their source conversation."
     },
     "history": {
-      "title": "Run history and results",
+      "title": "Run history",
       "close": "Close details",
       "instructions": "Task instructions",
       "empty": "No runs yet. Try running this task once.",
@@ -348,7 +348,38 @@
       "not_found": "This task no longer exists. Refresh the list.",
       "not_running": "This task is no longer running.",
       "conflict": "The task changed. Refresh and try again."
-    }
+    },
+    "workspace": {
+      "newTask": "New task",
+      "showTasks": "Show task list",
+      "result": "Result",
+      "clearSearch": "Clear search",
+      "noMatches": "No matching tasks.",
+      "noTasks": "Your scheduled tasks will appear here.",
+      "actionsFor": "Task actions: {{name}}",
+      "taskActions": "Task actions",
+      "closeEditor": "Close task editor",
+      "customized": "Customized",
+      "custom": "Custom schedule",
+      "onceAt": "Once · {{time}}",
+      "monthlyWeekday": "{{ordinal}} {{weekday}} of each month · {{time}}",
+      "nextAt": "Next run · {{time}}",
+      "notFound": "This task is unavailable",
+      "notFoundHint": "Refresh the task list or choose another task.",
+      "emptyTitle": "Make room for recurring work",
+      "emptyHint": "Schedule a task once. Find its next run and every result here.",
+      "refreshResults": "Refresh results",
+      "executionResult": "Execution result",
+      "noUpdates": "Nothing new to report from this check.",
+      "runningHint": "Your task is running. Its result will appear here automatically.",
+      "noText": "This run finished without a text response.",
+      "runDetails": "Run details",
+      "finishedAt": "Finished",
+      "firstRun": "Your first result is on its way",
+      "noSavedRuns": "No saved results yet",
+      "sourceConversation": "Source conversation"
+    },
+    "detailsFor": "View task details: {{name}}"
   },
   "sessionMissing": "This chat record no longer exists."
 }

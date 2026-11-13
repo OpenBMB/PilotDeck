@@ -67,6 +67,15 @@ afterEach(() => {
 });
 
 describe('Sidebar layout', () => {
+  it('replaces the project tree with the task list slot in scheduled-task mode', () => {
+    const { container } = renderSidebar(project, { activeTab: 'cron' });
+    expect(container.querySelector('[data-cron-sidebar-slot]')).toBeTruthy();
+    expect(screen.queryByText('Projects')).toBeNull();
+    expect(screen.queryByText('Conversations')).toBeNull();
+    expect(screen.getByText('Scheduled Tasks')).toBeTruthy();
+    expect(screen.getByText('Settings')).toBeTruthy();
+  });
+
   it('distinguishes a project load failure from an empty project list', () => {
     const onRetryLoad = vi.fn();
     renderSidebar(null, {

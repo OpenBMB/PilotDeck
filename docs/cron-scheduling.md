@@ -42,16 +42,30 @@ when it finishes, rather than replaying every missed run. New one-time tasks
 more than one minute overdue at server startup become `missed` for manual action.
 The preview endpoint uses the same evaluator as execution.
 
+The version-3 day matching migration preserves cached pending occurrences and
+applies corrected OR semantics to existing tasks. It does not replay historical
+occurrences missed under the older intersection rule.
+
+## Web workspace
+
+The scheduled-task route replaces the shell's project/conversation tree with a
+grouped task list. Selecting a task opens its latest saved result in the main
+workspace; run history can open older results and their instruction snapshots.
+`/cron?taskId=<taskId>` links directly to a task. The result view links to its
+execution conversation and files, and exposes delivery status separately.
+
+Create and edit use a modal with basic task, workspace and timing fields.
+Advanced expressions and execution settings expand on demand; saved custom
+settings remain available when editing. The shared calendar/clock picker owns
+Escape before the editor. The editor retains input after a rejected save and
+returns focus to its trigger when dismissed.
+
 The task list revalidates quietly while visible, retaining existing rows and
 empty states without showing a loading animation. Unchanged snapshots preserve
 their React state; background checks do not rescan projects or overlap requests.
 Polling pauses while the page is hidden or the task form is open. Returning to
 the page revalidates immediately, and manual refresh remains available. Open
-history panels revalidate when the task's execution or delivery state changes.
-
-The version-3 day matching migration preserves cached pending occurrences and
-applies corrected OR semantics to existing tasks. It does not replay historical
-occurrences missed under the older intersection rule.
+results revalidate when the task's execution or delivery state changes.
 
 ## Task and execution lifecycle
 

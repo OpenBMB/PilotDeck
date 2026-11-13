@@ -145,7 +145,7 @@
       "missed": "已错过"
     },
     "create": {
-      "title": "创建定时任务",
+      "title": "新建定时任务",
       "subtitle": "描述要做的工作，选择工作区并设置执行时间。",
       "success": "定时任务已创建。",
       "fields": {
@@ -273,7 +273,7 @@
     "preview": "接下来几次执行",
     "latestResult": "最近结果",
     "unread": "未读结果",
-    "localNotice": "本地任务需要电脑和 PilotDeck 服务保持运行；错过的周期会合并处理。",
+    "localNotice": "本地任务需要电脑和 PilotDeck 保持运行。",
     "ordinals": {
       "1": "第一个",
       "2": "第二个",
@@ -310,7 +310,7 @@
       "resultsNotice": "每次结果都会保存在任务中；从对话创建的任务还可以向来源对话回报。"
     },
     "history": {
-      "title": "运行历史与结果",
+      "title": "运行历史",
       "close": "关闭详情",
       "instructions": "任务说明",
       "empty": "暂无运行记录，可以先立即运行一次。",
@@ -348,7 +348,38 @@
       "not_found": "任务已不存在，请刷新列表。",
       "not_running": "此任务已不在运行中。",
       "conflict": "任务已发生变化，请刷新后重试。"
-    }
+    },
+    "workspace": {
+      "newTask": "新建任务",
+      "showTasks": "展开任务列表",
+      "result": "运行结果",
+      "clearSearch": "清除搜索",
+      "noMatches": "没有找到匹配的任务。",
+      "noTasks": "创建的定时任务会显示在这里。",
+      "actionsFor": "任务操作：{{name}}",
+      "taskActions": "任务操作",
+      "closeEditor": "关闭任务编辑",
+      "customized": "已自定义",
+      "custom": "自定义计划",
+      "onceAt": "仅一次 · {{time}}",
+      "monthlyWeekday": "每月{{ordinal}}{{weekday}} · {{time}}",
+      "nextAt": "下次执行 · {{time}}",
+      "notFound": "此任务暂不可用",
+      "notFoundHint": "请刷新任务列表，或选择其他任务。",
+      "emptyTitle": "把重复的工作安排好",
+      "emptyHint": "设定执行时间，在这里查看每一次结果。也可以在对话中让 Agent 帮你创建任务。",
+      "refreshResults": "刷新运行结果",
+      "executionResult": "执行结果",
+      "noUpdates": "本次检查没有发现需要更新的内容。",
+      "runningHint": "任务正在执行，结果会自动显示在这里。",
+      "noText": "本次执行已结束，没有文本结果。",
+      "runDetails": "执行详情",
+      "finishedAt": "完成时间",
+      "firstRun": "等待第一次执行",
+      "noSavedRuns": "暂无已保存的结果",
+      "sourceConversation": "来源对话"
+    },
+    "detailsFor": "查看任务详情：{{name}}"
   },
   "sessionMissing": "此对话记录已不存在。"
 }

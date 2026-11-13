@@ -1,0 +1,124 @@
+.cron-workspace,.cron-editor-dialog,.cron-task-sidebar,.cron-action-menu{--cron-ink:var(--pd-foreground,#25222e);--cron-muted:var(--pd-muted,#817c8c);--cron-border:var(--pd-border,#e8e5ee);--cron-surface:#fff;--cron-tint:var(--pd-accent-soft,#f0ecfb);--cron-accent:var(--pd-accent-strong,#6855b7);color:var(--cron-ink)}
+.dark .cron-workspace,.dark .cron-editor-dialog,.dark .cron-task-sidebar,.dark .cron-action-menu{--cron-ink:#e9e6ef;--cron-muted:#9c96a7;--cron-border:#302c3a;--cron-surface:#17151c;--cron-tint:var(--pd-accent-soft,#2a243b)}
+.cron-workspace{display:flex;height:100%;min-height:0;background:var(--cron-surface)}
+.cron-result-workspace{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+.cron-workspace-header{gap:14px;min-height:68px;padding:12px 28px}
+.cron-workspace-header h1{font-size:15px;font-weight:600;line-height:21px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cron-workspace-subtitle{font-size:11px;color:var(--cron-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cron-task-slot{display:flex;flex:1;min-height:0;overflow:hidden}
+.cron-task-sidebar{display:flex;flex-direction:column;flex:1;min-height:0;padding:12px 8px 4px;border-top:1px solid var(--cron-border)}
+.cron-standalone-sidebar{display:flex;width:270px;flex-shrink:0;border-right:1px solid var(--cron-border);background:var(--cron-tint)}
+.cron-sidebar-toolbar{display:flex;align-items:center;gap:0;padding:0 6px 9px;position:relative}
+.cron-sidebar-toolbar h2{font-size:12px;font-weight:600;flex:1}
+.cron-icon-button{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:28px;height:28px;border-radius:7px;color:var(--cron-muted);cursor:pointer;list-style:none}
+.cron-icon-button:hover,.cron-icon-button.selected{background:var(--cron-tint);color:var(--cron-accent)}
+.cron-icon-button:disabled,.cron-button:disabled{opacity:.45;cursor:not-allowed}
+.cron-icon-button:focus-visible,.cron-button:focus-visible,.cron-task-select:focus-visible,.cron-action-menu button:focus-visible{outline:2px solid var(--cron-accent);outline-offset:2px}
+.cron-new-task{display:flex;align-items:center;gap:8px;text-align:left;font-size:12px;font-weight:500;padding:9px 10px;margin:0 2px 12px;border-radius:8px;color:var(--cron-accent)}
+.cron-new-task:hover{background:var(--cron-tint)}
+.cron-search{display:flex;align-items:center;margin:0 4px 8px;border:1px solid var(--cron-border);border-radius:8px;background:var(--cron-surface);padding:0 5px 0 9px}
+.cron-search input{width:100%;min-width:0;height:32px;background:none;font-size:12px;border:0;outline:none}
+.cron-search:focus-within{border-color:var(--cron-accent)}
+.cron-task-list{overflow:auto;flex:1;min-height:0;scrollbar-gutter:stable}
+.cron-task-group{margin-bottom:18px}
+.cron-task-group h3{font-weight:500;color:var(--cron-muted);font-size:10px;letter-spacing:.025em;padding:0 10px;margin:3px 0 5px}
+.cron-task-row{display:flex;align-items:center;border-radius:9px;margin-bottom:3px}
+.cron-task-row.selected{background:var(--cron-tint)}
+.cron-task-row:hover{background:var(--cron-tint)}
+.cron-task-select{display:flex;flex-direction:column;flex:1;min-width:0;padding:10px 4px 10px 10px;text-align:left;border-radius:8px}
+.cron-task-name{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:19px;font-weight:500}
+.cron-task-summary{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--cron-muted);font-size:10px;line-height:16px;margin-top:1px}
+.cron-task-summary.running{color:var(--cron-accent)}
+.cron-unread{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--cron-accent);margin:0 5px 2px 0}
+.cron-list-empty{font-size:11px;color:var(--cron-muted);line-height:1.8;padding:14px 10px}
+.cron-sidebar-error,.cron-workspace-error{font-size:12px;padding:9px 12px;color:var(--pd-danger-ink,#ad4850)}
+.cron-task-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.cron-task-actions.compact{margin-right:4px;opacity:0}
+.cron-task-row:is(:hover,:focus-within) .cron-task-actions.compact{opacity:1}
+.cron-button{display:inline-flex;justify-content:center;align-items:center;gap:7px;height:34px;padding:0 13px;border:1px solid var(--cron-border);border-radius:9px;font-size:12px;font-weight:500;background:var(--cron-surface);white-space:nowrap;color:var(--cron-ink)}
+.cron-button:hover{background:var(--cron-tint)}
+.cron-button.primary{background:var(--pd-accent,#7564c9);border-color:transparent;color:white}
+.cron-button.primary:hover{background:var(--pd-button-hover,#6654ba)}
+.cron-button.danger{color:var(--pd-danger-ink,#b74f59)}
+.cron-action-menu{z-index:130;min-width:160px;border:1px solid var(--cron-border);border-radius:10px;padding:5px;background:var(--cron-surface);box-shadow:0 8px 28px #1f12351a;overflow:auto;font-size:12px}
+.cron-action-menu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 9px;border-radius:6px}
+.cron-action-menu button:hover,.cron-action-menu button[aria-checked=true]{background:var(--cron-tint)}
+.cron-action-menu button:disabled{opacity:.4;cursor:not-allowed}
+.cron-action-menu .danger{color:var(--pd-danger-ink,#b74f59)}
+.cron-menu-divider{border-top:1px solid var(--cron-border);margin:4px}
+.cron-filter-menu{position:relative}
+.cron-filter-menu>summary::-webkit-details-marker{display:none}
+.cron-filter-menu>.cron-action-menu{position:absolute;right:0;top:30px;width:160px}
+.cron-task-detail{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable}
+.cron-detail-inner{max-width:900px;margin:0 auto;padding:28px 40px 64px}
+.cron-detail-nav{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--cron-border);margin-bottom:28px}
+.cron-detail-nav [role=tablist]{display:flex;gap:20px}
+.cron-detail-nav [role=tab]{font-size:12px;color:var(--cron-muted);padding:0 0 12px;border-bottom:2px solid transparent;display:flex;gap:6px;align-items:center}
+.cron-detail-nav [role=tab][aria-selected=true]{color:var(--cron-accent);border-bottom-color:var(--cron-accent)}
+.cron-detail-nav [role=tab] span{font-size:10px;opacity:.7;font-weight:400}
+.cron-detail-nav>.cron-icon-button{margin-bottom:8px}
+.cron-result-meta{display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:11px;color:var(--cron-muted);margin-bottom:24px}
+.cron-result-status{display:inline-flex;gap:5px;align-items:center;color:var(--cron-ink);font-weight:500}
+.cron-result-markdown{font-size:14px;line-height:1.85;overflow-wrap:anywhere;min-height:64px}
+.cron-result-markdown>:first-child{margin-top:0}
+.cron-result-error{border:1px solid #deb97040;background:#d9a8450c;color:var(--pd-warning-ink,#9e6e2b);font-size:12px;white-space:pre-wrap;padding:12px 15px;border-radius:9px;margin-bottom:18px}
+.cron-result-links{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-top:30px;font-size:11px;color:var(--cron-muted)}
+.cron-result-links a,.cron-result-links button,.cron-text-button{display:inline-flex;align-items:center;gap:5px;color:var(--cron-accent);font-size:11px}
+.cron-result-links a:hover,.cron-text-button:hover{text-decoration:underline}
+.cron-result-links .attention,.cron-result-status.attention{color:var(--pd-warning-ink,#a17434)}
+.cron-run-info{margin-top:22px;color:var(--cron-muted);font-size:11px}
+.cron-run-info summary,.cron-task-instructions summary{cursor:pointer;width:fit-content}
+.cron-run-info dl{display:grid;grid-template-columns:auto 1fr;gap:5px 18px;margin:12px 0}
+.cron-run-info dd{overflow-wrap:anywhere}
+.cron-workspace-path{overflow-wrap:anywhere;font-family:monospace;font-size:10px;margin:10px 0}
+.cron-preserve-text{white-space:pre-wrap;font-size:12px;line-height:1.8;overflow-wrap:anywhere;margin:12px 0}
+.cron-task-instructions{border-top:1px solid var(--cron-border);margin-top:36px;padding-top:18px;color:var(--cron-muted);font-size:12px}
+.cron-task-instructions>summary{display:flex;gap:7px;align-items:center;list-style:none}
+.cron-task-instructions .cron-text-button{margin-right:18px}
+.cron-first-run,.cron-workspace-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--cron-muted);padding:65px 24px;gap:13px;line-height:1.7}
+.cron-first-run h2,.cron-workspace-empty h2{color:var(--cron-ink);font-size:16px;font-weight:500}
+.cron-first-run p,.cron-workspace-empty p{font-size:12px;max-width:340px}
+.cron-first-run small{font-size:10px}
+.cron-workspace-empty{flex:1;padding-bottom:100px}
+.cron-empty-icon{display:flex;justify-content:center;align-items:center;width:64px;height:64px;border-radius:18px;background:var(--cron-tint);color:var(--cron-accent);margin-bottom:6px}
+.cron-workspace-empty>.cron-button{margin-top:8px}
+.cron-result-waiting{display:flex;gap:10px;align-items:center;color:var(--cron-muted);font-size:13px;min-height:120px}
+.cron-running-dot{width:7px;height:7px;border-radius:50%;background:var(--cron-accent);animation:cron-pulse 1.8s ease-in-out infinite;flex-shrink:0}
+.cron-detail-muted{color:var(--cron-muted);font-size:12px;line-height:1.7}
+.cron-history-row{display:flex;align-items:flex-start;gap:13px;width:100%;text-align:left;border-bottom:1px solid var(--cron-border);padding:18px 8px;border-radius:7px}
+.cron-history-row:hover{background:var(--cron-tint)}
+.cron-history-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:6px;font-size:11px;color:var(--cron-muted)}
+.cron-history-copy strong{font-size:12px;font-weight:500;color:var(--cron-ink)}
+.cron-history-copy strong span{font-size:10px;color:var(--cron-muted);margin-left:10px;font-weight:400}
+.cron-history-copy p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cron-run-symbol{margin-top:2px;color:var(--cron-muted)}
+.cron-run-symbol.attention{color:var(--pd-warning-ink,#a17434)}
+.cron-load-older{display:flex;margin:20px auto}
+.cron-result-files{display:flex;gap:10px;flex-wrap:wrap;margin:25px 0}
+.cron-file-card{display:flex;align-items:center;gap:12px;min-width:210px;max-width:100%;border:1px solid var(--cron-border);border-radius:12px;padding:13px 16px}
+.cron-file-card:hover{background:var(--cron-tint)}
+.cron-file-card>span{display:flex;flex:1;flex-direction:column;gap:3px;min-width:0}
+.cron-file-card strong{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cron-file-card small{font-size:10px;color:var(--cron-muted)}
+.cron-dialog-backdrop{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:#18102044;backdrop-filter:blur(3px);padding:20px}
+.cron-editor-dialog{display:flex;flex-direction:column;width:100%;max-width:620px;max-height:min(90dvh,850px);background:var(--cron-surface);border:1px solid var(--cron-border);border-radius:20px;box-shadow:0 20px 70px #17102526;overflow:hidden}
+.cron-dialog-header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;padding:22px 25px 12px}
+.cron-dialog-header h2{font-size:17px;font-weight:600}
+.cron-editor-form{display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden}
+.cron-editor-body{padding:8px 26px 20px;overflow:auto;min-height:0;display:flex;flex-direction:column;gap:12px;scrollbar-gutter:stable}
+.cron-editor-body .pd-form-field{font-size:12px;border-radius:9px;min-height:36px}
+.cron-editor-body textarea.pd-form-field{min-height:90px;resize:vertical;line-height:1.8}
+.cron-dialog-footer{display:flex;justify-content:flex-end;gap:9px;padding:16px 26px;border-top:1px solid var(--cron-border);flex-shrink:0}
+.cron-dialog-footer .cron-button{height:36px;min-width:76px}
+.cron-editor-advanced{border-top:1px solid var(--cron-border);padding-top:16px}
+.cron-editor-advanced>summary{font-size:12px;cursor:pointer;color:var(--cron-muted)}
+.cron-editor-advanced>summary>span{font-size:10px;color:var(--cron-accent);margin-left:9px}
+.cron-rule-editor{border:1px solid var(--cron-border);border-radius:9px;padding:12px}
+.cron-time-preview{font-size:11px;color:var(--cron-muted);line-height:1.8}
+.cron-time-preview summary{cursor:pointer}
+.cron-time-preview summary>span{font-size:10px;margin-left:8px}
+.cron-time-preview>p{margin-left:13px}
+@keyframes cron-pulse{50%{opacity:.35}}
+@media (hover:none){.cron-task-actions.compact{opacity:1}}
+@media (max-width:767px){.cron-workspace-header{padding:12px 16px;gap:9px}.cron-workspace-subtitle{max-width:60vw}.cron-detail-inner{padding:20px 20px 40px}.cron-standalone-sidebar{width:230px}.cron-dialog-backdrop{padding:10px}.cron-editor-dialog{border-radius:16px;max-height:94dvh}.cron-dialog-header{padding:18px 20px 10px}.cron-editor-body{padding:8px 20px 16px}.cron-dialog-footer{padding:14px 20px}}
+@media (prefers-reduced-motion:reduce){.cron-running-dot{animation:none}}

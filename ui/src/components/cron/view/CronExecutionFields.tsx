@@ -18,6 +18,7 @@ export default function CronExecutionFields({ value, onChange, project, editing 
   value: CronExecutionDraft; onChange: (value: CronExecutionDraft) => void; project?: Project; editing: boolean;
 }) {
   const { t } = useTranslation('alwaysOn');
+  const [expanded, setExpanded] = useState(value.executionMode !== 'independent' || value.notificationPolicy !== 'all' || value.mode !== 'default' || value.workspaceMode !== 'local' || Boolean(value.modelSelection));
   const [options, setOptions] = useState<Options>({ sessions: [], models: [] });
   const [error, setError] = useState('');
   useEffect(() => {
@@ -34,8 +35,10 @@ export default function CronExecutionFields({ value, onChange, project, editing 
   }, [project?.fullPath]);
   const update = (patch: Partial<CronExecutionDraft>) => onChange({ ...value, ...patch });
   const sessions = options.sessions.length ? options.sessions : project?.sessions ?? [];
-  return <fieldset className="space-y-4 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
-    <legend className="px-1 text-sm font-medium">{t('cron.execution.title', { defaultValue: 'Execution and results' })}</legend>
+  const configured = value.executionMode !== 'independent' || value.notificationPolicy !== 'all' || value.mode !== 'default' || value.workspaceMode !== 'local' || Boolean(value.modelSelection);
+  return <details className="cron-editor-advanced" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
+    <summary>{t('cron.execution.advanced', { defaultValue: 'Advanced execution settings' })}{configured && <span>{t('cron.workspace.customized', { defaultValue: 'Customized' })}</span>}</summary>
+    <div className="space-y-4 pt-4">
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="text-[13px]">{t('cron.execution.context', { defaultValue: 'Conversation context' })}
         <select className="pd-form-field mt-1.5" value={value.executionMode} onChange={event => update({ executionMode: event.target.value as CronExecutionDraft['executionMode'], ...(event.target.value !== 'independent' ? { workspaceMode: 'local' as const } : {}) })}>
@@ -60,8 +63,6 @@ export default function CronExecutionFields({ value, onChange, project, editing 
       </select>
       <p className="mt-1 text-xs text-neutral-500">{t('cron.execution.queueNotice', { defaultValue: 'Waits for the conversation to become idle before continuing with its history.' })}</p>
     </label>}
-    <details>
-      <summary className="cursor-pointer text-[13px] font-medium">{t('cron.execution.advanced', { defaultValue: 'Advanced execution settings' })}</summary>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <label className="text-[13px]">{t('cron.execution.permissions', { defaultValue: 'Permissions' })}
           <select className="pd-form-field mt-1.5" value={value.mode} onChange={event => update({ mode: event.target.value as CronExecutionDraft['mode'] })}>
@@ -86,8 +87,8 @@ export default function CronExecutionFields({ value, onChange, project, editing 
       <p className="mt-2 text-xs text-neutral-500">{t('cron.execution.permissionNotice', { defaultValue: 'Tasks cannot ask for approval while unattended. Actions outside the selected permissions need your attention.' })}</p>
       {value.mode === 'bypassPermissions' && <p className="mt-2 text-xs text-amber-600">{t('cron.execution.fullAccessNotice', { defaultValue: 'Full Access permits background file changes and commands without asking.' })}</p>}
       {value.workspaceMode === 'worktree' && <p className="mt-2 text-xs text-neutral-500">{t('cron.execution.worktreeNotice', { defaultValue: 'Requires a Git repository. Local uncommitted changes are excluded; the resulting worktree is kept for review.' })}</p>}
-    </details>
     <p className="text-xs text-neutral-500">{t('cron.execution.resultsNotice', { defaultValue: 'Every result is saved here. Tasks created in chat can also report back to their source conversation.' })}</p>
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
-  </fieldset>;
+    </div>
+  </details>;
 }

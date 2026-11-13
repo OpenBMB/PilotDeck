@@ -92,19 +92,7 @@ function ScheduledTasksArea({
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
 }) {
-  const { t } = useTranslation();
-
-  return (
-    <DedicatedWorkspacePage
-      title={t('sidebar:quickActions.scheduledTasks', { defaultValue: 'Scheduled Tasks' })}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onOpenSidebar={onOpenSidebar}
-    >
-      <Suspense fallback={<PageFallback />}>
-        <CronPanel />
-      </Suspense>
-    </DedicatedWorkspacePage>
-  );
+  return <Suspense fallback={<PageFallback />}><CronPanel isSidebarCollapsed={isSidebarCollapsed} onOpenSidebar={onOpenSidebar} /></Suspense>;
 }
 
 function SkillsArea({

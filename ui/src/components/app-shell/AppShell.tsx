@@ -38,6 +38,7 @@ import { getSettingsPathFromTab } from '../settings/navigation';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import Sidebar from './Sidebar';
 import MainArea from './MainArea';
+import { CronSidebarProvider } from '../cron/CronSidebarContext';
 import GlobalSearchDialog from '../global-search/GlobalSearchDialog';
 import { GlobalSearchProvider, useGlobalSearch, type GlobalSearchResult } from '../global-search/GlobalSearchContext';
 import { useWorkspaceUpload } from '../file-tree/hooks/useWorkspaceUpload';
@@ -408,6 +409,7 @@ function AppShellContent() {
     navigate(target);
   }, [navigate, selectedProject, selectedSession]);
   const onMenuClick = useCallback(() => setSidebarOpen(true), [setSidebarOpen]);
+  const onCronTaskSelected = useCallback(() => { if (isMobile) setSidebarOpen(false); }, [isMobile, setSidebarOpen]);
   const onCollapseSidebar = useCallback(() => {
     if (isMobile) {
       setSidebarOpen(false);
@@ -746,6 +748,7 @@ function AppShellContent() {
   );
 
   return (
+    <CronSidebarProvider onSelect={onCronTaskSelected}>
     <SessionViewReadyContext.Provider value={setReadySessionId}>
     <div className="app-root fixed inset-0 flex flex-col font-sans text-neutral-900 dark:text-neutral-100">
       <ConnectionBanner />
@@ -903,6 +906,7 @@ function AppShellContent() {
 	        : null}
 	    </div>
     </SessionViewReadyContext.Provider>
+    </CronSidebarProvider>
 	  );
 	}
 

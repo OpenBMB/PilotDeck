@@ -68,7 +68,7 @@ vi.mock('../../utils/api', () => ({
 }));
 
 vi.mock('../cron/view/CronPanel', () => ({
-  default: () => <div data-testid="cron-page" />,
+  default: () => <div data-testid="cron-page"><h1>Scheduled Tasks</h1></div>,
 }));
 
 vi.mock('../skills/view/SkillsPanel', () => ({
