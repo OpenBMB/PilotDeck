@@ -9,7 +9,7 @@ export function createCronCreateTool(runtime: CronToolRuntime): PilotDeckToolDef
   return {
     name: "cron_create",
     title: "Create Cron Task",
-    description: "Create a durable scheduled task managed by the Scheduled Tasks page. Default to a fresh independent session on each run; use executionMode=conversation only when the user wants this conversation's context. Project defaults to this conversation; projectKey may select another absolute project path or 'general'. For relative reminders use delay. Before resolving tonight/tomorrow/next Monday, call get_current_time and pass an explicit timezone. Give every task a short name and a durable instruction that works on future dates. Creation saves the task without running it immediately; report its timezone and nextRunAt. Unattended tasks cannot ask questions; default permissions remain restricted unless the user explicitly requests Full Access.",
+    description: "Create a durable scheduled task managed by the Scheduled Tasks page. Each task owns a dedicated task conversation; recurring runs continue that same conversation. Results stay in Scheduled Tasks and never enter the source chat. Project defaults to this conversation; projectKey may select another absolute project path or 'general'. For relative reminders use delay. Before resolving tonight/tomorrow/next Monday, call get_current_time and pass an explicit timezone. Give every task a short name and a durable instruction that works on future dates. Creation saves the task without running it immediately; report its timezone and nextRunAt. Unattended tasks cannot ask questions; default permissions remain restricted unless the user explicitly requests Full Access.",
     kind: "session",
     inputSchema: {
       type: "object",
@@ -20,7 +20,6 @@ export function createCronCreateTool(runtime: CronToolRuntime): PilotDeckToolDef
         message: { type: "string", minLength: 1 },
         schedule: CRON_SCHEDULE_SCHEMA,
         projectKey: { type: "string", description: "Absolute project directory or 'general'; omitted means this project." },
-        executionMode: { type: "string", enum: ["independent", "conversation", "persistent"] },
         notificationPolicy: { type: "string", enum: ["all", "findings", "failures"] },
         workspaceMode: { type: "string", enum: ["local", "worktree"] },
         mode: { type: "string", enum: ["default", "plan", "bypassPermissions"] },
@@ -34,9 +33,6 @@ export function createCronCreateTool(runtime: CronToolRuntime): PilotDeckToolDef
     execute: async (input, context) => {
       const channelKey = inferChannelKey(context.sessionId);
       const projectKey = input.projectKey === "general" ? resolvePilotHome(context.env) : input.projectKey ?? context.projectKey ?? context.cwd;
-      if (input.executionMode === "conversation" && projectKey !== (context.projectKey ?? context.cwd)) {
-        throw new Error("Conversation tasks must belong to the current conversation's project.");
-      }
       const result = await runtime.createTask({
         ...input,
         sessionKey: context.sessionId,

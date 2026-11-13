@@ -12,7 +12,7 @@ export type SessionFile = {
 const scans = new Map<string, Promise<SessionFile[]>>();
 
 export function isInternalSession(sessionId: string): boolean {
-  return /^always-on-(discovery|workspace|report)[:\-]/.test(sessionId);
+  return /^(?:always-on-(?:discovery|workspace|report)|cron)[:\-]/.test(sessionId);
 }
 
 /** File attributes only: project counts must never parse every transcript. */

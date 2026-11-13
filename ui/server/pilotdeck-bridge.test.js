@@ -930,6 +930,16 @@ describe('gatewayEventToFrames agent status errors', () => {
     });
 });
 
+describe('scheduled task input frames', () => {
+    it('uses ordinary user messages with the task run identity', () => {
+        const frames = gatewayEventToFrames({ type: 'agent_status', event: 'cron_input', runId: 'task-run-1',
+            detail: { message: 'Scheduled instructions', taskId: 'task-1' } }, 'cron:task-1', 'pilotdeck');
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toMatchObject({ kind: 'text', role: 'user', content: 'Scheduled instructions',
+            sessionId: 'cron:task-1', runId: 'task-run-1' });
+    });
+});
+
 describe('isGatewayUnavailableError', () => {
     it('detects cached gateway websocket disconnects', () => {
         expect(isGatewayUnavailableError(new Error('Gateway WebSocket is not connected.'))).toBe(true);

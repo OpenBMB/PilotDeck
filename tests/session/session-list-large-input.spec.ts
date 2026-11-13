@@ -258,3 +258,24 @@ test("uses a prompt-only tail snapshot without requiring a generated title", asy
     await rm(pilotHome, { recursive: true, force: true });
   }
 });
+
+test("task transcripts stay out of ordinary lists, counts and search while remaining readable as internal history", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pilotdeck-task-scope-'));
+  const pilotHome = join(root, 'state'), projectRoot = join(root, 'project');
+  try {
+    const chatDir = getPilotProjectChatDir(projectRoot, pilotHome);
+    await mkdir(chatDir, { recursive: true });
+    for (const sessionId of ['web-normal', 'cron-task-owned', 'cron:task-owned:legacy-run']) {
+      if (process.platform === 'win32' && sessionId.includes(':')) continue;
+      await writeFile(join(chatDir, `${sessionId}.jsonl`), [
+        entry('session_metadata', sessionId, 1, { metadata: { aiTitle: 'Findable task scope' } }),
+        entry('accepted_input', sessionId, 2, { messages: [{ role: 'user', content: [{ type: 'text', text: 'Findable task scope' }] }] }),
+      ].map(value => JSON.stringify(value)).join('\n') + '\n');
+    }
+    assert.deepEqual((await listProjectSessions({ projectRoot, pilotHome })).map(item => item.sessionId), ['web-normal']);
+    const search = await searchChatHistory({ projectRoot, pilotHome, query: 'Findable' });
+    assert.ok(search.matches.length > 0); assert.ok(search.matches.every(match => match.sessionId === 'web-normal'));
+    assert.equal((await searchSessionsByTitle({ projectRoot, pilotHome, query: 'Findable' })).some(item => item.sessionId.startsWith('cron')), false);
+    assert.ok((await listProjectSessions({ projectRoot, pilotHome, includeInternal: true })).length > 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

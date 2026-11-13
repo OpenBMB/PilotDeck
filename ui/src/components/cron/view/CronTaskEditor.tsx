@@ -367,7 +367,6 @@ export default function CronTaskEditor({
   const [message, setMessage] = useState(initialValues.message);
   const [name, setName] = useState(editingJob?.name || '');
   const [execution, setExecution] = useState<CronExecutionDraft>({
-    executionMode: editingJob?.executionMode || 'independent', sessionKey: editingJob?.targetSessionKey || editingJob?.originSessionKey || '',
     notificationPolicy: editingJob?.notificationPolicy || 'all', mode: editingJob?.mode || 'default',
     workspaceMode: editingJob?.workspaceMode || 'local', modelSelection: editingJob?.modelSelection,
   });
@@ -507,7 +506,6 @@ export default function CronTaskEditor({
   };
 
   const validate = () => {
-    if (execution.executionMode === 'conversation' && !execution.sessionKey) return t('cron.execution.chooseConversation', { defaultValue: 'Choose a conversation.' });
     if (!message.trim()) {
       return t('cron.create.validation.messageRequired', { defaultValue: 'Prompt is required.' });
     }
@@ -608,7 +606,7 @@ export default function CronTaskEditor({
         projectKey,
         workspaceCwd: projects.find(project => (project.fullPath || project.name) === projectKey)?.workspaceCwd || projectKey,
         ...execution,
-        ...(editingJob ? { targetSessionKey: execution.sessionKey || undefined, modelSelection: execution.modelSelection ?? null } : {}),
+        ...(editingJob ? { modelSelection: execution.modelSelection ?? null } : {}),
         schedule,
         timezone: timezone.trim() || undefined,
       };
@@ -686,7 +684,7 @@ export default function CronTaskEditor({
           </span>
           <select
             value={projectKey}
-            onChange={(event) => { setProjectKey(event.target.value); setExecution(current => ({ ...current, sessionKey: '' })); }}
+            onChange={(event) => setProjectKey(event.target.value)}
             disabled={isEditing}
             className="pd-form-field mt-1.5"
           >

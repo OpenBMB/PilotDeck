@@ -93,23 +93,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         onTurnEvent: (sessionKey, channelKey, event) => {
           deferredBroadcast?.("always-on:turn-event", { sessionKey, channelKey, event });
         },
-        onResultDelivery: async (delivery) => {
-          if (delivery.originChannelKey === "web" && delivery.originSessionKey && gateway?.recordAgentStatusMessage) {
-            const text = `${delivery.taskName || "Scheduled task"}\n\n${delivery.text}`;
-            const result = await gateway.recordAgentStatusMessage({
-              sessionKey: delivery.originSessionKey, projectKey: delivery.originProjectKey ?? delivery.projectKey,
-              turnId: `cron-result:${delivery.runId}`,
-              status: { event: "cron_result", kind: delivery.outcome === "completed" ? "status" : "error", text,
-                detail: { taskId: delivery.taskId, runId: delivery.runId } },
-            });
-            if (result.recorded) deferredBroadcast?.("always-on:turn-event", {
-              sessionKey: delivery.originSessionKey, channelKey: "web",
-              event: { type: "agent_status", event: "cron_result", detail: { message: text, visible: true, taskId: delivery.taskId, runId: delivery.runId } },
-            });
-            return result.recorded;
-          }
-          return await serverRef?.deliverCronResult(delivery) ?? false;
-        },
+        onTaskChange: (change) => deferredBroadcast?.("cron:task-changed", change),
       });
     }
 

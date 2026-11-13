@@ -88,11 +88,15 @@ function PageFallback() {
 function ScheduledTasksArea({
   isSidebarCollapsed,
   onOpenSidebar,
+  projects,
+  active,
 }: {
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
+  projects: Project[];
+  active: boolean;
 }) {
-  return <Suspense fallback={<PageFallback />}><CronPanel isSidebarCollapsed={isSidebarCollapsed} onOpenSidebar={onOpenSidebar} /></Suspense>;
+  return <Suspense fallback={<PageFallback />}><CronPanel isSidebarCollapsed={isSidebarCollapsed} onOpenSidebar={onOpenSidebar} projects={projects} active={active} /></Suspense>;
 }
 
 function SkillsArea({
@@ -522,31 +526,17 @@ function MainAreaContent(props: MainAreaProps) {
 }
 
 export default function MainArea(props: MainAreaProps) {
-  if (props.activeTab === 'cron') {
-    return (
-      <ScheduledTasksArea
-        isSidebarCollapsed={props.isSidebarCollapsed}
-        onOpenSidebar={props.onOpenSidebar}
-      />
-    );
-  }
-
-  if (props.activeTab === 'skills') {
-    return (
-      <SkillsArea
-        onSkillsProjectChange={props.onSkillsProjectChange}
-        onUseSkill={props.onUseSkill}
-        isSidebarCollapsed={props.isSidebarCollapsed}
-        onOpenSidebar={props.onOpenSidebar}
-        selectedProject={props.selectedProject}
-        projects={props.projects}
-      />
-    );
-  }
-
-  return (
-    <ChatHistorySearchControllerProvider>
-      <MainAreaContent {...props} />
-    </ChatHistorySearchControllerProvider>
-  );
+  const cronActive = props.activeTab === 'cron';
+  const [cronVisited, setCronVisited] = useState(cronActive);
+  useEffect(() => { if (cronActive) setCronVisited(true); }, [cronActive]);
+  return <>
+    {(cronVisited || cronActive) && <div hidden={!cronActive} className={cronActive ? 'h-full min-h-0 flex-1' : 'hidden'}>
+      <ScheduledTasksArea isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar} projects={props.projects} active={cronActive} />
+    </div>}
+    {!cronActive && (props.activeTab === 'skills' ? <SkillsArea
+      onSkillsProjectChange={props.onSkillsProjectChange} onUseSkill={props.onUseSkill}
+      isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar}
+      selectedProject={props.selectedProject} projects={props.projects} />
+      : <ChatHistorySearchControllerProvider><MainAreaContent {...props} /></ChatHistorySearchControllerProvider>)}
+  </>;
 }

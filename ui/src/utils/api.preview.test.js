@@ -26,3 +26,11 @@ describe('preview request errors', () => {
     }
   });
 });
+
+
+it('encodes task workspace identity as one file-route parameter', async () => {
+  const fetchMock = vi.fn(async () => new Response('{}'));
+  vi.stubGlobal('fetch', fetchMock);
+  await api.readFile('cron-task:owned', 'report.md');
+  expect(fetchMock.mock.calls[0][0]).toBe('/api/projects/cron-task%3Aowned/file?filePath=report.md');
+});

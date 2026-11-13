@@ -49,23 +49,32 @@ occurrences missed under the older intersection rule.
 ## Web workspace
 
 The scheduled-task route replaces the shell's project/conversation tree with a
-grouped task list. Selecting a task opens its latest saved result in the main
-workspace; run history can open older results and their instruction snapshots.
-`/cron?taskId=<taskId>` links directly to a task. The result view links to its
-execution conversation and files, and exposes delivery status separately.
+compact task list. Its title-bar plus button opens the task editor. Selecting a
+task shows its dedicated conversation through the existing `MessagesPane`,
+`useChatSessionState`, `useChatRealtimeHandlers` and `useSessionStore` pipeline.
+Thinking, tools, file previews, history pagination and reading position use the
+same implementation as ordinary chat. File previews resolve the task’s trusted
+execution workspace through a task identity; General and isolated
+worktree files do not require registering another ordinary project. There is no separate result/history page
+or link into ordinary conversations. `/cron?taskId=<taskId>` opens a task directly.
 
-Create and edit use a modal with basic task, workspace and timing fields.
-Advanced expressions and execution settings expand on demand; saved custom
-settings remain available when editing. The shared calendar/clock picker owns
-Escape before the editor. The editor retains input after a rejected save and
-returns focus to its trigger when dismissed.
+MainArea retains the task workspace after its first visit. Task catalog changes
+are pushed as `cron-task-changed` browser frames through the existing Gateway and
+WebSocket connection. The first snapshot and reconnect recovery merge changes
+received during the request and ignore older task revisions. There is no catalog,
+result or active-status polling in task views. The selected task remains watched
+when switching views; cached sessions are reused when revisited. Missing history,
+older pages and reconnect recovery use the shared message endpoints.
 
-The task list revalidates quietly while visible, retaining existing rows and
-empty states without showing a loading animation. Unchanged snapshots preserve
-their React state; background checks do not rescan projects or overlap requests.
-Polling pauses while the page is hidden or the task form is open. Returning to
-the page revalidates immediately, and manual refresh remains available. Open
-results revalidate when the task's execution or delivery state changes.
+Task and ordinary-chat event consumers have separate session scopes. Task frames
+cannot consume ordinary session-status replies or trigger project-list refreshes.
+Task transcripts are excluded from ordinary lists, counts and search, including
+legacy per-run transcripts; direct task history reads remain supported.
+
+Create/edit use a modal with basic instructions, workspace and timing fields.
+Advanced expressions, permissions, model and task-workspace settings expand on
+demand. The shared calendar/clock picker owns Escape before the editor. Rejected
+saves retain input, and closing the editor restores focus to its trigger.
 
 ## Task and execution lifecycle
 
@@ -77,17 +86,21 @@ a future occurrence; manual retry works without changing the saved schedule.
 Description-only edits preserve the committed occurrence. Edits require an
 `expectedRevision`; concurrent changes reject with a conflict.
 
-Execution modes:
+Every task owns one persistent conversation. New tasks use `cron:<taskId>`;
+one-time executions, recurring occurrences and manual retries all use that same
+session. Agent tools and the editor do not expose execution-mode/target-session
+selection. Legacy input fields remain accepted for compatibility but cannot
+adopt an ordinary conversation. Startup migrates old task modes to task ownership,
+reusing the latest owned per-run transcript when available. Existing ordinary
+conversation history and earlier per-run files are preserved. The shared history
+reader projects retained owned per-run transcripts into the task flow without
+copying them into the continuing model context.
 
-- `independent`: a fresh `cron:<taskId>:<runId>` conversation for each run (default).
-- `conversation`: wait for an existing target conversation to become idle, then
-  continue with its history. The scheduler never closes the target conversation.
-- `persistent`: reuse one dedicated task conversation (legacy default).
-
-Independent Git tasks can select `workspaceMode: worktree`. Worktrees start at
-committed HEAD, exclude dirty local work, and are retained for review. The
-scheduler never stages or commits the user's checkout. Other tasks use the
-selected working directory. A model override can be stored per task.
+Git tasks can select `workspaceMode: worktree`. A task's worktree starts at
+committed HEAD and is reused by subsequent runs, preserving task changes while
+excluding the user's dirty checkout. The scheduler never stages or commits the
+user's checkout. Other tasks use the selected working directory. A model override
+can be stored per task.
 
 Manual execution creates a Run under the existing task ID and preserves its
 schedule. Admission prevents overlapping executions of that task and enforces
@@ -95,15 +108,12 @@ the shared concurrency limit. Each run records the instruction snapshot,
 trigger source, intended and actual times, execution conversation, output, file
 artifacts, outcome and result delivery status.
 
-Results always remain in the task history. `notificationPolicy` controls source
-result delivery: `all`, `findings`, or `failures`. Independent tasks created in
-Web chat can append a durable result notification to their source conversation;
-conversation-mode output is already in the execution conversation. Notifications
-render as visible assistant messages both live and after reload,
-using the same run-based ID and chronological placement in the source chat.
-Delivery failures remain separate from execution failures, retry three times, and can be
-retried manually without executing the task again. Delivery across independent
-stores/channels is at least once, not exactly once.
+Results remain in the task transcript and run records. No result is appended to
+the source conversation or delivered to its messaging channel. The source chat
+keeps only the creation acknowledgement/card. `notificationPolicy` controls task
+unread attention (`all`, `findings`, `failures`); findings checks may return
+`[NO_UPDATE]`. Legacy delivery-retry requests retain records without resubmitting
+the model or sending source-chat messages.
 
 ## Storage and interfaces
 
@@ -125,7 +135,7 @@ Web APIs keep `/api/always-on/cron-jobs` compatibility. Task detail is
 `GET /api/always-on/cron-jobs/:taskId`; history pagination uses `beforeRunId`.
 `POST /api/always-on/cron-preview` validates and previews without creating work.
 The existing PATCH, run-now, stop and DELETE routes operate on the same tasks.
-A run-now request with `retryDeliveryRunId` retries only result delivery.
+The legacy `retryDeliveryRunId` field is accepted without executing or forwarding a result.
 
 Validate with `tests/cron`, `tests/gateway/cron-defaults.spec.ts`, Web route and
 Cron panel tests. See [testing](testing.md) for runners and isolation requirements.

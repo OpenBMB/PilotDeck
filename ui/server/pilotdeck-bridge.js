@@ -1179,6 +1179,10 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 }),
             ];
         case 'agent_status': {
+            if (event.event === 'cron_input' && typeof event.detail?.message === 'string') {
+                return [createNormalizedMessage({ ...base, id: `cron-input:${event.runId}`, kind: 'text', role: 'user',
+                    content: event.detail.message, isFinal: true })];
+            }
             if (event.event === 'cron_result' && typeof event.detail?.message === 'string' && typeof event.detail?.runId === 'string') {
                 const resultId = `cron-result:${event.detail.runId}`;
                 return [createNormalizedMessage({ ...base, id: resultId, turnId: resultId, runId: resultId,
@@ -2713,4 +2717,13 @@ export async function elicitationRespondViaGateway(requestId, answer) {
         }
     }
     return false;
+}
+
+/** Task lifecycle changes use the existing Gateway connection and browser socket. */
+export function registerCronNotificationForwarding(onChange) {
+    const handler = (name, payload) => { if (name === 'cron:task-changed') onChange(payload); };
+    gatewayNotificationHandlers.add(handler);
+    const gateway = gatewayConnections.current();
+    if (gateway) gateway.onNotification(handler);
+    ensureGateway().catch(error => console.warn('[cron] notification connection unavailable:', error.message));
 }

@@ -283,17 +283,10 @@
     },
     "execution": {
       "title": "执行方式与结果",
-      "context": "会话上下文",
-      "independent": "每次使用新会话",
-      "conversation": "在已有对话中继续",
-      "persistent": "复用任务专属会话",
-      "notifications": "结果提醒",
+      "notifications": "任务提醒",
       "all": "每次运行都提醒",
       "findings": "有新发现或失败时提醒",
       "failures": "仅失败时提醒",
-      "target": "目标对话",
-      "chooseConversation": "请选择目标对话。",
-      "queueNotice": "对话正在运行时会等待，空闲后带着已有上下文继续。",
       "advanced": "高级执行设置",
       "permissions": "执行权限",
       "restricted": "遵循已有权限规则",
@@ -306,8 +299,9 @@
       "defaultModel": "使用项目默认模型",
       "permissionNotice": "任务在后台无法询问授权；超出所选权限的操作会标记为需要处理。",
       "fullAccessNotice": "完全访问允许任务在后台修改文件、运行命令，执行前不会再次询问。",
-      "worktreeNotice": "需要 Git 仓库；不包含本地未提交改动，执行后的工作区会保留供查看。",
-      "resultsNotice": "每次结果都会保存在任务中；从对话创建的任务还可以向来源对话回报。"
+      "worktreeNotice": "需要 Git。任务专属工作树从已提交的 HEAD 创建，并在后续执行中持续复用，不包含项目未提交的修改。",
+      "resultsNotice": "每个任务拥有专属任务上下文，周期执行持续使用同一上下文。过程与结果仅显示在定时任务中。",
+      "taskContext": "任务上下文"
     },
     "history": {
       "title": "运行历史",
@@ -377,7 +371,9 @@
       "finishedAt": "完成时间",
       "firstRun": "等待第一次执行",
       "noSavedRuns": "暂无已保存的结果",
-      "sourceConversation": "来源对话"
+      "sourceConversation": "来源对话",
+      "openTask": "查看任务",
+      "everyMinute": "每分钟"
     },
     "detailsFor": "查看任务详情：{{name}}"
   },

@@ -18,6 +18,12 @@ const apiMock = vi.hoisted(() => ({
   cronDetail: vi.fn(),
 }));
 
+
+const live = vi.hoisted(() => ({ handlers: new Set<(message: any) => void>(), subscribe: vi.fn((handler: (message: any) => void) => { live.handlers.add(handler); return () => live.handlers.delete(handler); }) }));
+vi.mock('../../../contexts/WebSocketContext', () => ({ useWebSocket: () => ({ subscribe: live.subscribe, isConnected: true }) }));
+vi.mock('./CronTaskDetails', () => ({ default: ({ job }: { job: CronJobOverview }) => <section aria-label="Task conversation" data-task-conversation={job.sessionKey || `cron:${job.id}`} /> }));
+function taskEvent(job: CronJobOverview | null, id = job?.id || 'job-1') { for (const handler of live.handlers) handler({ type: 'cron-task-changed', taskId: id, job }); }
+
 vi.mock('../../../utils/api', () => ({
   api: apiMock,
 }));
@@ -25,7 +31,7 @@ vi.mock('../../../utils/api', () => ({
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (_key: string, options?: Record<string, unknown>) => {
-      if (typeof options?.defaultValue !== 'string') return ({ 'confirmDialog.cancel': 'Cancel', 'confirmDialog.close': 'Close', 'confirmDialog.working': 'Working…' } as Record<string, string>)[_key] || _key;
+      if (typeof options?.defaultValue !== 'string') return ({ 'cron.title': 'Scheduled tasks', 'cron.workspace.firstRun': 'Your first result is on its way', 'cron.history.empty': 'No runs yet. Try running this task once.', 'cron.workspace.emptyTitle': 'Make room for recurring work', 'cron.workspace.emptyHint': 'Schedule a task once.', 'cron.execution.advanced': 'Advanced execution settings', 'cron.execution.permissions': 'Permissions', 'cron.execution.restricted': 'Restricted by existing permission rules', 'cron.execution.readOnly': 'Read only', 'cron.execution.fullAccess': 'Full Access', 'cron.execution.workspace': 'Execution workspace', 'cron.execution.local': 'Project working directory', 'cron.execution.worktree': 'Isolated Git worktree from committed HEAD', 'cron.execution.model': 'Model', 'cron.execution.defaultModel': 'Use project default', 'confirmDialog.cancel': 'Cancel', 'confirmDialog.close': 'Close', 'confirmDialog.working': 'Working…' } as Record<string, string>)[_key] || _key;
       return options.defaultValue.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => String(options[key] ?? ''));
     },
   }),
@@ -96,87 +102,43 @@ function searchInput() {
 }
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 
-describe('quiet task revalidation', () => {
+describe('event-driven task updates', () => {
   beforeEach(() => { vi.resetAllMocks(); vi.useFakeTimers({ shouldAdvanceTime: true }); });
-  afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.clearAllMocks(); });
+  afterEach(() => { cleanup(); vi.useRealTimers(); live.handlers.clear(); });
 
-  it('keeps the empty state and refresh control stable while a background request is pending', async () => {
-    setup([]);
-    const empty = await findText('Your scheduled tasks will appear here.');
-    let resolve!: (response: Response) => void;
-    apiMock.allCronJobs.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
-    await act(() => vi.advanceTimersByTimeAsync(15_000));
-    expect(screen.getByText('Your scheduled tasks will appear here.')).toBe(empty);
-    expect(screen.queryByText('Loading cron jobs...')).toBeNull();
-    expect((screen.getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(false);
-    await act(() => vi.advanceTimersByTimeAsync(30_000));
-    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
-    expect(apiMock.projects).toHaveBeenCalledTimes(1);
-    await act(async () => resolve(jsonResponse({ jobs: [] })));
-    expect(screen.getByText('Your scheduled tasks will appear here.')).toBe(empty);
-  });
-
-  it('updates changed task status without replacing rows, clearing filters, or moving focus', async () => {
-    const job = makeJob({ name: 'Quiet report' });
-    setup([job]);
-    const title = await screen.findByRole('button', { name: 'View task details: Quiet report' });
-    const search = searchInput();
-    fireEvent.change(search, { target: { value: 'Quiet' } });
-    search.focus();
-    await act(() => vi.advanceTimersByTimeAsync(15_000));
-    expect(screen.getByRole('button', { name: 'View task details: Quiet report' })).toBe(title);
-    apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs: [{ ...job, status: 'paused', enabled: false }] }));
-    await act(() => vi.advanceTimersByTimeAsync(15_000));
-    expect(screen.getByRole('button', { name: 'View task details: Quiet report' })).toBeTruthy();
-    expect(screen.getAllByText('Paused').length).toBeGreaterThan(0);
-    expect((search as HTMLInputElement).value).toBe('Quiet');
-    expect(document.activeElement).toBe(search);
-    expect(apiMock.projects).toHaveBeenCalledTimes(1);
-  });
-
-  it('pauses hidden and form polling and quietly catches up when the tab becomes visible', async () => {
-    setup([]);
-    await findText('Your scheduled tasks will appear here.');
-    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
-    await act(() => vi.advanceTimersByTimeAsync(30_000));
+  it('never polls the catalog and keeps rows, search and focus while live status changes', async () => {
+    const job = makeJob({ name: 'Quiet report' }); setup([job]);
+    const row = await screen.findByRole('button', { name: 'View task details: Quiet report' });
+    const search = searchInput(); fireEvent.change(search, { target: { value: 'Quiet' } }); search.focus();
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(screen.getByRole('button', { name: 'View task details: Quiet report' })).toBe(row);
     expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
-    visibility.mockReturnValue('visible');
-    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
-    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
-    fireEvent.click(createEntry());
-    await act(() => vi.advanceTimersByTimeAsync(30_000));
-    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+    act(() => taskEvent({ ...job, revision: 1, status: 'paused', enabled: false }));
+    expect(screen.getByRole('heading', { name: 'Paused' })).toBeTruthy();
+    expect((search as HTMLInputElement).value).toBe('Quiet'); expect(document.activeElement).toBe(search);
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores a superseded background response when a manual refresh has newer data', async () => {
-    const job = makeJob({ name: 'Current task' });
-    setup([job]);
-    await findText('Current task');
+  it('retains an Agent-created task arriving while the initial snapshot is still pending', async () => {
     let resolve!: (response: Response) => void;
-    apiMock.allCronJobs.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
-    await act(() => vi.advanceTimersByTimeAsync(15_000));
-    apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs: [{ ...job, status: 'paused' }] }));
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })); });
-    await act(async () => resolve(jsonResponse({ jobs: [job] })));
-    expect(screen.getAllByText('Paused').length).toBeGreaterThan(0);
+    setup([]); apiMock.allCronJobs.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
+    // Remount so this deferred response owns the initial snapshot.
+    cleanup(); render(<MemoryRouter><CronPanel /></MemoryRouter>);
+    const job = makeJob({ name: 'Created in another chat', revision: 3 });
+    act(() => taskEvent(job));
+    await act(async () => resolve(jsonResponse({ jobs: [] })));
+    expect(screen.getByRole('button', { name: 'View task details: Created in another chat' })).toBeTruthy();
+    act(() => taskEvent({ ...job, revision: 2, name: 'Stale title' }));
+    expect(screen.queryByRole('button', { name: 'View task details: Stale title' })).toBeNull();
   });
 
-  it('quietly updates an open history panel when a running task finishes', async () => {
-    const run = { runId: 'run-1', taskId: 'job-1', sessionKey: 'cron:run-1', startedAt: '2026-01-01T01:00:00Z', output: 'Partial result' };
-    const job = makeJob({ name: 'History report', status: 'running', lastRun: run });
-    apiMock.cronDetail.mockResolvedValue(jsonResponse({ task: { message: 'Report' }, runs: [run], nextRuns: [] }));
-    setup([job]);
-    fireEvent.click(await screen.findByRole('button', { name: 'View task details: History report' }));
-    const output = await findText('Partial result');
-    let resolve!: (response: Response) => void;
-    apiMock.cronDetail.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
-    const finished = { ...run, finishedAt: '2026-01-01T01:00:01Z', outcome: 'completed' as const, output: 'Complete result' };
-    apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs: [{ ...job, status: 'completed', lastRun: finished }] }));
-    await act(() => vi.advanceTimersByTimeAsync(15_000));
-    expect(screen.getByText('Partial result')).toBe(output);
-    expect((screen.getByRole('button', { name: 'Refresh results' }) as HTMLButtonElement).disabled).toBe(false);
-    await act(async () => resolve(jsonResponse({ task: { message: 'Report' }, runs: [finished], nextRuns: [] })));
-    expect(screen.getByText('Complete result')).toBeTruthy();
+  it('applies deletion events without a catalog reload', async () => {
+    const job = makeJob({ name: 'Removed elsewhere' }); setup([job]);
+    await screen.findByRole('button', { name: 'View task details: Removed elsewhere' });
+    act(() => taskEvent(null));
+    expect(screen.queryByRole('button', { name: 'View task details: Removed elsewhere' })).toBeNull();
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -196,6 +158,14 @@ describe('scheduled task management', () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it('selects a remaining task when Agent deletes the currently selected task', async () => {
+    setup([makeJob({ name: 'First task' }), makeJob({ id: 'second', name: 'Remaining task' })], [project], { initialEntry: '/cron?taskId=job-1' });
+    await screen.findByRole('heading', { name: 'First task' });
+    act(() => taskEvent(null, 'job-1'));
+    expect(await screen.findByRole('heading', { name: 'Remaining task' })).toBeTruthy();
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
+  });
+
   it('closes the clock before the editor and restores focus to the task action trigger', async () => {
     setup([makeJob({ name: 'Keyboard task' })]);
     await findText('Keyboard task');
@@ -213,37 +183,9 @@ describe('scheduled task management', () => {
     expect(apiMock.cronUpdate).not.toHaveBeenCalled();
   });
 
-  it('loads older runs and opens their saved output instead of the latest result', async () => {
-    const current = { runId: 'new', taskId: 'job-1', sessionKey: 'cron:new', startedAt: '2026-01-02T09:00:00Z', finishedAt: '2026-01-02T09:00:10Z', outcome: 'completed', output: 'Latest saved output' };
-    apiMock.cronDetail.mockResolvedValueOnce(jsonResponse({ task: { message: 'Current instructions' }, nextRuns: [], nextBeforeRunId: 'new', runs: [current] }));
-    setup([makeJob({ name: 'History task' })]);
-    await findText('Latest saved output');
-    fireEvent.click(screen.getByRole('tab', { name: /Run history/ }));
-    apiMock.cronDetail.mockResolvedValueOnce(jsonResponse({ task: { message: 'Current instructions' }, nextRuns: [], runs: [{ ...current, runId: 'old', startedAt: '2026-01-01T09:00:00Z', output: 'Older saved output' }] }));
-    fireEvent.click(screen.getByRole('button', { name: 'Load older runs' }));
-    fireEvent.click(await screen.findByRole('button', { name: /Older saved output/ }));
-    expect(within(screen.getByRole('article', { name: 'Execution result' })).getByText('Older saved output')).toBeTruthy();
-    expect(apiMock.cronDetail).toHaveBeenLastCalledWith('job-1', '/project/general', 'new');
-    expect(apiMock.cronRunNow).not.toHaveBeenCalled();
-  });
 
-  it('opens the latest result after manually running from an older history result', async () => {
-    const run = { runId: 'new', taskId: 'job-1', sessionKey: 'cron:new', startedAt: '2026-01-02T09:00:00Z', finishedAt: '2026-01-02T09:00:10Z', outcome: 'completed', output: 'Latest output' };
-    const old = { ...run, runId: 'old', output: 'Old history result' };
-    apiMock.cronDetail.mockResolvedValue(jsonResponse({ task: { message: 'Instructions' }, nextRuns: [], runs: [run, old] }));
-    const job = makeJob({ name: 'Manual retry task' });
-    setup([job]);
-    await findText('Latest output');
-    fireEvent.click(screen.getByRole('tab', { name: /Run history/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Old history result/ }));
-    expect(screen.getByRole('article').textContent).toContain('Old history result');
-    const active = { ...run, runId: 'active', finishedAt: undefined, outcome: undefined, output: 'Current execution' };
-    apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs: [{ ...job, status: 'running', lastRun: active }] }));
-    apiMock.cronDetail.mockResolvedValue(jsonResponse({ task: { message: 'Instructions' }, nextRuns: [], runs: [active, run, old] }));
-    fireEvent.click(screen.getByRole('button', { name: 'Run Now' }));
-    await waitFor(() => expect(screen.getByRole('article').textContent).toContain('Current execution'));
-    expect(screen.getByRole('article').textContent).not.toContain('Old history result');
-  });
+
+
 
   it('edits a task created by Agent with a complex rule without converting the rule', async () => {
     setup([makeJob({ name: 'Agent task', prompt: 'Old instruction', schedule: { type: 'cron', expression: '*/5 9-17 * * 1-5', timezone: 'Asia/Shanghai' }, timezone: 'Asia/Shanghai', executionMode: 'persistent' })]);
@@ -253,8 +195,7 @@ describe('scheduled task management', () => {
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Updated instruction' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
     await waitFor(() => expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-1', expect.objectContaining({
-      name: 'Agent task', message: 'Updated instruction', executionMode: 'persistent',
-      schedule: { type: 'cron', expression: '*/5 9-17 * * 1-5', timezone: 'Asia/Shanghai' },
+      name: 'Agent task', message: 'Updated instruction',       schedule: { type: 'cron', expression: '*/5 9-17 * * 1-5', timezone: 'Asia/Shanghai' },
     })));
   });
 
@@ -311,21 +252,7 @@ describe('scheduled task management', () => {
     expect(screen.getByRole('alert').textContent).toContain('concurrency_limit');
   });
 
-  it('opens saved results and instruction snapshots for a finished task', async () => {
-    const job = makeJob({ status: 'failed', enabled: false, name: 'Failed task' });
-    apiMock.cronDetail.mockResolvedValue(jsonResponse({ task: { message: job.prompt }, nextRuns: [], runs: [{
-      runId: 'run-1', taskId: job.id, sessionKey: 'cron:job-1:run-1', startedAt: '2026-01-01T09:00:00Z', finishedAt: '2026-01-01T09:00:10Z',
-      trigger: 'manual', outcome: 'failed', message: 'Original instructions', output: 'Partial report', error: { code: 'offline', message: 'Synthetic outage' }, deliveryStatus: 'skipped',
-    }] }));
-    setup([job]);
-    await findText('Failed task');
-    fireEvent.click(screen.getByRole('button', { name: 'View task details: Failed task' }));
-    await screen.findByRole('article', { name: 'Execution result' });
-    await findText('Partial report');
-    expect(screen.getByText('Synthetic outage')).toBeTruthy();
-    expect(screen.getByText('Original instructions')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Open execution conversation and files' }).getAttribute('href')).toContain('/p/general/c/');
-  });
+
 });
 
 describe('CronPanel', () => {
@@ -386,7 +313,7 @@ describe('CronPanel', () => {
         projectKey: '/project/general',
         schedule: expect.objectContaining({ type: 'once' }),
       }));
-      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -779,13 +706,10 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-edit', {
         name: 'Updated weekly report',
-        executionMode: 'independent',
-        sessionKey: '',
         notificationPolicy: 'all',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
-        targetSessionKey: undefined,
         workspaceCwd: '/project/general',
         message: 'Updated weekly report',
         projectKey: '/project/general',
@@ -794,7 +718,7 @@ describe('CronPanel', () => {
         timezone: 'Asia/Shanghai',
       });
       expect(apiMock.cronCreate).not.toHaveBeenCalled();
-      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -874,13 +798,10 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-once-to-cron', {
         name: 'Convert to recurring',
-        executionMode: 'independent',
-        sessionKey: '',
         notificationPolicy: 'all',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
-        targetSessionKey: undefined,
         workspaceCwd: '/project/general',
         message: 'Convert to recurring',
         projectKey: '/project/general',
@@ -913,13 +834,10 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once', {
         name: 'Convert to one-time',
-        executionMode: 'independent',
-        sessionKey: '',
         notificationPolicy: 'all',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
-        targetSessionKey: undefined,
         workspaceCwd: '/project/general',
         message: 'Convert to one-time',
         projectKey: '/project/general',
@@ -953,13 +871,10 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-date-boundary', {
         name: 'Convert across date boundary',
-        executionMode: 'independent',
-        sessionKey: '',
         notificationPolicy: 'all',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
-        targetSessionKey: undefined,
         workspaceCwd: '/project/general',
         message: 'Convert across date boundary',
         projectKey: '/project/general',
@@ -1037,13 +952,10 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-fallback', {
         name: 'Convert fallback task',
-        executionMode: 'independent',
-        sessionKey: '',
         notificationPolicy: 'all',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
-        targetSessionKey: undefined,
         workspaceCwd: '/project/general',
         message: 'Convert fallback task',
         projectKey: '/project/general',
@@ -1191,7 +1103,7 @@ describe('CronPanel', () => {
 
     await waitFor(() => {
       expect(apiMock.cronRunNow).toHaveBeenCalledWith('job-run');
-      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1203,7 +1115,7 @@ describe('CronPanel', () => {
 
     await waitFor(() => {
       expect(apiMock.cronStop).toHaveBeenCalledWith('job-stop');
-      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1272,7 +1184,7 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronDelete).toHaveBeenCalledWith('job-delete');
       expect(apiMock.cronDelete).toHaveBeenCalledTimes(1);
-      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+      expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByRole('dialog', { name: 'Delete cron task?' })).toBeNull();
   });
@@ -1310,7 +1222,7 @@ describe('CronPanel', () => {
     setup([makeJob({ id: 'job-missing-next-run', prompt: 'Missing next run' })]);
 
     await findText('Missing next run');
-    expect(screen.getByRole('heading', { name: 'No saved results yet' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Task conversation' })).toBeTruthy();
   });
 });
 

@@ -136,6 +136,8 @@ export type CronJobSchedule =
 
 export interface CronJobOverview {
   id: string;
+  sessionKey?: string;
+  updatedAt?: string;
   name?: string;
   enabled?: boolean;
   executionMode?: 'independent' | 'conversation' | 'persistent';

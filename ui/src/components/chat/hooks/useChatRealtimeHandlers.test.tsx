@@ -55,6 +55,52 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     });
   });
 
+  it.each([
+    ['chat', 'web:source', 'cron:owned'],
+    ['task', 'cron:owned', 'web:source'],
+    ['task', 'cron:owned', 'cron:other'],
+  ] as const)('keeps %s state scoped when another session emits status and messages', (scope, selectedId, otherId) => {
+    const sessionStore = createSessionStore();
+    const setIsLoading = vi.fn(), setPendingPermissionRequests = vi.fn(), setCurrentSessionId = vi.fn();
+    renderHook(() => useChatRealtimeHandlers({ sessionScope: scope, provider,
+      selectedProject: { name: 'fixture', fullPath: '/fixture', displayName: 'Fixture' },
+      selectedSession: { id: selectedId }, currentSessionId: selectedId, setCurrentSessionId,
+      setIsLoading, setSessionRuntimeState: noop, activeRunId: null, setActiveRunId: noop,
+      setCanAbortSession: noop, setIsAborting: noop, setClaudeStatus: noop, setPilotDeckStatus: noop,
+      setTokenBudget: noop, setPendingPermissionRequests, pendingViewSessionRef: { current: null }, sessionStore }));
+    act(() => {
+      mocks.listener?.({ kind: 'session_created', sessionId: otherId, newSessionId: otherId });
+      mocks.listener?.({ kind: 'text', role: 'assistant', sessionId: otherId, content: 'Other session result' });
+      mocks.listener?.({ kind: 'permission_request', sessionId: otherId, requestId: 'other-permission', toolName: 'cron_create' });
+    });
+    expect(sessionStore.appendRealtime).not.toHaveBeenCalled();
+    expect(sessionStore.setActiveSession).not.toHaveBeenCalled();
+    expect(setIsLoading).not.toHaveBeenCalled(); expect(setPendingPermissionRequests).not.toHaveBeenCalled();
+  });
+
+  it('lets chat consume its sequenced status response when the retained task listener receives it first', () => {
+    const chatInactive = vi.fn();
+    const base = {
+      provider, selectedProject: { name: 'fixture', fullPath: '/fixture', displayName: 'Fixture' },
+      setCurrentSessionId: noop, setIsLoading: noop, activeRunId: null, setActiveRunId: noop,
+      setCanAbortSession: noop, setIsAborting: noop, setClaudeStatus: noop, setPilotDeckStatus: noop,
+      setTokenBudget: noop, setPendingPermissionRequests: noop, pendingViewSessionRef: { current: null },
+    };
+    renderHook(() => useChatRealtimeHandlers({ ...base, sessionScope: 'task',
+      selectedSession: { id: 'cron:owned' }, currentSessionId: 'cron:owned',
+      setSessionRuntimeState: noop, sessionStore: createSessionStore() }));
+    const taskListener = mocks.listener;
+    renderHook(() => useChatRealtimeHandlers({ ...base,
+      selectedSession: { id: 'web:source' }, currentSessionId: 'web:source',
+      setSessionRuntimeState: chatInactive, sessionStore: createSessionStore() }));
+    const request = buildSessionStatusRequest({ sessionId: 'web:source', provider,
+      expectedActiveRunId: null, includeActiveTurnMessages: true });
+    const response = { type: 'session-status', sessionId: 'web:source', isProcessing: false,
+      statusRequestId: request.statusRequestId };
+    act(() => { taskListener?.(response); mocks.listener?.(response); });
+    expect(chatInactive).toHaveBeenCalledWith('inactive');
+  });
+
   it('ends a new send when preflight fails immediately after session creation', () => {
     const sessionStore = createSessionStore();
     const setIsLoading = vi.fn(), setCanAbortSession = vi.fn(), setActiveRunId = vi.fn();
@@ -249,7 +295,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const sessionStore = createSessionStore();
     const setSessionRuntimeState = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -286,7 +332,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const sessionStore = createSessionStore();
     const setSessionRuntimeState = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -326,7 +372,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setCanAbortSession = vi.fn();
     const onSessionInactive = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -378,7 +424,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setSessionRuntimeState = vi.fn();
     const setActiveRunId = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -417,7 +463,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setActiveRunId = vi.fn();
     const onSessionInactive = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -472,7 +518,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setSessionRuntimeState = vi.fn();
     const setActiveRunId = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -535,7 +581,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const onSessionInactive = vi.fn();
     const onSessionNotProcessing = vi.fn();
     const { unmount } = renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -593,7 +639,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     vi.useFakeTimers();
     const sessionStore = createSessionStore();
     const { unmount } = renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-2' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-2',
@@ -633,7 +679,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setActiveRunId = vi.fn();
     const onSessionInactive = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -701,7 +747,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setActiveRunId = vi.fn();
     const setSessionRuntimeState = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -768,7 +814,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setActiveRunId = vi.fn();
     const setSessionRuntimeState = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',
@@ -829,7 +875,7 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     const setActiveRunId = vi.fn();
     const setSessionRuntimeState = vi.fn();
     renderHook(() => useChatRealtimeHandlers({
-      provider,
+      sessionScope: 'task', provider,
       selectedProject: { name: 'project', fullPath: '/tmp/project' } as unknown as Project,
       selectedSession: { id: 'cron:task-1' } as unknown as ProjectSession,
       currentSessionId: 'cron:task-1',

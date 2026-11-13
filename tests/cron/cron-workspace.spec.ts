@@ -23,12 +23,15 @@ test("isolated scheduled work starts at committed HEAD and leaves the user's bra
     const branch = (await git("branch", "--show-current")).stdout;
     const head = (await git("rev-parse", "HEAD")).stdout;
     await writeFile(join(root, "report.txt"), "Uncommitted user work");
-    const task = { projectKey: root, executionMode: "independent", workspaceMode: "worktree" } as CronTask;
+    const task = { taskId: "synthetic-task", projectKey: root, executionMode: "persistent", workspaceMode: "worktree" } as CronTask;
     const cwd = await prepareCronWorkspace(task, "synthetic-run", join(root, "worktrees"));
     assert.equal(await readFile(join(cwd, "report.txt"), "utf8"), "Committed input");
     assert.equal(await readFile(join(root, "report.txt"), "utf8"), "Uncommitted user work");
     assert.equal((await git("branch", "--show-current")).stdout, branch);
     assert.equal((await git("rev-parse", "HEAD")).stdout, head);
-    await assert.rejects(prepareCronWorkspace({ ...task, executionMode: "conversation" }, "other-run", join(root, "worktrees")), /independent session/);
+    await writeFile(join(cwd, "report.txt"), "Task-owned progress");
+    const nextCwd = await prepareCronWorkspace(task, "other-run", join(root, "worktrees"));
+    assert.equal(nextCwd, cwd);
+    assert.equal(await readFile(join(nextCwd, "report.txt"), "utf8"), "Task-owned progress");
   } finally { await rm(root, { recursive: true, force: true }); }
 });

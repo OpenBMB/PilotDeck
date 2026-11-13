@@ -22,8 +22,8 @@ export default function ScheduledTaskCard({ result }: { result: unknown }) {
   const timezone = typeof task.timezone === 'string' ? task.timezone : 'UTC';
   return <div className="space-y-2 rounded-xl border border-[var(--pd-accent-border,#c7d2fe)] bg-white p-4 dark:bg-neutral-900">
     <div className="flex items-center gap-2 text-sm font-medium"><CalendarClock size={17} /><span>{String(task.name || task.message || '').split('\n')[0]}</span></div>
-    <p className="text-xs text-neutral-500">{t(`cron.execution.${String(task.executionMode || 'persistent')}`)} · {timezone}</p>
+    <p className="text-xs text-neutral-500">{t('cron.execution.taskContext', { defaultValue: 'Task context' })} · {timezone}</p>
     {typeof task.nextRunAt === 'string' && <p className="text-xs">{t('cron.columns.nextRunAt', { defaultValue: 'Next run' })}: {new Date(task.nextRunAt).toLocaleString(undefined, { timeZone: timezone })}</p>}
-    <a className="inline-block text-xs font-medium text-[var(--pd-accent-strong,#4f46e5)] hover:underline" href={`/cron?taskId=${encodeURIComponent(String(task.taskId))}`}>{t('cron.history.title', { defaultValue: 'Run history and results' })}</a>
+    <a className="inline-block text-xs font-medium text-[var(--pd-accent-strong,#4f46e5)] hover:underline" href={`/cron?taskId=${encodeURIComponent(String(task.taskId))}`}>{t('cron.workspace.openTask', { defaultValue: 'Open task' })}</a>
   </div>;
 }

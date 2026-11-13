@@ -45,7 +45,14 @@ beforeEach(async () => {
     app.use(express.json({ limit: '50mb' }));
     const authenticateToken = (req, res, next) => req.headers.authorization === 'Bearer test' ? next() : res.sendStatus(401);
     env = { PILOT_HOME: home };
-    const guard = createProjectFilesystemMiddleware({ env });
+    const guard = createProjectFilesystemMiddleware({ env, resolveTaskWorkspace: async id => {
+      if (id === 'local') return { root: workspace, sourceRoot: workspace };
+      if (id === 'owned') return { root: path.join(home, 'cron/worktrees/owned'), sourceRoot: workspace, worktree: true };
+      if (id === 'outside') return { root, sourceRoot: workspace };
+      if (id === 'forbidden') return { root: home, sourceRoot: workspace, worktree: true };
+      if (id === 'symlink') return { root: path.join(home, 'cron/worktrees/symlink'), sourceRoot: workspace, worktree: true };
+      return null;
+    } });
     mountReportedHandlers(app, authenticateToken, guard);
     const resolveProject = () => { throw new Error('Upload must use the root authorized by middleware'); };
     app.post('/api/projects/:projectName/files/upload/check', authenticateToken, guard, createWorkspaceUploadCheckHandler({ resolveProject }));
@@ -195,4 +202,22 @@ describe('reported project root injection', () => {
         expect(handlers).not.toContain('extractProjectDirectory(');
         expect(handlers).not.toContain('Fallback to simple dash replacement');
     });
+});
+
+
+it('resolves only trusted task roots for General and owned worktree files', async () => {
+    expect((await request('cron-task:missing', '/file?filePath=normal.txt')).status).toBe(404);
+    expect((await request('cron-task:local', '/file?filePath=normal.txt')).status).toBe(200);
+    expect((await request('cron-task:local', '/file?filePath=../state/server-token')).status).toBe(403);
+    expect((await request('cron-task:outside', '/file?filePath=state/server-token')).status).toBe(403);
+    expect((await request('cron-task:forbidden', '/file?filePath=server-token')).status).toBe(403);
+    const owned = path.join(home, 'cron/worktrees/owned');
+    await fs.mkdir(owned, { recursive: true });
+    await fs.writeFile(path.join(owned, 'report.txt'), 'owned task result');
+    const read = await request('cron-task:owned', '/file?filePath=report.txt');
+    expect(read.status).toBe(200);
+    expect((await read.json()).content).toBe('owned task result');
+    expect((await request('cron-task:owned', '/file?filePath=../../../server-token')).status).toBe(403);
+    await fs.symlink(home, path.join(home, 'cron/worktrees/symlink'), 'dir');
+    expect((await request('cron-task:symlink', '/file?filePath=server-token')).status).toBe(403);
 });

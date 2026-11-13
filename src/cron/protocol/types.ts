@@ -5,6 +5,8 @@ export type { CronTaskSchedule, CronCreateSchedule, CronSchedule } from "./sched
 
 export type CronTaskStatus = "scheduled" | "running" | "paused" | "completed" | "failed" | "missed";
 export type CronExecutionMode = "independent" | "conversation" | "persistent";
+/** Legacy mode names remain readable; every task now owns one persistent session. */
+export type CronTaskChange = { taskId: string; projectKey?: string; task?: CronTask };
 export type CronNotificationPolicy = "all" | "findings" | "failures";
 
 export type CronTask = {

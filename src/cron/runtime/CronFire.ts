@@ -65,8 +65,7 @@ export class CronFire {
   private async executeTask(snapshot: CronTask, runId: string, options: CronFireOptions): Promise<void> {
     const trigger = options.trigger ?? "scheduled";
     const startedAt = this.deps.now();
-    const sessionKey = snapshot.executionMode === "independent"
-      ? `cron:${snapshot.taskId}:${runId}` : snapshot.sessionKey;
+    const sessionKey = snapshot.sessionKey;
     const active: CronActiveRun = {
       runId, taskId: snapshot.taskId, sessionKey,
       scheduleType: snapshot.schedule.type, stopRequested: false,
@@ -91,7 +90,7 @@ export class CronFire {
           || (value.revision ?? 0) !== (snapshot.revision ?? 0)
           || value.nextRunAt !== snapshot.nextRunAt || value.lastRunId !== snapshot.lastRunId) return value;
         claimed = true;
-        return { ...value, status: "running", lastRunId: runId,
+        return { ...value, status: "running", lastRunId: runId, lastRun: record(),
           revision: (value.revision ?? 0) + 1, updatedAt: startedAt.toISOString() };
       });
       options.onClaim?.(claimed);
@@ -101,25 +100,27 @@ export class CronFire {
       await this.deps.store.appendRun(record());
       this.phase(task, runId, "cron_started", startedAt.toISOString());
 
-      // A follow-up waits for the original conversation instead of interrupting its user turn.
-      while (task.executionMode === "conversation"
-        && (await this.deps.gateway.getActiveTurnSnapshot?.({ sessionKey, includeEvents: false }))?.active) {
-        if (active.stopRequested) throw new Error("Cron run was stopped while waiting for its conversation.");
-        if (this.deps.now().getTime() - startedAt.getTime() >= this.deps.runTimeoutMs) throw new Error("Cron conversation wait timed out.");
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
       if (active.stopRequested) throw new Error("Cron run was stopped before execution.");
       workspaceCwd = await this.deps.prepareRun?.(task, runId, sessionKey) ?? workspaceCwd;
+      try {
+        this.deps.onTurnEvent?.(sessionKey, "cron", { type: "agent_status", event: "cron_input", runId,
+          detail: { message: task.message, taskId: task.taskId, trigger, scheduledAt: snapshot.nextRunAt } });
+      } catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
+      if (workspaceCwd !== (task.workspaceCwd ?? task.projectKey)) {
+        await this.deps.store.appendRun(record());
+        await this.deps.store.updateTask(task.taskId, current => current.lastRunId === runId
+          ? { ...current, lastRun: record(), revision: (current.revision ?? 0) + 1 } : current);
+      }
       const message = task.notificationPolicy === "findings"
         ? `${task.message}\n\nIf there are no new findings or actions to report, reply with exactly [NO_UPDATE].` : task.message;
       for await (const event of this.deps.gateway.submitTurn({
-        sessionKey, channelKey: task.executionMode === "conversation" ? task.originChannelKey ?? task.channelKey : "cron",
+        sessionKey, channelKey: "cron",
         projectKey: task.projectKey, workspaceCwd, message, mode: task.mode ?? "default",
         canPrompt: false, allowPlanModeTools: false, runId, timeoutMs: this.deps.runTimeoutMs,
         ...(task.modelSelection ? { modelOverride: { mode: "model", ...task.modelSelection } } : {}),
       })) {
         await this.deps.store.appendRunEvent(runId, event);
-        try { this.deps.onTurnEvent?.(sessionKey, task.channelKey, event); }
+        try { this.deps.onTurnEvent?.(sessionKey, "cron", event); }
         catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
         if (event.type === "assistant_text_delta") output += event.text;
         if (event.type === "file_artifacts") artifacts = [...artifacts, ...event.artifacts].slice(-100);
@@ -161,31 +162,8 @@ export class CronFire {
   }
 
   async deliverResult(task: CronTask, run: CronRunRecord): Promise<CronRunRecord> {
-    if (!this.deps.onResultDelivery || !task.originSessionKey
-      || task.executionMode === "conversation"
-      || (task.notificationPolicy === "failures" && run.outcome === "completed")
-      || (task.notificationPolicy === "findings" && run.output?.trim() === "[NO_UPDATE]")) {
-      return { ...run, deliveryStatus: "skipped", deliveryError: undefined };
-    }
-    const text = run.outcome === "completed" ? run.output || "The scheduled task completed without a text result."
-      : run.error?.message || "The scheduled task did not complete.";
-    let deliveryError: string | undefined;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const delivered = await this.deps.onResultDelivery({
-          taskId: task.taskId, taskName: task.name, runId: run.runId, sessionKey: run.sessionKey, channelKey: task.channelKey,
-          originSessionKey: task.originSessionKey, originChannelKey: task.originChannelKey,
-          originProjectKey: task.originProjectKey,
-          projectKey: task.projectKey, outcome: run.outcome ?? "failed", text, error: run.error,
-        });
-        if (delivered === false) throw new Error("The result channel is unavailable.");
-        return { ...run, deliveryStatus: "sent", deliveryError: undefined };
-      } catch (caught) {
-        deliveryError = caught instanceof Error ? caught.message : String(caught);
-        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 250));
-      }
-    }
-    return { ...run, deliveryStatus: "failed", deliveryError };
+    // Results belong to the task transcript. Never append them to a source chat.
+    return { ...run, deliveryStatus: "skipped", deliveryError: undefined };
   }
 
   private async finishTask(task: CronTask, snapshot: CronTask, run: CronRunRecord, trigger: "scheduled" | "manual"): Promise<void> {

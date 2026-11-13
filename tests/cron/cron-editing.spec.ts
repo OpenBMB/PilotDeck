@@ -363,7 +363,8 @@ test("CronFire forwards live gateway events", async () => {
 
     await fire.runTask(task, "run-1");
 
-    assert.deepEqual(forwarded, gatewayEvents.map((event) => ({
+    assert.equal(forwarded[0].event.type, "agent_status");
+    assert.deepEqual(forwarded.slice(1), gatewayEvents.map((event) => ({
       sessionKey: task.sessionKey,
       channelKey: task.channelKey,
       event,

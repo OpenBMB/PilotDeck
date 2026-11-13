@@ -91,6 +91,7 @@ import {
     getPilotDeckGateway,
     isGatewayUnavailableError,
     registerAlwaysOnNotificationForwarding,
+    registerCronNotificationForwarding,
     registerSessionInputNotificationForwarding,
     getSessionTokenBudget,
     getInputQueueStateViaGateway,
@@ -123,6 +124,7 @@ import { createUsageRouter } from './routes/usage.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
+import { cronTaskOverview } from './services/cronOverview.js';
 import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 import { resolvePilotHome } from './utils/pilotPaths.js';
 import { normalizeSchedule } from '../../src/cron/runtime/CronRuntime.js';
@@ -165,13 +167,27 @@ import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
 import { createSessionWatchRegistry } from './session-watch-registry.js';
 import { isPathInsideOrEqual } from './utils/pathSafety.js';
+import { resolveRegisteredProject } from './services/projectRegistration.js';
 import { createProjectFilesystemMiddleware } from './middleware/projectFilesystem.js';
 
 // PilotDeck-only mode: chat execution always goes through src/gateway via
 // cursor-cli, openai-codex, gemini-cli) has been removed.
 const VALID_PROVIDERS = ['pilotdeck'];
 
-const requireRealProjectFilesystem = createProjectFilesystemMiddleware();
+const requireRealProjectFilesystem = createProjectFilesystemMiddleware({
+    resolveTaskWorkspace: async taskId => {
+        const gateway = await getPilotDeckGateway();
+        const result = await gateway.cronList({});
+        const task = result.tasks.find(item => item.taskId === taskId);
+        if (!task) return null;
+        const pilotHome = resolvePilotHome(process.env);
+        const sourceRoot = path.resolve(task.projectKey) === path.resolve(pilotHome)
+            ? await ensureGeneralWorkspaceDirectory(process.env)
+            : await resolveRegisteredProject(task.projectKey, pilotHome);
+        return { root: task.lastRun?.workspaceCwd || task.workspaceCwd || sourceRoot, sourceRoot,
+            worktree: task.workspaceMode === 'worktree' };
+    },
+});
 
 // File-system watchers for the chat transcript root maintained by
 // PilotDeck. Provider-specific watchers (.pilotdeck) were dropped along with the four provider adapters.
@@ -222,13 +238,23 @@ function broadcastSessionActivity(frame, userId) {
     }
 }
 const sessionWatchRegistry = createSessionWatchRegistry();
-registerAlwaysOnNotificationForwarding(connectedClients, createBackgroundSessionForwarder({
-    // This installation is single-user (including authenticated OSS mode).
-    // Resolve its persisted owner, never the set of currently connected watchers.
+const forwardBackgroundFrame = createBackgroundSessionForwarder({
     getUserId: () => userDb.getFirstUser()?.id,
     broadcastActivity: broadcastSessionActivity,
     forwardToWatchers: broadcastToSessionWatchers,
-}));
+});
+registerAlwaysOnNotificationForwarding(connectedClients, (sessionId, frame) => {
+    if (sessionId.startsWith('cron:')) broadcastToSessionWatchers(sessionId, frame, userDb.getFirstUser()?.id);
+    else forwardBackgroundFrame(sessionId, frame);
+});
+registerCronNotificationForwarding(change => {
+    const userId = userDb.getFirstUser()?.id;
+    const frame = JSON.stringify({ type: 'cron-task-changed', taskId: change.taskId, projectKey: change.projectKey,
+        job: change.task ? cronTaskOverview(change.task) : null });
+    for (const client of connectedClients) {
+        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(frame);
+    }
+});
 
 function normalizeSessionId(value) {
     if (typeof value !== 'string') return null;
@@ -770,13 +796,6 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
         }
 
         const gateway = await getPilotDeckGateway();
-        if (req.body?.executionMode === 'conversation') {
-            const sessions = await gateway.listSessions({ projectKey, limit: 1000 });
-            if (!sessions.sessions.some(session => (session.sessionKey || session.sessionId) === req.body?.sessionKey)) {
-                res.status(400).json({ error: 'Select an existing conversation in this workspace.' });
-                return;
-            }
-        }
         const result = await gateway.cronCreate({
             message,
             projectKey,
@@ -785,9 +804,7 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
             channelKey: 'web',
             name: req.body?.name,
             workspaceCwd: projectKey === resolvePilotHome(process.env) ? await ensureGeneralWorkspaceDirectory(process.env) : req.body?.workspaceCwd,
-            executionMode: req.body?.executionMode,
             sessionKey: req.body?.sessionKey,
-            targetSessionKey: req.body?.sessionKey,
             notificationPolicy: req.body?.notificationPolicy,
             mode: req.body?.mode,
             workspaceMode: req.body?.workspaceMode,
@@ -803,12 +820,8 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
 app.get('/api/always-on/cron-options', authenticateToken, async (req, res) => {
     try {
         const gateway = await getPilotDeckGateway();
-        const [sessions, models] = await Promise.all([
-            gateway.listSessions({ projectKey: req.query.projectKey, limit: 1000 }),
-            gateway.modelCatalogList?.({ projectKey: req.query.projectKey }),
-        ]);
-        res.json({ sessions: sessions.sessions.map(session => ({ id: session.sessionKey || session.sessionId,
-            title: session.summary || session.firstPrompt || session.sessionId })), models: models?.items || [] });
+        const models = await gateway.modelCatalogList?.({ projectKey: req.query.projectKey });
+        res.json({ models: models?.items || [] });
     } catch (error) { res.status(500).json({ error: error?.message || 'Failed to load task execution options.' }); }
 });
 

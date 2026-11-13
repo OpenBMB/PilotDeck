@@ -295,7 +295,7 @@ export const api = {
       body: JSON.stringify(workspaceData),
     }),
   readFile: (projectName, filePath) =>
-    authenticatedFetch(`/api/projects/${projectName}/file?filePath=${encodeURIComponent(filePath)}`),
+    authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/file?filePath=${encodeURIComponent(filePath)}`),
   fileContentUrl: (projectName, filePath, options = {}) => {
     const params = new URLSearchParams({ path: filePath });
     if (options.download) params.set('download', '1');
@@ -402,7 +402,7 @@ export const api = {
   pilotDeckConfig: () =>
     authenticatedFetch('/api/config'),
   saveFile: (projectName, filePath, content, expectedHash, expectedContent) =>
-    authenticatedFetch(`/api/projects/${projectName}/file`, {
+    authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/file`, {
       method: 'PUT',
       body: JSON.stringify({ filePath, content, expectedHash, expectedContent }),
     }),

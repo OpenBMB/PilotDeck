@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { CalendarClock, PanelLeftOpen, Plus } from 'lucide-react';
 import type { CronJobOverview, CronJobsOverviewResponse, Project } from '../../../types/app';
 import { api } from '../../../utils/api';
+import { useWebSocket } from '../../../contexts/WebSocketContext';
 import { useCronSidebar } from '../CronSidebarContext';
 import CronTaskSidebar from './CronTaskSidebar';
 import CronTaskDetails from './CronTaskDetails';
@@ -13,56 +14,81 @@ import CronTaskActions from './CronTaskActions';
 import { cronScheduleLabel, taskEditDisabled } from './cronPresentation';
 import './cron-workspace.css';
 
-const POLL_INTERVAL_MS = 15_000;
+const noRefresh = async () => {};
+const newestFirst = (jobs: CronJobOverview[]) => [...jobs].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
-export default function CronPanel({ isSidebarCollapsed, onOpenSidebar }: { isSidebarCollapsed?: boolean; onOpenSidebar?: () => void } = {}) {
+/** Kept mounted by MainArea: navigation retains the list, session cache and reading position. */
+export default function CronPanel({ isSidebarCollapsed, onOpenSidebar, projects: shellProjects, active = true }: {
+  isSidebarCollapsed?: boolean; onOpenSidebar?: () => void; projects?: Project[]; active?: boolean;
+} = {}) {
   const { t } = useTranslation('alwaysOn');
+  const { subscribe, isConnected } = useWebSocket();
   const sidebar = useCronSidebar();
   const [params, setParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [fallbackProjects, setFallbackProjects] = useState<Project[]>([]);
+  const projects = shellProjects || fallbackProjects;
   const [jobs, setJobs] = useState<CronJobOverview[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(params.get('taskId'));
   const [editor, setEditor] = useState<{ job: CronJobOverview | null } | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
-  const [latestRunRequest, setLatestRunRequest] = useState(0);
   const request = useRef<AbortController | null>(null);
+  const changes = useRef(new Map<string, CronJobOverview | null>());
   const [seenRuns, setSeenRuns] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('pilotdeck-cron-seen-runs') || '{}'); } catch { return {}; }
   });
-  const requestedId = params.get('taskId');
-  const selected = jobs.find(job => job.id === requestedId) || (!requestedId ? jobs[0] : undefined);
-  const load = useCallback(async (quiet = false) => {
-    if (quiet && request.current) return;
+  const requestedId = active ? params.get('taskId') : null;
+  useEffect(() => { if (requestedId) setSelectedId(requestedId); }, [requestedId]);
+  const selected = jobs.find(job => job.id === selectedId) || jobs[0];
+  const load = useCallback(async () => {
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
-    if (!quiet) setLoading(true);
+    changes.current.clear();
+    setLoading(true);
     try {
-      const [projectsRes, jobsRes] = await Promise.all([quiet ? Promise.resolve(null) : api.projects({ signal: controller.signal }), api.allCronJobs({ signal: controller.signal })]);
+      const [projectsRes, jobsRes] = await Promise.all([
+        shellProjects ? Promise.resolve(null) : api.projects({ signal: controller.signal }),
+        api.allCronJobs({ signal: controller.signal }),
+      ]);
       if (projectsRes && !projectsRes.ok) throw new Error(`Projects: HTTP ${projectsRes.status}`);
       if (!jobsRes.ok) throw new Error(`Cron jobs: HTTP ${jobsRes.status}`);
-      const projectsPayload = projectsRes ? await projectsRes.json() as Project[] : null;
-      const jobsPayload = await jobsRes.json() as CronJobsOverviewResponse;
+      const payload = await jobsRes.json() as CronJobsOverviewResponse;
+      const loadedProjects = projectsRes ? await projectsRes.json() as Project[] : null;
       if (controller.signal.aborted) return;
-      if (projectsRes) { const next = Array.isArray(projectsPayload) ? projectsPayload : []; setProjects(current => JSON.stringify(current) === JSON.stringify(next) ? current : next); }
-      const nextJobs = (Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : []).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-      setJobs(current => JSON.stringify(current) === JSON.stringify(nextJobs) ? current : nextJobs);
-      setError(null);
-    } catch (caught) { if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught)); }
-    finally { if (request.current === controller) { request.current = null; setLoading(false); } }
-  }, []);
-  const refresh = useCallback(() => load(), [load]);
-  useEffect(() => { void refresh(); return () => { request.current?.abort(); request.current = null; }; }, [refresh]);
+      if (loadedProjects) setFallbackProjects(loadedProjects);
+      const snapshot = new Map((payload.jobs || []).map(job => [job.id, job]));
+      for (const [id, job] of changes.current) {
+        if (!job) snapshot.delete(id);
+        else if ((snapshot.get(id)?.revision ?? -1) <= (job.revision ?? 0)) snapshot.set(id, job);
+      }
+      setJobs(newestFirst([...snapshot.values()])); setError(null);
+    } catch (caught) {
+      if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught));
+    } finally { if (request.current === controller) { request.current = null; setLoading(false); } }
+  }, [Boolean(shellProjects)]);
   useEffect(() => {
-    if (editor) return;
-    const poll = () => { if (document.visibilityState !== 'hidden') void load(true); };
-    const timer = window.setInterval(poll, POLL_INTERVAL_MS);
-    document.addEventListener('visibilitychange', poll);
-    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', poll); };
-  }, [load, editor]);
+    const unsubscribe = subscribe(message => {
+      if (message.type !== 'cron-task-changed' || typeof message.taskId !== 'string') return;
+      const job = message.job as CronJobOverview | null;
+      if (request.current) changes.current.set(message.taskId, job);
+      setJobs(current => {
+        const previous = current.find(item => item.id === message.taskId);
+        if (job && previous && (previous.revision ?? 0) > (job.revision ?? 0)) return current;
+        return newestFirst([...current.filter(item => item.id !== message.taskId), ...(job ? [job] : [])]);
+      });
+    });
+    void load();
+    return () => { unsubscribe(); request.current?.abort(); request.current = null; };
+  }, [subscribe, load]);
+  const connected = useRef(isConnected);
   useEffect(() => {
-    if (!selected?.lastRun?.finishedAt || document.visibilityState === 'hidden') return;
+    if (isConnected && !connected.current) void load();
+    connected.current = isConnected;
+  }, [isConnected, load]);
+  useEffect(() => {
+    if (!active || !selected?.lastRun?.finishedAt || document.visibilityState === 'hidden') return;
     const { id, lastRun } = selected;
     setSeenRuns(current => {
       if (current[id] === lastRun.runId) return current;
@@ -70,33 +96,36 @@ export default function CronPanel({ isSidebarCollapsed, onOpenSidebar }: { isSid
       try { localStorage.setItem('pilotdeck-cron-seen-runs', JSON.stringify(next)); } catch { /* Storage may be unavailable. */ }
       return next;
     });
-  }, [selected?.id, selected?.lastRun?.runId, selected?.lastRun?.finishedAt]);
-  const select = (job: CronJobOverview) => { setParams({ taskId: job.id }, { replace: true }); sidebar?.onSelect(); setError(null); };
+  }, [active, selected?.id, selected?.lastRun?.runId, selected?.lastRun?.finishedAt]);
+  const select = (job: CronJobOverview) => { setSelectedId(job.id); setParams({ taskId: job.id }, { replace: true }); sidebar?.onSelect(); setError(null); };
   const edit = (job: CronJobOverview) => { if (!taskEditDisabled(job)) setEditor({ job }); };
-  const deleted = (id: string) => { if (id === selected?.id) setParams({}, { replace: true }); };
-  const list = <CronTaskSidebar jobs={jobs} projects={projects} selectedId={selected?.id} loading={loading} query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} seenRuns={seenRuns}
-    onSelect={select} onCreate={() => setEditor({ job: null })} onEdit={edit} onRefresh={refresh} onError={setError} onDeleted={deleted} />;
-  const project = selected && projects.find(project => project.fullPath === selected.projectKey || project.name === selected.projectKey);
+  const deleted = (id: string) => { if (id === selected?.id) { setSelectedId(null); setParams({}, { replace: true }); } };
+  const list = <CronTaskSidebar jobs={jobs} projects={projects} selectedId={selected?.id} loading={loading}
+    query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} seenRuns={seenRuns}
+    onSelect={select} onCreate={() => setEditor({ job: null })} onEdit={edit} onRefresh={noRefresh} onError={setError} onDeleted={deleted} />;
+  const project = selected && projects.find(item => item.fullPath === selected.projectKey || item.name === selected.projectKey);
   return <div className="cron-workspace">
-    {sidebar ? sidebar.host && createPortal(list, sidebar.host) : <aside className="cron-standalone-sidebar">{list}</aside>}
+    {active && (sidebar ? sidebar.host && createPortal(list, sidebar.host) : <aside className="cron-standalone-sidebar">{list}</aside>)}
     <div className="cron-result-workspace">
       <header className="workspace-header cron-workspace-header">
-        {isSidebarCollapsed && <button type="button" className="cron-icon-button" onClick={onOpenSidebar} aria-label={t('cron.workspace.showTasks', { defaultValue: 'Show task list' })}><PanelLeftOpen size={18} /></button>}
-        <div className="min-w-0 flex-1"><h1>{selected?.name || selected?.prompt.split('\n')[0] || t('cron.title', { defaultValue: 'Scheduled tasks' })}</h1>
+        {isSidebarCollapsed && <button type="button" className="cron-icon-button" onClick={onOpenSidebar} aria-label={t('cron.workspace.showTasks')}><PanelLeftOpen size={18} /></button>}
+        <div className="min-w-0 flex-1"><h1>{selected?.name || selected?.prompt.split('\n')[0] || t('cron.title')}</h1>
           {selected && <p className="cron-workspace-subtitle">{project?.displayName || project?.name || selected.projectKey} · {cronScheduleLabel(selected.schedule, selected.timezone, t)}</p>}
         </div>
-        {selected && <CronTaskActions key={selected.id} job={selected} onEdit={edit} onRefresh={refresh} onError={setError} onDeleted={deleted} onRunStarted={() => setLatestRunRequest(value => value + 1)} />}
+        {selected && <CronTaskActions key={selected.id} job={selected} onEdit={edit} onRefresh={noRefresh} onError={setError} onDeleted={deleted} />}
       </header>
-      {error && <p role="alert" className="cron-workspace-error">{error}</p>}
-      {selected ? <CronTaskDetails key={selected.id} job={selected} projects={projects} onRefresh={refresh} onEdit={() => edit(selected)} latestRunRequest={latestRunRequest} />
+      {error && <div role="alert" className="cron-workspace-error">{error}<button type="button" className="cron-text-button ml-3" onClick={() => void load()}>{t('actions.refresh', { defaultValue: 'Retry' })}</button></div>}
+      {selected ? <CronTaskDetails job={selected} projects={projects} />
         : <div className="cron-workspace-empty"><span className="cron-empty-icon"><CalendarClock size={30} strokeWidth={1.35} /></span>
-          <h2>{t(requestedId ? 'cron.workspace.notFound' : 'cron.workspace.emptyTitle', { defaultValue: requestedId ? 'This task is unavailable' : 'Make room for recurring work' })}</h2>
-          <p>{t(requestedId ? 'cron.workspace.notFoundHint' : 'cron.workspace.emptyHint', { defaultValue: requestedId ? 'Refresh the task list or choose another task.' : 'Schedule a task once. Find its next run and every result here.' })}</p>
-          <button type="button" className="cron-button primary" onClick={() => setEditor({ job: null })}><Plus size={15} />{t('cron.workspace.newTask', { defaultValue: 'New task' })}</button>
+          <h2>{t('cron.workspace.emptyTitle')}</h2>
+          <p>{t('cron.workspace.emptyHint')}</p>
+          {!selected && !loading && !jobs.length && <button type="button" className="cron-icon-button" aria-label={t('cron.workspace.newTask', { defaultValue: 'New task' })} onClick={() => setEditor({ job: null })}><Plus size={18} /></button>}
         </div>}
     </div>
-    {editor && <CronTaskEditor key={editor.job?.id || 'create'} t={t} projects={projects} editingJob={editor.job} onCancel={() => setEditor(null)} onCompleted={async taskId => {
-      await refresh(); if (taskId) setParams({ taskId }, { replace: true }); setEditor(null); sidebar?.onSelect();
-    }} />}
+    {editor && <CronTaskEditor key={editor.job?.id || 'create'} t={t} projects={projects} editingJob={editor.job}
+      onCancel={() => setEditor(null)} onCompleted={async taskId => {
+        if (taskId) { setSelectedId(taskId); setParams({ taskId }, { replace: true }); }
+        setEditor(null); sidebar?.onSelect();
+      }} />}
   </div>;
 }

@@ -19,6 +19,7 @@ import type {
   CronStopInput,
   CronStopResult,
   CronTask,
+  CronTaskChange,
   CronResultDeliveryHandler,
   CronUpdateInput,
   CronUpdateResult,
@@ -53,6 +54,7 @@ export type CreateCronRuntimeOptions = {
   skipToolCreation?: boolean;
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
+  onTaskChange?: (change: CronTaskChange) => void;
   onRunFinished?: () => void;
 };
 
@@ -88,6 +90,7 @@ export class CronRuntime {
     this.projectKey = resolve(options.projectKey);
     this.paths = resolveCronPaths({ pilotHome: options.pilotHome, projectKey: this.projectKey });
     this.store = options.store ?? new CronTaskStore(this.paths);
+    if (options.onTaskChange) this.store.subscribe(options.onTaskChange);
     this.now = options.now ?? (() => new Date());
     this.uuid = options.uuid ?? randomUUID;
     this.logger = options.logger ?? NOOP_LOGGER;
@@ -123,11 +126,8 @@ export class CronRuntime {
       releaseTaskSession: (task) => this.releaseTaskSession(task),
       prepareRun: async (task, runId, sessionKey) => {
         const cwd = await prepareCronWorkspace(task, runId, resolve(this.paths.rootDir, "worktrees"));
-        if (task.executionMode !== "conversation") this.registerTaskSession({ ...task, sessionKey, workspaceCwd: cwd });
+        this.registerTaskSession({ ...task, sessionKey, workspaceCwd: cwd });
         return cwd;
-      },
-      releaseRun: async (task, sessionKey) => {
-        if (task.executionMode === "independent") await this.releaseTaskSession({ ...task, sessionKey });
       },
       onFinished: () => { this.scheduler?.poke(); this.onRunFinished?.(); },
       onResultDelivery: this.onResultDelivery,
@@ -226,10 +226,8 @@ export class CronRuntime {
     if (!input.message?.trim()) throw new Error("Cron task message is required.");
     const now = this.now();
     const taskId = this.uuid();
-    const executionMode = input.executionMode ?? "independent";
-    const targetSessionKey = input.targetSessionKey ?? input.sessionKey;
-    if (executionMode === "conversation" && !targetSessionKey) throw new Error("Cron conversation execution requires a target session.");
-    const sessionKey = executionMode === "conversation" ? targetSessionKey! : buildCronSessionKey(taskId);
+    const executionMode = "persistent";
+    const sessionKey = buildCronSessionKey(taskId);
     const schedule = normalizeSchedule(input, this.config.timezone, now);
     const timezone = scheduleTimezone(schedule, input.timezone ?? this.config.timezone);
     const nextRunAt = computeNextRunAt(schedule, now, timezone);
@@ -246,7 +244,6 @@ export class CronRuntime {
       message: input.message.trim(),
       enabled: true,
       executionMode,
-      targetSessionKey: executionMode === "conversation" ? targetSessionKey : undefined,
       workspaceCwd: input.workspaceCwd ? resolve(input.workspaceCwd) : this.projectKey,
       notificationPolicy: input.notificationPolicy ?? "all",
       workspaceMode: input.workspaceMode ?? "local",
@@ -319,7 +316,7 @@ export class CronRuntime {
       const scheduleChanged = JSON.stringify(current.schedule) !== JSON.stringify(schedule) || current.timezone !== timezone;
       const changedConfiguration = scheduleChanged || input.message.trim() !== current.message
         || (input.name !== undefined && taskName(input.name, input.message) !== current.name)
-        || ["executionMode", "targetSessionKey", "notificationPolicy", "mode", "workspaceMode", "modelSelection"].some((key) =>
+        || ["notificationPolicy", "mode", "workspaceMode", "modelSelection"].some((key) =>
           input[key as keyof CronUpdateInput] !== undefined
           && JSON.stringify(input[key as keyof CronUpdateInput]) !== JSON.stringify(current[key as keyof CronTask]));
       if (current.status === "running" && changedConfiguration) { reason = "running"; return current; }
@@ -332,14 +329,11 @@ export class CronRuntime {
           throw new Error("Cron schedule must have a future run time before it can be resumed.");
         }
       }
-      const executionMode = input.executionMode ?? current.executionMode;
-      const targetSessionKey = input.targetSessionKey ?? current.targetSessionKey ?? current.originSessionKey;
-      if (executionMode === "conversation" && !targetSessionKey) throw new Error("Cron conversation execution requires a target session.");
+      const executionMode = "persistent";
       const workspaceMode = input.workspaceMode ?? current.workspaceMode;
-      if (workspaceMode === "worktree" && executionMode !== "independent") throw new Error("Cron worktree execution requires an independent session.");
       return { ...current, name: taskName(input.name ?? current.name, input.message), message: input.message.trim(),
         schedule, timezone, nextRunAt, enabled,
-        executionMode, targetSessionKey, sessionKey: executionMode === "conversation" ? targetSessionKey! : buildCronSessionKey(current.taskId),
+        executionMode, targetSessionKey: undefined, sessionKey: current.sessionKey.startsWith('cron:') ? current.sessionKey : buildCronSessionKey(current.taskId),
         notificationPolicy: input.notificationPolicy ?? current.notificationPolicy,
         mode: input.mode ?? current.mode, workspaceMode, modelSelection: input.modelSelection === null ? undefined : input.modelSelection ?? current.modelSelection,
         status: current.status === "running" ? "running" : !enabled
@@ -451,27 +445,19 @@ export class CronRuntime {
 
   private async migrateLegacyTaskSessions(): Promise<void> {
     const tasks = await this.store.listTasks();
-    let migratedCount = 0;
     for (const task of tasks) {
-      const nextSessionKey = buildCronSessionKey(task.taskId);
-      if (task.executionMode === "conversation" || (task.sessionKey === nextSessionKey && task.channelKey === "cron")) {
-        continue;
+      // Reuse the latest owned transcript from the previous per-run model.
+      // A user's ordinary conversation is never adopted or modified.
+      const previousRun = task.executionMode === "independent" ? (await this.store.listRuns(1, task.taskId))[0] : undefined;
+      const sessionKey = task.executionMode === "persistent" && task.sessionKey.startsWith("cron:")
+        ? task.sessionKey : previousRun?.sessionKey.startsWith("cron:") ? previousRun.sessionKey : buildCronSessionKey(task.taskId);
+      if (task.executionMode === "persistent" && task.sessionKey === sessionKey && task.channelKey === "cron" && !task.targetSessionKey) continue;
+      if (task.sessionKey.startsWith("cron:")) {
+        this.sessionOverrides.delete(task.sessionKey);
+        await this.gateway?.closeSession({ sessionKey: task.sessionKey, reason: "cron/task-context-migrated" }).catch(() => undefined);
       }
-      migratedCount += 1;
-      this.sessionOverrides.delete(task.sessionKey);
-      await this.gateway
-        ?.closeSession({ sessionKey: task.sessionKey, reason: "cron/legacy-session-migrated" })
-        .catch(() => undefined);
-      await this.store.putTask({
-        ...task,
-        sessionKey: nextSessionKey,
-        channelKey: "cron",
-        revision: (task.revision ?? 0) + 1,
-        updatedAt: this.now().toISOString(),
-      });
-    }
-    if (migratedCount > 0) {
-      this.logger.info("cron runtime migrated legacy task sessions", { migratedCount });
+      await this.store.putTask({ ...task, executionMode: "persistent", targetSessionKey: undefined,
+        sessionKey, channelKey: "cron", revision: (task.revision ?? 0) + 1, updatedAt: this.now().toISOString() });
     }
   }
 
@@ -520,7 +506,7 @@ export class CronRuntime {
 
     for (const task of tasks) {
       if (task.status !== "running") {
-        if (task.status === "scheduled" && task.enabled !== false && task.executionMode !== "persistent" && task.schedule.type === "once"
+        if (task.status === "scheduled" && task.enabled !== false && task.schedule.type === "once"
           && task.nextRunAt && Date.parse(task.nextRunAt) < now.getTime() - 60_000) {
           await this.store.putTask({ ...task, status: "missed", enabled: false, nextRunAt: undefined,
             statusDetail: "This one-time task was missed while the server was offline. Run it manually or choose a new time.",
@@ -638,7 +624,6 @@ function validateTaskOptions(input: Partial<CronCreateInput> | Partial<CronUpdat
   if (input.mode !== undefined && !["default", "plan", "bypassPermissions"].includes(input.mode)) throw new Error("Invalid Cron permission mode.");
   if (input.notificationPolicy !== undefined && !["all", "findings", "failures"].includes(input.notificationPolicy)) throw new Error("Invalid Cron notification policy.");
   if (input.workspaceMode !== undefined && !["local", "worktree"].includes(input.workspaceMode)) throw new Error("Invalid Cron workspace mode.");
-  if (input.workspaceMode === "worktree" && (input.executionMode ?? "independent") !== "independent") throw new Error("Cron worktree execution requires an independent session.");
   if (input.name !== undefined && (typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > 120)) throw new Error("Cron task name must contain 1 to 120 characters.");
   if (input.modelSelection && (!input.modelSelection.provider?.trim() || !input.modelSelection.model?.trim())) throw new Error("Invalid Cron model selection.");
 }

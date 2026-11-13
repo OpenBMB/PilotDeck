@@ -46,7 +46,7 @@ async function fixture(options: { submit?: (input: GatewaySubmitTurnInput) => As
     close: async () => { await runtime.stop(); await rm(root, { recursive: true, force: true }); } };
 }
 
-test("manual runs keep the original task, schedule and prompt snapshot, using fresh conversations", async () => {
+test("manual runs keep the original task, schedule and prompt snapshot, using one task conversation", async () => {
   const f = await fixture();
   try {
     const { task } = await f.create();
@@ -58,13 +58,14 @@ test("manual runs keep the original task, schedule and prompt snapshot, using fr
     await f.idle();
     assert.equal((await f.store.listTasks()).length, 1);
     assert.equal((await f.store.getTask(task.taskId))?.nextRunAt, task.nextRunAt);
-    assert.notEqual(f.inputs[0].sessionKey, f.inputs[1].sessionKey);
+    assert.equal(f.inputs[0].sessionKey, f.inputs[1].sessionKey);
+    assert.equal(f.inputs[0].sessionKey, task.sessionKey);
     assert.deepEqual(f.inputs.map(input => input.mode), ["default", "default"]);
     assert.ok(f.inputs.every(input => input.canPrompt === false));
     const runs = await f.store.listRuns(10, task.taskId);
     assert.equal(runs.length, 2);
     assert.ok(runs.every(run => run.trigger === "manual" && run.message === task.message && run.output === "Synthetic report"));
-    assert.ok(f.closed.includes(f.inputs[0].sessionKey));
+    assert.equal(f.closed.includes(f.inputs[0].sessionKey), false);
   } finally { await f.close(); }
 });
 
@@ -129,21 +130,17 @@ test("execution admission prevents duplicate manual runs and obeys the shared li
   } finally { release(); await f.close(); }
 });
 
-test("delivery failures persist separately from successful execution and can be retried without running the model", async () => {
-  let available = false;
-  const f = await fixture({ delivery: async () => { if (!available) throw new Error("Synthetic channel unavailable"); return true; } });
+test("task results never call the source-chat delivery handler, including legacy retry requests", async () => {
+  let deliveries = 0;
+  const f = await fixture({ delivery: async () => { deliveries++; return true; } });
   try {
     const task = (await f.create({ sessionKey: "web:origin", channelKey: "web" })).task;
-    await f.runtime.runTaskNow({ taskId: task.taskId });
-    await f.idle();
+    await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
     const run = (await f.store.listRuns(1, task.taskId))[0];
-    assert.equal(run.outcome, "completed");
-    assert.equal(run.deliveryStatus, "failed");
-    assert.match(run.deliveryError!, /unavailable/);
-    available = true;
-    assert.equal((await f.runtime.runTaskNow({ taskId: task.taskId, retryDeliveryRunId: run.runId })).started, true);
-    assert.equal(f.inputs.length, 1);
-    assert.equal((await f.store.listRuns(1, task.taskId))[0].deliveryStatus, "sent");
+    assert.equal(run.outcome, "completed"); assert.equal(run.output, "Synthetic report");
+    assert.equal(run.deliveryStatus, "skipped"); assert.equal(deliveries, 0);
+    await f.runtime.runTaskNow({ taskId: task.taskId, retryDeliveryRunId: run.runId });
+    assert.equal(f.inputs.length, 1); assert.equal(deliveries, 0);
   } finally { await f.close(); }
 });
 
@@ -216,24 +213,19 @@ test("description-only edits preserve the committed occurrence and stale edits c
   } finally { await f.close(); }
 });
 
-test("conversation tasks wait for an active user turn and never close the target conversation", async () => {
+test("legacy conversation inputs create an owned task session without touching the active source chat", async () => {
   const f = await fixture();
-  let busy = true;
   let checked = false;
-  f.gateway.getActiveTurnSnapshot = async ({ sessionKey }) => { checked = true; return { sessionKey, active: busy, events: [] }; };
+  f.gateway.getActiveTurnSnapshot = async ({ sessionKey }) => { checked = true; return { sessionKey, active: true, events: [] }; };
   try {
     const { task } = await f.create({ executionMode: "conversation", sessionKey: "web:source", channelKey: "web", mode: "plan" });
-    await f.runtime.runTaskNow({ taskId: task.taskId });
-    const deadline = Date.now() + 1000;
-    while (!checked && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
-    assert.equal(checked, true);
-    assert.equal(f.inputs.length, 0);
-    busy = false;
-    await f.idle();
-    assert.equal(f.inputs[0].sessionKey, "web:source");
-    assert.equal(f.inputs[0].mode, "plan");
+    assert.equal(task.executionMode, "persistent"); assert.equal(task.targetSessionKey, undefined);
+    assert.equal(task.originSessionKey, "web:source"); assert.match(task.sessionKey, /^cron:/);
+    await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
+    assert.equal(checked, false); assert.equal(f.inputs[0].sessionKey, task.sessionKey);
+    assert.equal(f.inputs[0].channelKey, "cron"); assert.equal(f.inputs[0].mode, "plan");
     assert.equal(f.closed.includes("web:source"), false);
-  } finally { busy = false; await f.close(); }
+  } finally { await f.close(); }
 });
 
 test("offline one-time tasks are marked missed, and a new future date reactivates them", async () => {
@@ -292,4 +284,35 @@ test("Agent tools preserve General identity and execution directory, and manage 
     assert.equal(movedTask.timezone, "Asia/Shanghai");
     assert.equal(movedTask.nextRunAt, "2026-06-02T01:00:00.000Z");
   } finally { await manager.stop(); await f.close(); }
+});
+
+test("durable task changes publish ordered revisions for creation, execution, pause and deletion", async () => {
+  const f = await fixture();
+  const events: Array<{ taskId: string; status?: string; revision?: number; output?: string }> = [];
+  const unsubscribe = f.store.subscribe(({ taskId, task }) => events.push({ taskId, status: task?.status, revision: task?.revision, output: task?.lastRun?.output }));
+  try {
+    const { task } = await f.create();
+    await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
+    const current = (await f.store.getTask(task.taskId))!;
+    await f.runtime.updateTask({ taskId: task.taskId, projectKey: f.project, expectedRevision: current.revision!, message: current.message, schedule: current.schedule, enabled: false });
+    await f.runtime.deleteTask({ taskId: task.taskId });
+    assert.deepEqual(events.map(event => event.status), ['scheduled', 'running', 'scheduled', 'paused', undefined]);
+    assert.deepEqual(events.slice(0, 4).map(event => event.revision), [0, 1, 2, 3]);
+    assert.equal(events[2].output, 'Synthetic report');
+    assert.ok(events.every(event => event.taskId === task.taskId));
+  } finally { unsubscribe(); await f.close(); }
+});
+
+test("startup migrates legacy task modes without adopting or closing ordinary conversations", async () => {
+  const f = await fixture();
+  try {
+    const { task } = await f.create();
+    await f.store.putTask({ ...task, executionMode: 'conversation', sessionKey: 'web:user-history', targetSessionKey: 'web:user-history' });
+    await f.runtime.start();
+    const migrated = (await f.store.getTask(task.taskId))!;
+    assert.equal(migrated.executionMode, 'persistent'); assert.match(migrated.sessionKey, /^cron:/);
+    assert.equal(migrated.targetSessionKey, undefined); assert.equal(f.closed.includes('web:user-history'), false);
+    await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
+    assert.equal(f.inputs[0].sessionKey, migrated.sessionKey);
+  } finally { await f.close(); }
 });

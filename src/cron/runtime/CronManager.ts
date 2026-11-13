@@ -21,6 +21,7 @@ import type {
   CronStopInput,
   CronStopResult,
   CronTask,
+  CronTaskChange,
   CronUpdateInput,
   CronUpdateResult,
 } from "../protocol/types.js";
@@ -40,6 +41,7 @@ export type CreateCronManagerOptions = {
   telemetry?: TelemetryClient;
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
+  onTaskChange?: (change: CronTaskChange) => void;
 };
 
 export class CronManager {
@@ -123,7 +125,6 @@ export class CronManager {
       if (!outside(home, workspace) || !outside(workspace, home)) throw new Error("Cron General workspace must be separate from the configuration directory.");
       workspaceCwd = workspace;
     }
-    if (input.executionMode === "conversation" && input.targetSessionKey) await this.validateTarget(projectKey, input.targetSessionKey);
     const runtime = await this.ensureRuntime(projectKey);
     return runtime.createTask({ ...input, projectKey, workspaceCwd });
   }
@@ -155,7 +156,6 @@ export class CronManager {
 
   async updateTask(input: CronUpdateInput): Promise<CronUpdateResult> {
     if (input.projectKey === "general") input = { ...input, projectKey: this.pilotHome };
-    if (input.targetSessionKey) await this.validateTarget(input.projectKey, input.targetSessionKey);
     const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
     if (!runtime) return { updated: false, reason: "not_found" };
     return runtime.updateTask(input);
@@ -211,6 +211,7 @@ export class CronManager {
       telemetry: this.options.telemetry,
       onResultDelivery: this.options.onResultDelivery,
       onTurnEvent: this.options.onTurnEvent,
+      onTaskChange: this.options.onTaskChange,
       activeRunCount: () => this.activeRunCount(),
       onRunFinished: () => { for (const loaded of this.runtimes.values()) loaded.poke(); },
       skipToolCreation: true,
@@ -233,14 +234,6 @@ export class CronManager {
       count += runtime.getActiveRunCount();
     }
     return count;
-  }
-
-  private async validateTarget(projectKey: string, sessionKey: string): Promise<void> {
-    if (!this.gateway) throw new Error("Cron gateway is unavailable.");
-    const sessions = await this.gateway.listSessions({ projectKey, limit: 1000 });
-    if (!sessions.sessions.some(session => (session.sessionKey ?? session.sessionId) === sessionKey)) {
-      throw new Error("Cron target conversation was not found in this project.");
-    }
   }
 
   private async resolveTaskRuntime(

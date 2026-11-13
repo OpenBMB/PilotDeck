@@ -30,8 +30,6 @@ export function createCronTools(runtime: CronToolRuntime): PilotDeckToolDefiniti
     inputSchema: { type: "object", required: ["taskId", "expectedRevision"], additionalProperties: false, properties: {
       ...identity, expectedRevision: { type: "integer", minimum: 0 }, name: { type: "string", minLength: 1, maxLength: 120 },
       message: { type: "string", minLength: 1 }, schedule: CRON_SCHEDULE_SCHEMA, timezone: { type: "string" }, enabled: { type: "boolean" },
-      executionMode: { type: "string", enum: ["independent", "conversation", "persistent"] },
-      targetSessionKey: { type: "string", description: "Existing conversation in the task's project, when using conversation execution." },
       notificationPolicy: { type: "string", enum: ["all", "findings", "failures"] },
       mode: { type: "string", enum: ["default", "plan", "bypassPermissions"] }, workspaceMode: { type: "string", enum: ["local", "worktree"] },
       modelSelection: { anyOf: [{ type: "null" }, { type: "object", required: ["provider", "model"], additionalProperties: false,
@@ -51,9 +49,9 @@ export function createCronTools(runtime: CronToolRuntime): PilotDeckToolDefiniti
     },
   }, {
     name: "cron_run_now", title: "Run Scheduled Task", kind: "session",
-    description: "Start one execution under the existing task ID. Keeps its normal schedule and history together, and also works for paused or finished tasks. Refuses overlapping executions. retryDeliveryRunId resends an existing result without rerunning the task.",
+    description: "Start one execution under the existing task ID. Keeps its normal schedule and history together, and also works for paused or finished tasks. Refuses overlapping executions. Results remain in the dedicated task conversation.",
     inputSchema: { type: "object", required: ["taskId"], additionalProperties: false,
-      properties: { ...identity, retryDeliveryRunId: { type: "string" } } },
+      properties: { ...identity } },
     isReadOnly: () => false, isConcurrencySafe: () => false,
     execute: async (input) => output(await runtime.runTaskNow(input as CronRunNowInput)),
   }];

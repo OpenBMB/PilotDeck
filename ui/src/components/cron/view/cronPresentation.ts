@@ -18,6 +18,9 @@ export function cronScheduleLabel(schedule: CronJobSchedule | undefined, timezon
     const time = `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`;
     return t('cron.workspace.monthlyWeekday', { defaultValue: '{{ordinal}} {{weekday}} of each month · {{time}}', ordinal: t(`cron.ordinals.${schedule.ordinal}`), weekday, time });
   }
+  if (schedule.expression.trim() === '* * * * *') return t('cron.workspace.everyMinute', { defaultValue: 'Every minute' });
+  const minuteStep = schedule.expression.trim().match(/^\*\/(\d+) \* \* \* \*$/);
+  if (minuteStep) return t('cron.create.plan.interval', { defaultValue: 'Every {{minutes}} minutes', minutes: Number(minuteStep[1]) });
   const simple = parseSimpleCronExpression(schedule.expression);
   if (!simple) return schedule.expression;
   if (simple.mode === 'daily') return t('cron.create.plan.daily', { defaultValue: 'Daily at {{time}}', time: simple.time });

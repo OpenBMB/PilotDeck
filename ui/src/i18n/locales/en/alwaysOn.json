@@ -283,17 +283,10 @@
     },
     "execution": {
       "title": "Execution and results",
-      "context": "Conversation context",
-      "independent": "New conversation for each run",
-      "conversation": "Continue an existing conversation",
-      "persistent": "Reuse a dedicated task conversation",
-      "notifications": "Result notifications",
+      "notifications": "Task reminders",
       "all": "Every run",
       "findings": "New findings or failures",
       "failures": "Failures only",
-      "target": "Target conversation",
-      "chooseConversation": "Choose a conversation.",
-      "queueNotice": "Waits for the conversation to become idle before continuing with its history.",
       "advanced": "Advanced execution settings",
       "permissions": "Permissions",
       "restricted": "Restricted by existing permission rules",
@@ -306,8 +299,9 @@
       "defaultModel": "Use project default",
       "permissionNotice": "Tasks cannot ask for approval while unattended. Actions outside the selected permissions need your attention.",
       "fullAccessNotice": "Full Access permits background file changes and commands without asking.",
-      "worktreeNotice": "Requires a Git repository. Local uncommitted changes are excluded; the resulting worktree is kept for review.",
-      "resultsNotice": "Every result is saved here. Tasks created in chat can also report back to their source conversation."
+      "worktreeNotice": "Requires Git. A dedicated worktree starts from committed HEAD and is reused by this task; local uncommitted changes are excluded.",
+      "resultsNotice": "Every task has its own conversation. Recurring runs continue in the same task context. Results stay in Scheduled Tasks.",
+      "taskContext": "Task context"
     },
     "history": {
       "title": "Run history",
@@ -377,7 +371,9 @@
       "finishedAt": "Finished",
       "firstRun": "Your first result is on its way",
       "noSavedRuns": "No saved results yet",
-      "sourceConversation": "Source conversation"
+      "sourceConversation": "Source conversation",
+      "openTask": "Open task",
+      "everyMinute": "Every minute"
     },
     "detailsFor": "View task details: {{name}}"
   },

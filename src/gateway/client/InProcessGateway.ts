@@ -1,3 +1,4 @@
+import { readCronMessageHistory } from "../../cron/runtime/CronMessageHistory.js";
 import { ActiveTimeline } from "../stream/ActiveTimeline.js";
 import { FileInputProgress } from "../stream/FileInputProgress.js";
 import { withRequestContext } from "../../network/requestContext.js";
@@ -1106,7 +1107,11 @@ export class InProcessGateway implements Gateway {
     // reread so a just-settled turn cannot disappear between history and live.
     for (let attempt = 0; attempt < 3; attempt++) {
       const epoch = this.activeTurnReplays.get(input.sessionKey);
-      const history = await this.options.readSessionMessages(input);
+      const taskId = input.sessionKey.startsWith("cron:") ? input.sessionKey.split(":")[1] : undefined;
+      const catalog = taskId && this.options.cron
+        ? await this.options.cron.listTasks({ taskId, projectKey: input.projectKey, includeHistory: true, limit: 200 }) : undefined;
+      const history = catalog ? await readCronMessageHistory(input, catalog, this.options.readSessionMessages)
+        : await this.options.readSessionMessages(input);
       if (epoch !== this.activeTurnReplays.get(input.sessionKey)) continue;
       const stream = await this.getActiveTurnSnapshot({ sessionKey: input.sessionKey });
       return { ...history, stream };

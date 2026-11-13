@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { GatewayEvent } from "../../gateway/index.js";
-import type { CronRunRecord, CronTask } from "../protocol/types.js";
+import type { CronRunRecord, CronTask, CronTaskChange } from "../protocol/types.js";
 import { cronRunEventsPath, type CronPaths } from "./CronPaths.js";
 import { isValidCronExpression } from "../runtime/CronSchedule.js";
 import { isValidCronTimezone } from "../CronTimezone.js";
@@ -15,7 +15,20 @@ type CronTaskFile = {
 const taskFileMutationTails = new Map<string, Promise<void>>();
 
 export class CronTaskStore {
+  private readonly listeners = new Set<(change: CronTaskChange) => void>();
   constructor(private readonly paths: CronPaths) {}
+
+  subscribe(listener: (change: CronTaskChange) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private changed(taskId: string, task?: CronTask, projectKey?: string): void {
+    for (const listener of this.listeners) {
+      try { listener({ taskId, task, projectKey: task?.projectKey ?? projectKey }); }
+      catch { /* A failed observer must not undo a durable mutation. */ }
+    }
+  }
 
   async listTasks(): Promise<CronTask[]> {
     return (await this.readTaskFile()).tasks;
@@ -35,6 +48,7 @@ export class CronTaskStore {
         nextTasks.push(task);
       }
       await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(nextTasks) });
+      this.changed(task.taskId, task);
     });
   }
 
@@ -47,6 +61,7 @@ export class CronTaskStore {
       const nextTasks = [...file.tasks];
       nextTasks[index] = task;
       await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(nextTasks) });
+      this.changed(task.taskId, task);
       return true;
     });
   }
@@ -62,6 +77,8 @@ export class CronTaskStore {
         return updated ? [updated] : [];
       });
       await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(tasks) });
+      const previous = file.tasks.find(task => task.taskId === taskId);
+      if (JSON.stringify(previous) !== JSON.stringify(updated)) this.changed(taskId, updated, previous?.projectKey);
       return updated;
     });
   }
@@ -73,6 +90,7 @@ export class CronTaskStore {
         return false;
       }
       await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(tasks) });
+      this.changed(taskId, undefined, file.tasks.find(task => task.taskId === taskId)?.projectKey);
       return true;
     });
   }

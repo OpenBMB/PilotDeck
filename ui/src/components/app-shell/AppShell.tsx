@@ -100,8 +100,14 @@ function AppShellContent() {
   const isDedicatedRoute = dedicatedTab !== null || isSettingsRoute;
   const projectNameParam =
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
-  const sessionId =
+  const requestedSessionId =
     matchProjectChat?.params.sessionId ?? matchLegacySession?.params.sessionId ?? undefined;
+  const sessionId = requestedSessionId?.startsWith('cron:') ? undefined : requestedSessionId;
+  useEffect(() => {
+    if (requestedSessionId?.startsWith('cron:')) {
+      navigate(`${SCHEDULED_TASKS_PATH}?taskId=${encodeURIComponent(requestedSessionId.split(':')[1])}`, { replace: true });
+    }
+  }, [requestedSessionId, navigate]);
   const { t } = useTranslation('common');
 
   const { isMobile } = useDeviceSettings({ trackPWA: false });

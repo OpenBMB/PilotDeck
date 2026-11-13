@@ -28,7 +28,7 @@ const deferred = () => {
   return { promise, resolve };
 };
 const urls = (part: string) => vi.mocked(authenticatedFetch).mock.calls.map(([url]) => String(url)).filter(url => url.includes(part));
-type Props = { project: Project | null; session: ProjectSession | null; externalMessageUpdate?: number;
+type Props = { processingSessions?: Set<string>; eventDriven?: boolean; project: Project | null; session: ProjectSession | null; externalMessageUpdate?: number;
   externalMessageUpdateTarget?: { projectName: string; sessionId: string; relativeTranscriptPath?: string } | null };
 const initial: Props = { project, session: sessionA, externalMessageUpdate: 0 };
 function mount(strict = false, initialProps = initial) {
@@ -278,4 +278,36 @@ it('loads history after StrictMode effect replay', async () => {
   await waitFor(() => expect(result.current.view.isLoadingSessionMessages).toBe(false));
   expect(result.current.view.sessionLoadError).toBeNull();
   expect(result.current.view.tokenBudget).toEqual({ used: 20 });
+});
+
+it('reuses cached task history when selecting another task and returning, without losing message state', async () => {
+  vi.mocked(authenticatedFetch).mockImplementation(async url => String(url).includes('/token-usage') ? json({ used: 20 }) : json({ messages: [{ id: String(url), kind: 'text', role: 'assistant', content: 'Saved task output', sessionId: String(url).includes('session-a') ? 'session-a' : 'session-b', timestamp: '2026-01-01T00:00:00Z', provider: 'pilotdeck' }], total: 1, hasMore: false }));
+  const props = { ...initial, eventDriven: true };
+  const { result, rerender } = mount(false, props);
+  await waitFor(() => expect(result.current.view.chatMessages).toHaveLength(1));
+  rerender({ ...props, session: sessionB });
+  await waitFor(() => expect(result.current.view.currentSessionId).toBe('session-b'));
+  await waitFor(() => expect(result.current.view.isLoadingSessionMessages).toBe(false));
+  const count = urls('/messages').length;
+  rerender(props);
+  await act(async () => {});
+  expect(result.current.view.chatMessages).toHaveLength(1);
+  expect(result.current.view.isLoadingSessionMessages).toBe(false);
+  expect(urls('/messages')).toHaveLength(count);
+});
+
+
+it('does not resurrect a completed task while its terminal catalog event is still in flight', async () => {
+  const props = { ...initial, eventDriven: true, processingSessions: new Set([sessionA.id]) };
+  const { result, rerender } = mount(false, props);
+  await waitFor(() => expect(result.current.view.isLoadingSessionMessages).toBe(false));
+  expect(result.current.view.isLoading).toBe(true);
+  act(() => result.current.view.setIsLoading(false));
+  expect(result.current.view.isLoading).toBe(false);
+  rerender({ ...props, processingSessions: new Set<string>() });
+  expect(result.current.view.sessionRuntimeState).toBe('inactive');
+  expect(result.current.view.canAbortSession).toBe(false);
+  rerender({ ...props, processingSessions: new Set([sessionA.id]) });
+  expect(result.current.view.isLoading).toBe(true);
+  expect(urls('/session-a/messages')).toHaveLength(1);
 });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ListFilter, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { ListFilter, Plus, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { CronJobOverview, Project } from '../../../types/app';
 import CronTaskActions from './CronTaskActions';
@@ -39,10 +39,10 @@ export default function CronTaskSidebar({ jobs, projects, selectedId, loading, q
         <summary className={`cron-icon-button${filter !== 'all' ? ' selected' : ''}`} aria-label={t('cron.filter', { defaultValue: 'Task status' })}><ListFilter size={16} /></summary>
         <div role="menu" className="cron-action-menu">{['all', 'active', 'paused', 'attention', 'ended'].map(value => <button type="button" key={value} role="menuitemradio" aria-checked={filter === value} onClick={() => { setFilter(value); if (filterMenu.current) filterMenu.current.open = false; }}>{t(`cron.filters.${value}`, { defaultValue: labels[value] })}</button>)}</div>
       </details>
-      <button type="button" className="cron-icon-button" disabled={loading} onClick={() => void onRefresh()} aria-label={t('actions.refresh', { defaultValue: 'Refresh' })}><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
+      <button type="button" className="cron-icon-button" aria-label={t('cron.workspace.newTask', { defaultValue: 'New task' })} onClick={() => { if (filterMenu.current) filterMenu.current.open = false; onCreate(); }}><Plus size={16} /></button>
     </div>
     {(searchOpen || query) && <div className="cron-search"><input ref={search} aria-label={t('cron.search', { defaultValue: 'Search tasks' })} placeholder={t('cron.search', { defaultValue: 'Search tasks' })} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') { setQuery(''); setSearchOpen(false); } }} />{query && <button type="button" className="cron-icon-button" aria-label={t('cron.workspace.clearSearch', { defaultValue: 'Clear search' })} onClick={() => setQuery('')}><X size={13} /></button>}</div>}
-    <button type="button" className="cron-new-task" onClick={() => { if (filterMenu.current) filterMenu.current.open = false; onCreate(); }}><Plus size={16} />{t('cron.workspace.newTask', { defaultValue: 'New task' })}</button>
+
     <div className="cron-task-list dock-panel-scrollbar">
       {loading && !jobs.length ? <p className="cron-list-empty">{t('cron.loading', { defaultValue: 'Loading cron jobs...' })}</p>
         : !filtered.length ? <p className="cron-list-empty">{t(jobs.length ? 'cron.workspace.noMatches' : 'cron.workspace.noTasks', { defaultValue: jobs.length ? 'No matching tasks.' : 'Your scheduled tasks will appear here.' })}</p> : groups.map(group => group.items.length > 0 && <div key={group.key} className="cron-task-group"><h3>{t(`cron.filters.${group.key}`, { defaultValue: labels[group.key] })}</h3>
