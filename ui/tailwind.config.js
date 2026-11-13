@@ -4,6 +4,9 @@ export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+    // Bundled UI plugins (ui/plugins/*/src + staffdeck-shared vendor) render into
+    // the host document, so their utility classes must survive Tailwind's purge.
+    "./plugins/**/*.{js,ts,jsx,tsx}",
     "./node_modules/streamdown/dist/*.js",
     "./node_modules/@streamdown/code/dist/*.js",
     "./node_modules/@streamdown/math/dist/*.js",

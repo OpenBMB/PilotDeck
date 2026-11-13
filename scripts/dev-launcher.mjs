@@ -66,6 +66,41 @@ function readYamlPortConfig() {
   }
 }
 
+/**
+ * Scan the dev profile for modules that declare a remote endpoint and a
+ * credentialEnv. If the corresponding env var isn't already exported by the
+ * caller, inject a deterministic dev default so `npm run dev` works out of
+ * the box without requiring the developer to pre-export tokens.
+ *
+ * Production deployments never go through dev-launcher, so the hardcoded
+ * defaults below are safe.
+ */
+function readModuleCredentialDefaults() {
+  const home = process.env.PILOT_HOME || join(homedir(), '.pilotdeck');
+  const configPath = launchConfigPath || join(home, 'pilotdeck.yaml');
+  const injected = {};
+  try {
+    const config = parseYaml(readFileSync(configPath, 'utf8'));
+    const modules = config?.modules;
+    if (!modules) return injected;
+    const defaults = {
+      sop: { env: 'SOP_V4_HOST_TOKEN', value: 'dev-sop-v4-host-token' },
+      knowledge: { env: 'PILOTDECK_KNOWLEDGE_TOKEN', value: 'dev-knowledge-credential' },
+    };
+    for (const [name, meta] of Object.entries(defaults)) {
+      const mod = modules[name];
+      if (!mod?.enabled || !mod.endpoint) continue;
+      const envName = mod.credentialEnv || meta.env;
+      if (!process.env[envName]) {
+        injected[envName] = meta.value;
+      }
+    }
+  } catch {
+    return {};
+  }
+  return injected;
+}
+
 const yamlRuntime = readYamlPortConfig();
 const SERVER_PORT_BASE = parsePort(process.env.SERVER_PORT_BASE, yamlRuntime.serverPort ?? 3001);
 const GATEWAY_PORT_BASE = parsePort(process.env.PILOTDECK_GATEWAY_PORT_BASE, 18789);
@@ -141,6 +176,7 @@ async function main() {
 
   const env = {
     ...process.env,
+    ...readModuleCredentialDefaults(),
     SERVER_PORT: String(server.port),
     PILOTDECK_GATEWAY_PORT: String(gateway.port),
     PILOTDECK_GATEWAY_URL:

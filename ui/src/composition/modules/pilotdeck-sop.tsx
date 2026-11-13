@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FrontendModule, SurfaceProps } from '../contracts';
 import { authenticatedFetch } from '../../utils/api';
-import { SkillFlow } from './staffdeck/vendor/DistillPage';
-import type { SkillCard } from './staffdeck/vendor/DistillPageHost';
-import SopVersionDetailDialog from './staffdeck/vendor/SopVersionDetailDialog';
-import FormalSopApprovalInbox from './staffdeck/vendor/FormalSopApprovalInbox';
+import { SkillFlow } from '../../../plugins/staffdeck-sop/src/vendor/DistillPage';
+import type { SkillCard } from '../../../plugins/staffdeck-sop/src/vendor/DistillPageHost';
+import SopVersionDetailDialog from '../../../plugins/staffdeck-sop/src/vendor/SopVersionDetailDialog';
+import FormalSopApprovalInbox from '../../../plugins/staffdeck-sop/src/vendor/FormalSopApprovalInbox';
 import { createPublicApprovalClient, type ApprovalStatus, type PinnedApproval } from './staffdeck/public-approval-client';
 import StaffDeckLocaleBoundary from './staffdeck/StaffDeckLocaleBoundary';
 

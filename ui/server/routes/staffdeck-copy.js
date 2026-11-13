@@ -1,4 +1,5 @@
 import { bindModuleRequestAbort, moduleUpstreamSignal } from '../module-request-abort.js';
+import { delegateToPluginRoute } from '../utils/plugin-route-delegate.js';
 import express from 'express';
 
 const CONTRACT = 'staffdeck.enterprise-copy/v1';
@@ -132,7 +133,11 @@ export function createStaffDeckCopyRouter({ loadConfig }) {
   route.post('/call', async (req, res) => {
     try {
       const operation = requiredText(req.body?.operation);
-      if (!OPERATIONS.has(operation)) throw new CopyError(400, 'COPY_OPERATION_UNSUPPORTED', 'Unsupported StaffDeck copy operation.');
+      if (!OPERATIONS.has(operation)) {
+        // A plugin claiming this route may implement operations beyond the core set.
+        if (await delegateToPluginRoute(req, res)) return;
+        throw new CopyError(400, 'COPY_OPERATION_UNSUPPORTED', 'Unsupported StaffDeck copy operation.');
+      }
       const binding = { ...bindingFor(loadConfig(req), req.user, operation),
         signal: req.moduleRequestSignal ?? bindModuleRequestAbort(req, res) };
       const input = req.body?.input && typeof req.body.input === 'object' && !Array.isArray(req.body.input) ? req.body.input : {};
@@ -175,6 +180,11 @@ export function createStaffDeckCopyRouter({ loadConfig }) {
         });
       return res.json({ result });
     } catch (error) {
+      // No StaffDeck backend configured → let an enabled plugin claiming this
+      // route (plugin.json serverRoutes) serve a local fallback instead.
+      if (error?.code === 'COPY_UNAVAILABLE' || error?.code === 'COPY_IDENTITY_UNAVAILABLE') {
+        if (await delegateToPluginRoute(req, res)) return;
+      }
       const status = Number.isInteger(error?.status) ? error.status : 502;
       return res.status(status).json({ error: { code: error?.code || 'COPY_UPSTREAM_UNAVAILABLE', message: error instanceof Error ? error.message : String(error) } });
     }

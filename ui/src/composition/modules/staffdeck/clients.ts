@@ -1,7 +1,7 @@
 import { authenticatedFetch } from '../../../utils/api';
 import i18n from 'i18next';
 
-import { ApiError } from './vendor/DistillPageHost';
+import { ApiError } from '../../../../plugins/staffdeck-sop/src/vendor/DistillPageHost';
 
 export type ModuleRequestOptions = { signal?: AbortSignal; onManagementEnvelope?: (envelope: { result: unknown; runtime?: unknown }) => void };
 

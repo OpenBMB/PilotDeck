@@ -13,6 +13,7 @@ import { createStaffDeckPublishRoute } from '../staffdeck-publish-route.js';
 import { createPublicCapabilityClient, decodePublicJobEvents, planPublicOperation, PUBLIC_APPROVED_OPERATIONS, PUBLIC_OPERATION_CONTRACTS } from '../staffdeck-public-capabilities.mjs';
 import { createPilotDeckHostCapabilityGateway, encodeHostCapabilityStream, isHostCapabilityStreamBody, PILOTDECK_HOST_UI_OPERATIONS } from '../pilotdeck-host-capability-gateway.mjs';
 import { createStaffDeckCopyRouter, verifyStaffDeckKnowledgeBinding } from './staffdeck-copy.js';
+import { delegateToPluginRoute } from '../utils/plugin-route-delegate.js';
 import { createKnowledgeCoreRouter } from './knowledge-core.js';
 import { createKnowledgeCapabilitiesRouter } from './knowledge-capabilities.js';
 import { knowledgeCoreRequest, knowledgeCoreCapabilities } from '../../../src/composition/knowledgeCoreOperations.mjs';
@@ -151,6 +152,12 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       return res.json(result.body);
     } catch (error) {
       if (res.headersSent || res.destroyed || req.moduleRequestSignal.aborted) { if (!res.destroyed) res.destroy(); return; }
+      // Not configured for a remote StaffDeck backend → an enabled plugin
+      // claiming this route may serve a local fallback (list_tools etc.).
+      const fallbackCodes = new Set(['PILOTDECK_HOST_USER_FORBIDDEN', 'PILOTDECK_HOST_CAPABILITY_UNAVAILABLE', 'PILOTDECK_HOST_OPERATION_UNSUPPORTED']);
+      if (error?.code && fallbackCodes.has(error.code) && !callback) {
+        if (await delegateToPluginRoute(req, res)) return;
+      }
       return res.status(error?.status || 502).json({ error: { code: error?.code || 'PILOTDECK_HOST_CALL_FAILED', message: error.message } });
     }
   };
@@ -347,6 +354,11 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
       return res.json({ enabled: true, methods: management.methods, agentId: owner.agentId,
         tenantId: owner.tenantId, actorUserId: owner.actorUserId, runtime });
     } catch (error) {
+      // Not configured for a remote StaffDeck backend → an enabled plugin
+      // claiming this route may serve a local fallback.
+      if (error?.code === 'SOP_MANAGEMENT_UNAVAILABLE') {
+        if (await delegateToPluginRoute(req, res)) return;
+      }
       return res.status(Number.isInteger(error?.status) ? error.status : 502).json({ error: { code: error?.code || 'SOP_MANAGEMENT_UNAVAILABLE', message: error instanceof Error ? error.message : String(error) } });
     }
   });
@@ -370,6 +382,11 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
         : await publish();
       return res.status(result.status).json({ result: result.body, ...(result.runtime ? { runtime: result.runtime } : {}) });
     } catch (error) {
+      // Not configured for a remote StaffDeck backend → an enabled plugin
+      // claiming this route may serve a local fallback.
+      if (error?.code === 'SOP_MANAGEMENT_UNAVAILABLE') {
+        if (await delegateToPluginRoute(req, res)) return;
+      }
       const status = Number.isInteger(error?.status) ? error.status : 502;
       return res.status(status).json({ error: { code: error?.code || 'SOP_MANAGEMENT_CALL_FAILED', message: error instanceof Error ? error.message : String(error) } });
     }
@@ -490,6 +507,11 @@ export function createModuleRuntimeRouter({ loadConfig, getGateway = getPilotDec
         }
         return res.status(upstream.status).end(upstream.rawBody ??
           (typeof upstream.body === 'string' ? upstream.body : JSON.stringify(upstream.body)));
+      }
+      // Not configured for a remote StaffDeck backend → an enabled plugin
+      // claiming this route may serve a local fallback.
+      if (error?.code === 'SOP_MANAGEMENT_UNAVAILABLE') {
+        if (await delegateToPluginRoute(req, res)) return;
       }
       return res.status(Number.isInteger(error?.status) ? error.status : 502).json({
         error: { code: error?.code || 'PUBLIC_SDK_CALL_FAILED', message: error instanceof Error ? error.message : String(error) },

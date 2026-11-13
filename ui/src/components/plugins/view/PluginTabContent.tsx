@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { authenticatedFetch } from '../../../utils/api';
 import { usePlugins } from '../../../contexts/PluginsContext';
+import { useTranslation } from 'react-i18next';
 import type { Project, ProjectSession } from '../../../types/app';
 
 type PluginTabContentProps = {
@@ -12,17 +13,20 @@ type PluginTabContentProps = {
 
 type PluginContext = {
   theme: 'dark' | 'light';
+  language: 'zh-CN' | 'en';
   project: { name: string; path: string } | null;
   session: { id: string; title: string } | null;
 };
 
 function buildContext(
   isDarkMode: boolean,
+  isZh: boolean,
   selectedProject: Project | null,
   selectedSession: ProjectSession | null,
 ): PluginContext {
   return {
     theme: isDarkMode ? 'dark' : 'light',
+    language: isZh ? 'zh-CN' : 'en',
     project: selectedProject
       ? {
         name: selectedProject.name,
@@ -45,10 +49,12 @@ export default function PluginTabContent({
 }: PluginTabContentProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { isDarkMode } = useTheme();
+  const { i18n } = useTranslation();
   const { plugins } = usePlugins();
+  const isZh = Boolean(i18n.resolvedLanguage?.startsWith('zh'));
 
   // Stable refs so effects don't need context values in their dep arrays
-  const contextRef = useRef<PluginContext>(buildContext(isDarkMode, selectedProject, selectedSession));
+  const contextRef = useRef<PluginContext>(buildContext(isDarkMode, isZh, selectedProject, selectedSession));
   const contextCallbacksRef = useRef<Set<(ctx: PluginContext) => void>>(new Set());
 
   const moduleRef = useRef<any>(null);
@@ -57,13 +63,13 @@ export default function PluginTabContent({
 
   // Keep contextRef current and notify the mounted plugin on every context change
   useEffect(() => {
-    const ctx = buildContext(isDarkMode, selectedProject, selectedSession);
+    const ctx = buildContext(isDarkMode, isZh, selectedProject, selectedSession);
     contextRef.current = ctx;
 
     for (const cb of contextCallbacksRef.current) {
       try { cb(ctx); } catch { /* plugin error — ignore */ }
     }
-  }, [isDarkMode, selectedProject, selectedSession]);
+  }, [isDarkMode, isZh, selectedProject, selectedSession]);
 
   useEffect(() => {
     if (!containerRef.current || !plugin?.enabled) return;

@@ -1,0 +1,17 @@
+{
+  "name": "staffdeck-sop",
+  "version": "0.1.0",
+  "description": "StaffDeck SOP 管理页，作为 UI 插件接入 PilotDeck，页面外观与 StaffDeck 保持一致。",
+  "ui": {
+    "entry": "index.js",
+    "displayName": "SOP",
+    "icon": "Workflow"
+  },
+  "server": "server.js",
+  "serverRoutes": [
+    "/api/modules/sop/management",
+    "/api/modules/staffdeck-sdk",
+    "/api/modules/staffdeck-copy",
+    "/api/modules/host-capabilities"
+  ]
+}

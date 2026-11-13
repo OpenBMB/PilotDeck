@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from './vendor/DistillPageHost';
+﻿import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../../../plugins/staffdeck-sop/src/vendor/DistillPageHost';
 import { staffDeckCopyClient, staffDeckKnowledgeClient, staffDeckSopManagementClient } from './clients';
 import { staffDeckNotify } from './host-notify';
 import i18n from 'i18next';

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { callPublicHost } from './public-host-mapping';
-import { createFixedTargetContext } from './vendor/copy-scope';
-import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from './vendor/dialog-primitives';
+import { createFixedTargetContext } from '../../../../plugins/staffdeck-shared/vendor/copy-scope';
+import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from '../../../../plugins/staffdeck-shared/vendor/dialog-primitives';
 
 export type CitationSource = { document: Record<string, unknown>; chunks: Record<string, unknown>[] };
 /** Read only exact locators through the authenticated selected-scope public facade. */
