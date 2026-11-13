@@ -57,10 +57,6 @@ export default function CronExecutionFields({ value, onChange, project }: {
           </select>
         </label>
       </div>
-      <p className="text-xs text-neutral-500">{t('cron.execution.resultsNotice')}</p>
-      <p className="text-xs text-neutral-500">{t('cron.execution.permissionNotice')}</p>
-      {value.mode === 'bypassPermissions' && <p className="text-xs text-amber-600">{t('cron.execution.fullAccessNotice')}</p>}
-      {value.workspaceMode === 'worktree' && <p className="text-xs text-neutral-500">{t('cron.execution.worktreeNotice')}</p>}
       {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}
     </div>
   </details>;

@@ -55,6 +55,7 @@ export type CreateCronRuntimeOptions = {
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
   onTaskChange?: (change: CronTaskChange) => void;
+  generateTaskTitle?: (task: CronTask, signal: AbortSignal) => Promise<string | null>;
   onRunFinished?: () => void;
 };
 
@@ -69,6 +70,8 @@ export class CronRuntime {
   readonly paths: CronPaths;
 
   private readonly store: CronTaskStore;
+  private readonly generateTaskTitle?: CreateCronRuntimeOptions["generateTaskTitle"];
+  private readonly titleJobs = new Map<string, AbortController>();
   private readonly now: () => Date;
   private readonly uuid: () => string;
   private readonly logger: CronRuntimeLogger;
@@ -87,6 +90,7 @@ export class CronRuntime {
 
   constructor(options: CreateCronRuntimeOptions) {
     this.config = options.config;
+    this.generateTaskTitle = options.generateTaskTitle;
     this.projectKey = resolve(options.projectKey);
     this.paths = resolveCronPaths({ pilotHome: options.pilotHome, projectKey: this.projectKey });
     this.store = options.store ?? new CronTaskStore(this.paths);
@@ -194,6 +198,8 @@ export class CronRuntime {
   }
 
   async stop(): Promise<void> {
+    for (const controller of this.titleJobs.values()) controller.abort();
+    this.titleJobs.clear();
     await this.scheduler?.stop();
     if (this.gateway) {
       const activeRuns = [...this.activeRuns.values()];
@@ -285,7 +291,31 @@ export class CronRuntime {
       },
     });
     this.scheduler?.poke();
+    if (!input.name) this.scheduleTitle(task);
     return { task, nextRuns: previewCronSchedule(schedule, now, timezone) };
+  }
+
+  private scheduleTitle(task: CronTask): void {
+    if (!this.generateTaskTitle) return;
+    this.titleJobs.get(task.taskId)?.abort();
+    const controller = new AbortController();
+    this.titleJobs.set(task.taskId, controller);
+    // Naming is independent of admission and must never delay scheduled work.
+    void (async () => {
+      try {
+        const title = (await this.generateTaskTitle!(task, controller.signal))?.replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!title || controller.signal.aborted) return;
+        await this.store.updateTask(task.taskId, current => {
+          if (controller.signal.aborted || current.message !== task.message || current.name !== task.name) return current;
+          // A derived title is metadata: do not invalidate an open schedule edit.
+          return { ...current, name: title, updatedAt: this.now().toISOString() };
+        });
+      } catch (error) {
+        if (!controller.signal.aborted) this.logger.warn("cron task title generation failed", { taskId: task.taskId });
+      } finally {
+        if (this.titleJobs.get(task.taskId) === controller) this.titleJobs.delete(task.taskId);
+      }
+    })();
   }
 
   async listTasks(input: CronListInput = {}): Promise<CronListResult> {
@@ -309,6 +339,7 @@ export class CronRuntime {
     const now = this.now();
     const schedule = normalizeSchedule(input, this.config.timezone, now);
     const timezone = scheduleTimezone(schedule, input.timezone ?? this.config.timezone);
+    let messageChanged = false;
     let reason: Extract<CronUpdateResult, { updated: false }>["reason"] | undefined;
     const updated = await this.store.updateTask(input.taskId, (current) => {
       if (resolve(current.projectKey ?? this.projectKey) !== resolve(input.projectKey)) { reason = "not_found"; return current; }
@@ -329,6 +360,7 @@ export class CronRuntime {
           throw new Error("Cron schedule must have a future run time before it can be resumed.");
         }
       }
+      messageChanged = current.message !== input.message.trim();
       const executionMode = "persistent";
       const workspaceMode = input.workspaceMode ?? current.workspaceMode;
       return { ...current, name: taskName(input.name ?? current.name, input.message), message: input.message.trim(),
@@ -344,6 +376,8 @@ export class CronRuntime {
     if (!updated) return { updated: false, reason: "not_found" };
     if (reason) return { updated: false, reason };
     this.scheduler?.poke();
+    if (input.name !== undefined) this.titleJobs.get(updated.taskId)?.abort();
+    else if (messageChanged) this.scheduleTitle(updated);
     return { updated: true, task: updated };
   }
 
@@ -355,6 +389,8 @@ export class CronRuntime {
     }
     const deleted = await this.store.deleteTask(input.taskId);
     if (deleted) {
+      this.titleJobs.get(input.taskId)?.abort();
+      this.titleJobs.delete(input.taskId);
       await this.releaseTaskSessionById(input.taskId);
     }
     this.scheduler?.poke();

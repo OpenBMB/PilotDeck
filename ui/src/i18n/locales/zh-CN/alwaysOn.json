@@ -181,7 +181,7 @@
         "yearly": "每年",
         "interval": "固定间隔",
         "monthlyWeekday": "每月第几个星期几",
-        "custom": "自定义 Cron"
+        "existing": "现有安排"
       },
       "options": {
         "everyDay": "每天"
@@ -226,7 +226,7 @@
         "monthlyWeekday": "每月指定星期几的 {{time}}"
       },
       "validation": {
-        "messageRequired": "请填写提示词。",
+        "messageRequired": "请填写任务说明。",
         "workspaceRequired": "请选择工作区。",
         "dateRequired": "请选择日期。",
         "timeRequired": "请选择时间。",

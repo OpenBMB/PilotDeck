@@ -71,10 +71,14 @@ cannot consume ordinary session-status replies or trigger project-list refreshes
 Task transcripts are excluded from ordinary lists, counts and search, including
 legacy per-run transcripts; direct task history reads remain supported.
 
-Create/edit use a modal with basic instructions, workspace and timing fields.
-Advanced expressions, permissions, model and task-workspace settings expand on
-demand. The shared calendar/clock picker owns Escape before the editor. Rejected
-saves retain input, and closing the editor restores focus to its trigger.
+Create/edit use a modal with task instructions, workspace, timing controls and
+an IANA timezone selector. Names are generated asynchronously with the existing
+model title generator; naming failure retains the instruction-based fallback
+and never delays execution. Description changes regenerate names, while explicit
+Agent/API names remain supported. The editor offers standard recurrence controls
+and preserves existing complex schedules without exposing expression inputs.
+Permissions, model and task-workspace settings expand on demand. The shared
+calendar/clock picker owns Escape before the editor. Rejected saves retain input, and closing the editor restores focus to its trigger.
 
 ## Task and execution lifecycle
 

@@ -94,6 +94,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           deferredBroadcast?.("always-on:turn-event", { sessionKey, channelKey, event });
         },
         onTaskChange: (change) => deferredBroadcast?.("cron:task-changed", change),
+        generateTaskTitle: (task, signal) => generateTaskTitle(task, signal),
       });
     }
 
@@ -101,7 +102,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     cron = buildCron(snapshot.config.cron);
 
     const {
-      gateway, configStore, dispose: disposeGateway,
+      gateway, configStore, generateTaskTitle, dispose: disposeGateway,
       bindServer, isProjectBusy, updateSubsystems,
     } = createLocalGateway({
       projectRoot,

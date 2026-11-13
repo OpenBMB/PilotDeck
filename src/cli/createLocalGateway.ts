@@ -1,3 +1,4 @@
+import type { CronTask } from "../cron/protocol/types.js";
 import { VideoStore } from "../tool/builtin/videos/VideoStore.js";
 import { PythonRuntimeManager, withPythonMcpEnvironment, type PythonRuntimeSnapshot } from '../runtime/pythonRuntime.js';
 import { getGitRuntimeStatus } from '../runtime/gitRuntime.js';
@@ -174,6 +175,7 @@ export type SubsystemUpdate = {
 };
 
 export type CreateLocalGatewayResult = {
+  generateTaskTitle: (task: CronTask, signal: AbortSignal) => Promise<string | null>;
   gateway: Gateway;
   configStore: PilotConfigStore;
   registry: ProjectRuntimeRegistry;
@@ -707,6 +709,12 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     gateway,
     configStore,
     registry,
+    generateTaskTitle: async (task, signal) => {
+      const runtime = registry.resolve(task.projectKey);
+      const generate = createSessionTitleGenerator({ modelRuntime: runtime.model, agentModel: runtime.snapshot.config.agent.model });
+      return generate({ text: task.message, sessionId: task.sessionKey, turnId: `cron-title:${task.taskId}`,
+        signal, model: task.modelSelection });
+    },
     dispose: () => {
       registry.shutdown();
       router?.shutdown();

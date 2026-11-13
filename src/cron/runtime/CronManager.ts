@@ -28,7 +28,7 @@ import type {
 import { resolveCronPaths } from "../storage/CronPaths.js";
 import { createCronTools } from "../tool/createCronTools.js";
 import { migrateCronStores } from "../storage/CronStoreMigration.js";
-import { CronRuntime, type CronRuntimeLogger } from "./CronRuntime.js";
+import { CronRuntime, type CronRuntimeLogger, type CreateCronRuntimeOptions } from "./CronRuntime.js";
 import type { CronTurnEventHandler } from "./CronFire.js";
 
 export type CreateCronManagerOptions = {
@@ -42,6 +42,7 @@ export type CreateCronManagerOptions = {
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
   onTaskChange?: (change: CronTaskChange) => void;
+  generateTaskTitle?: CreateCronRuntimeOptions["generateTaskTitle"];
 };
 
 export class CronManager {
@@ -212,6 +213,7 @@ export class CronManager {
       onResultDelivery: this.options.onResultDelivery,
       onTurnEvent: this.options.onTurnEvent,
       onTaskChange: this.options.onTaskChange,
+      generateTaskTitle: this.options.generateTaskTitle,
       activeRunCount: () => this.activeRunCount(),
       onRunFinished: () => { for (const loaded of this.runtimes.values()) loaded.poke(); },
       skipToolCreation: true,

@@ -181,7 +181,7 @@
         "yearly": "Yearly",
         "interval": "Fixed interval",
         "monthlyWeekday": "Weekday of month",
-        "custom": "Custom Cron"
+        "existing": "Existing schedule"
       },
       "options": {
         "everyDay": "Every day"

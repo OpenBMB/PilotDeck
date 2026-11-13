@@ -12,7 +12,7 @@ import type { CronFire } from "../../src/cron/runtime/CronFire.js";
 import { createCronManager } from "../../src/cron/runtime/CronManager.js";
 import type { PilotDeckToolRuntimeContext } from "../../src/tool/index.js";
 
-async function fixture(options: { submit?: (input: GatewaySubmitTurnInput) => AsyncIterable<GatewayEvent>; delivery?: CronResultDeliveryHandler; max?: number } = {}) {
+async function fixture(options: { submit?: (input: GatewaySubmitTurnInput) => AsyncIterable<GatewayEvent>; delivery?: CronResultDeliveryHandler; max?: number; title?: (task: CronTask, signal: AbortSignal) => Promise<string | null> } = {}) {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-cron-lifecycle-"));
   const home = join(root, "state");
   const project = join(root, "workspace");
@@ -31,7 +31,7 @@ async function fixture(options: { submit?: (input: GatewaySubmitTurnInput) => As
     abortTurn: async () => undefined,
   } as unknown as Gateway;
   const runtime = createCronRuntime({ config: { ...defaultCronConfig(), maxConcurrentRuns: options.max ?? 1 }, pilotHome: home,
-    projectKey: project, store, now: () => now, onResultDelivery: options.delivery });
+    projectKey: project, store, now: () => now, onResultDelivery: options.delivery, generateTaskTitle: options.title });
   runtime.bindGateway(gateway);
   const create = (input: Partial<CronCreateInput> = {}) => runtime.createTask({ name: "Daily report", message: "Generate a report",
     schedule: { type: "cron", expression: "0 9 * * *", timezone: "UTC" }, projectKey: project, ...input });
@@ -314,5 +314,48 @@ test("startup migrates legacy task modes without adopting or closing ordinary co
     assert.equal(migrated.targetSessionKey, undefined); assert.equal(f.closed.includes('web:user-history'), false);
     await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
     assert.equal(f.inputs[0].sessionKey, migrated.sessionKey);
+  } finally { await f.close(); }
+});
+
+
+test("model naming is asynchronous metadata and never delays execution or invalidates an open edit", async () => {
+  let resolveTitle!: (title: string | null) => void;
+  let titleInput: CronTask | undefined;
+  const f = await fixture({ title: task => { titleInput = task; return new Promise(resolve => { resolveTitle = resolve; }); } });
+  try {
+    const { task } = await f.create({ name: undefined, message: "Produce a short daily project summary" });
+    assert.equal(titleInput?.message, task.message);
+    assert.equal(task.revision, 0);
+    await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
+    const before = (await f.store.getTask(task.taskId))!;
+    const changed = new Promise<void>(resolve => { const unsubscribe = f.store.subscribe(change => {
+      if (change.task?.name === 'Daily project summary') { unsubscribe(); resolve(); }
+    }); });
+    resolveTitle('Daily project summary'); await changed;
+    const named = (await f.store.getTask(task.taskId))!;
+    assert.equal(named.name, 'Daily project summary'); assert.equal(named.revision, before.revision);
+    assert.equal(named.lastRun?.output, 'Synthetic report');
+    const edited = await f.runtime.updateTask({ taskId: task.taskId, projectKey: f.project, expectedRevision: before.revision!,
+      message: named.message, schedule: named.schedule, enabled: false });
+    assert.equal(edited.updated, true);
+  } finally { await f.close(); }
+});
+
+test("stale model names cannot overwrite newer instructions or recreate deleted tasks", async () => {
+  const requests: { signal: AbortSignal; resolve: (title: string | null) => void }[] = [];
+  const f = await fixture({ title: (_task, signal) => new Promise(resolve => { requests.push({ signal, resolve }); }) });
+  try {
+    const { task } = await f.create({ name: undefined, message: "Old instruction" });
+    const edit = await f.runtime.updateTask({ taskId: task.taskId, projectKey: f.project, expectedRevision: task.revision!,
+      message: 'New instruction', schedule: task.schedule });
+    assert.equal(edit.updated, true); assert.equal(requests.length, 2); assert.equal(requests[0].signal.aborted, true);
+    requests[0].resolve('Stale old title'); await new Promise(resolve => setImmediate(resolve));
+    assert.notEqual((await f.store.getTask(task.taskId))?.name, 'Stale old title');
+    await f.runtime.deleteTask({ taskId: task.taskId });
+    assert.equal(requests[1].signal.aborted, true);
+    requests[1].resolve('Late title'); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(await f.store.getTask(task.taskId), undefined);
+    await f.create({ name: 'Agent-supplied title' });
+    assert.equal(requests.length, 2);
   } finally { await f.close(); }
 });
