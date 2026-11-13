@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CronJobOverview, Project } from '../../../types/app';
 import CronPanel from './CronPanel';
@@ -72,6 +72,88 @@ function setup(jobs: CronJobOverview[], projectEntries: Project[] = [project]) {
 
   return render(<MemoryRouter><CronPanel /></MemoryRouter>);
 }
+
+describe('quiet task revalidation', () => {
+  beforeEach(() => { vi.resetAllMocks(); vi.useFakeTimers({ shouldAdvanceTime: true }); });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.clearAllMocks(); });
+
+  it('keeps the empty state and refresh control stable while a background request is pending', async () => {
+    setup([]);
+    const empty = await screen.findByText('No active cron jobs found.');
+    let resolve!: (response: Response) => void;
+    apiMock.allCronJobs.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
+    await act(() => vi.advanceTimersByTimeAsync(15_000));
+    expect(screen.getByText('No active cron jobs found.')).toBe(empty);
+    expect(screen.queryByText('Loading cron jobs...')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(false);
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+    expect(apiMock.projects).toHaveBeenCalledTimes(1);
+    await act(async () => resolve(jsonResponse({ jobs: [] })));
+    expect(screen.getByText('No active cron jobs found.')).toBe(empty);
+  });
+
+  it('updates changed task status without replacing rows, clearing filters, or moving focus', async () => {
+    const job = makeJob({ name: 'Quiet report' });
+    setup([job]);
+    const title = await screen.findByRole('button', { name: 'View task details: Quiet report' });
+    const search = screen.getByRole('textbox', { name: 'Search tasks' });
+    fireEvent.change(search, { target: { value: 'Quiet' } });
+    search.focus();
+    apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs: [{ ...job, status: 'paused', enabled: false }] }));
+    await act(() => vi.advanceTimersByTimeAsync(15_000));
+    expect(screen.getByRole('button', { name: 'View task details: Quiet report' })).toBe(title);
+    expect(screen.getByText('Paused')).toBeTruthy();
+    expect((search as HTMLInputElement).value).toBe('Quiet');
+    expect(document.activeElement).toBe(search);
+    expect(apiMock.projects).toHaveBeenCalledTimes(1);
+  });
+
+  it('pauses hidden and form polling and quietly catches up when the tab becomes visible', async () => {
+    setup([]);
+    await screen.findByText('No active cron jobs found.');
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue('visible');
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores a superseded background response when a manual refresh has newer data', async () => {
+    const job = makeJob({ name: 'Current task' });
+    setup([job]);
+    await screen.findByText('Current task');
+    let resolve!: (response: Response) => void;
+    apiMock.allCronJobs.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
+    await act(() => vi.advanceTimersByTimeAsync(15_000));
+    apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs: [{ ...job, status: 'paused' }] }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })); });
+    await act(async () => resolve(jsonResponse({ jobs: [job] })));
+    expect(screen.getByText('Paused')).toBeTruthy();
+  });
+
+  it('quietly updates an open history panel when a running task finishes', async () => {
+    const run = { runId: 'run-1', taskId: 'job-1', sessionKey: 'cron:run-1', startedAt: '2026-01-01T01:00:00Z', output: 'Partial result' };
+    const job = makeJob({ name: 'History report', status: 'running', lastRun: run });
+    apiMock.cronDetail.mockResolvedValue(jsonResponse({ task: { message: 'Report' }, runs: [run], nextRuns: [] }));
+    setup([job]);
+    fireEvent.click(await screen.findByRole('button', { name: 'View task details: History report' }));
+    const output = await screen.findByText('Partial result');
+    let resolve!: (response: Response) => void;
+    apiMock.cronDetail.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
+    const finished = { ...run, finishedAt: '2026-01-01T01:00:01Z', outcome: 'completed' as const, output: 'Complete result' };
+    apiMock.allCronJobs.mockResolvedValue(jsonResponse({ jobs: [{ ...job, status: 'completed', lastRun: finished }] }));
+    await act(() => vi.advanceTimersByTimeAsync(15_000));
+    expect(screen.getByText('Partial result')).toBe(output);
+    expect((within(screen.getByRole('dialog')).getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => resolve(jsonResponse({ task: { message: 'Report' }, runs: [finished], nextRuns: [] })));
+    expect(screen.getByText('Complete result')).toBeTruthy();
+  });
+});
 
 describe('scheduled task management', () => {
   afterEach(() => { cleanup(); vi.clearAllMocks(); });

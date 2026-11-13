@@ -1266,18 +1266,27 @@ function injectAgentStatusMessages(
   projectKey?: string,
 ): void {
   const statusMessages: WebMessage[] = [];
+  const deliveredRuns = new Set<string>();
   for (const entry of entries) {
     if (entry.type !== "agent_status_message") continue;
+    const cronResult = entry.event === "cron_result";
+    if (cronResult && typeof entry.detail?.runId === "string") {
+      if (deliveredRuns.has(entry.detail.runId)) continue;
+      deliveredRuns.add(entry.detail.runId);
+    }
     statusMessages.push({
-      id: entry.entryId ?? `${sessionKey}-agent-status-${entry.turnId}-${entry.sequence}`,
+      id: cronResult && typeof entry.detail?.runId === "string" ? `cron-result:${entry.detail.runId}`
+        : entry.entryId ?? `${sessionKey}-agent-status-${entry.turnId}-${entry.sequence}`,
       sessionKey,
       projectKey,
       createdAt: entry.createdAt,
       provider: "pilotdeck",
-      role: entry.kind === "error" ? "error" : "system",
-      kind: entry.kind,
+      role: cronResult ? "assistant" : entry.kind === "error" ? "error" : "system",
+      kind: cronResult ? "text" : entry.kind,
       turnId: entry.turnId,
-      sequence: entry.sequence,
+      // Background deliveries use a separate writer, so its local counter is
+      // unrelated to the source conversation's sequence. Place them by time.
+      sequence: cronResult ? undefined : entry.sequence,
       text: entry.text,
       ...(isI18nDescriptor(entry.detail?.messageI18n) ? { contentI18n: entry.detail.messageI18n } : {}),
       ...(isI18nDescriptor(entry.detail?.userHintI18n) ? { userHintI18n: entry.detail.userHintI18n } : {}),

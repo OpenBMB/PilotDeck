@@ -448,6 +448,7 @@ export default function CronPanel() {
   const [detailJob, setDetailJob] = useState<CronJobOverview | null>(null);
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
+  const request = useRef<AbortController | null>(null);
   const [seenRuns, setSeenRuns] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('pilotdeck-cron-seen-runs') || '{}'); } catch { return {}; }
   });
@@ -467,34 +468,51 @@ export default function CronPanel() {
     if (task) { openedRequestedTask.current = true; setDetailJob(task); }
   }, [jobs]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async (quiet = false) => {
+    if (quiet && request.current) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    if (!quiet) setLoading(true);
     try {
       const [projectsRes, jobsRes] = await Promise.all([
-        api.projects(),
-        api.allCronJobs(),
+        quiet ? Promise.resolve(null) : api.projects({ signal: controller.signal }),
+        api.allCronJobs({ signal: controller.signal }),
       ]);
 
-      if (!projectsRes.ok) throw new Error(`Projects: HTTP ${projectsRes.status}`);
+      if (projectsRes && !projectsRes.ok) throw new Error(`Projects: HTTP ${projectsRes.status}`);
       if (!jobsRes.ok) throw new Error(`Cron jobs: HTTP ${jobsRes.status}`);
 
-      const projectsPayload = await projectsRes.json() as Project[];
+      const projectsPayload = projectsRes ? await projectsRes.json() as Project[] : null;
       const jobsPayload = await jobsRes.json() as CronJobsOverviewResponse;
-      setProjects(Array.isArray(projectsPayload) ? projectsPayload : []);
-      setJobs(Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : []);
+      if (controller.signal.aborted) return;
+      if (projectsRes) {
+        const nextProjects = Array.isArray(projectsPayload) ? projectsPayload : [];
+        setProjects(current => JSON.stringify(current) === JSON.stringify(nextProjects) ? current : nextProjects);
+      }
+      const nextJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
+      setJobs(current => JSON.stringify(current) === JSON.stringify(nextJobs) ? current : nextJobs);
+      setError(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setLoading(false);
+      if (request.current === controller) { request.current = null; setLoading(false); }
     }
   }, []);
+  const refresh = useCallback(() => load(), [load]);
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    return () => { request.current?.abort(); request.current = null; };
   }, [refresh]);
+
+  useEffect(() => {
+    if (subTab !== 'list') return;
+    const poll = () => { if (document.visibilityState !== 'hidden') void load(true); };
+    const timer = window.setInterval(poll, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', poll);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', poll); };
+  }, [load, subTab]);
 
   const grouped = useMemo(() => {
     const projectMap = new Map<string, Project>();
@@ -587,7 +605,7 @@ export default function CronPanel() {
           {['all', 'active', 'paused', 'attention', 'ended'].map(value => <option key={value} value={value}>{t(`cron.filters.${value}`, { defaultValue: value })}</option>)}
         </select>
       </div>}
-      {detailJob && <CronTaskDetails job={detailJob} projects={projects} onClose={() => setDetailJob(null)} onRefresh={refresh} />}
+      {detailJob && <CronTaskDetails key={detailJob.id} job={jobs.find(job => job.id === detailJob.id) || detailJob} projects={projects} onClose={() => setDetailJob(null)} onRefresh={refresh} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {subTab === 'list' ? (
           <CronListView

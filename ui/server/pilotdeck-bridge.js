@@ -1179,6 +1179,11 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 }),
             ];
         case 'agent_status': {
+            if (event.event === 'cron_result' && typeof event.detail?.message === 'string' && typeof event.detail?.runId === 'string') {
+                const resultId = `cron-result:${event.detail.runId}`;
+                return [createNormalizedMessage({ ...base, id: resultId, turnId: resultId, runId: resultId,
+                    kind: 'text', role: 'assistant', content: event.detail.message, isFinal: true })];
+            }
             if (event.event === 'file_input_progress') {
                 const detail = event.detail || {};
                 return [createNormalizedMessage({ ...base, kind: 'agent_activity',

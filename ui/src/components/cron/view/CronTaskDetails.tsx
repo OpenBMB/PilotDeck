@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -15,19 +15,25 @@ export default function CronTaskDetails({ job, projects, onClose, onRefresh }: {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const loaded = useRef(false);
+  const requestId = useRef(0);
   const project = projects.find(project => project.fullPath === job.projectKey || project.name === job.projectKey);
-  const load = useCallback(async (before?: string) => {
-    setLoading(true);
+  const load = useCallback(async (before?: string, quiet = false) => {
+    const id = ++requestId.current;
+    if (!quiet) setLoading(true);
     try {
       const response = await api.cronDetail(job.id, job.projectKey, before);
       const data = await response.json();
+      if (id !== requestId.current) return;
       if (!response.ok) throw new Error(data.error || 'Failed to load task history.');
       setDetail(current => before && current ? { ...data, runs: [...current.runs, ...data.runs] } : data);
       setError('');
-    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
-    finally { setLoading(false); }
+      loaded.current = true;
+    } catch (caught) { if (id === requestId.current) setError(caught instanceof Error ? caught.message : String(caught)); }
+    finally { if (id === requestId.current) setLoading(false); }
   }, [job.id, job.projectKey]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(undefined, loaded.current); }, [load, job.status, job.lastRun?.runId, job.lastRun?.finishedAt, job.lastRun?.deliveryStatus]);
+  useEffect(() => () => { requestId.current += 1; }, []);
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', close);

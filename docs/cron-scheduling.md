@@ -42,6 +42,13 @@ when it finishes, rather than replaying every missed run. New one-time tasks
 more than one minute overdue at server startup become `missed` for manual action.
 The preview endpoint uses the same evaluator as execution.
 
+The task list revalidates quietly while visible, retaining existing rows and
+empty states without showing a loading animation. Unchanged snapshots preserve
+their React state; background checks do not rescan projects or overlap requests.
+Polling pauses while the page is hidden or the task form is open. Returning to
+the page revalidates immediately, and manual refresh remains available. Open
+history panels revalidate when the task's execution or delivery state changes.
+
 The version-3 day matching migration preserves cached pending occurrences and
 applies corrected OR semantics to existing tasks. It does not replay historical
 occurrences missed under the older intersection rule.
@@ -77,8 +84,10 @@ artifacts, outcome and result delivery status.
 Results always remain in the task history. `notificationPolicy` controls source
 result delivery: `all`, `findings`, or `failures`. Independent tasks created in
 Web chat can append a durable result notification to their source conversation;
-conversation-mode output is already in the execution conversation. Delivery
-failures remain separate from execution failures, retry three times, and can be
+conversation-mode output is already in the execution conversation. Notifications
+render as visible assistant messages both live and after reload,
+using the same run-based ID and chronological placement in the source chat.
+Delivery failures remain separate from execution failures, retry three times, and can be
 retried manually without executing the task again. Delivery across independent
 stores/channels is at least once, not exactly once.
 

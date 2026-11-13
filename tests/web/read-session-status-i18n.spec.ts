@@ -7,6 +7,36 @@ import { tmpdir } from "node:os";
 import { createAgentProjectSessionStorage } from "../../src/session/storage/ProjectSessionStorage.js";
 import { readWebSessionMessages } from "../../src/web/server/readSessionMessages.js";
 
+test("scheduled results replay as visible assistant messages with a stable delivery identity", async () => {
+  const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-cron-result-project-"));
+  const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-cron-result-home-"));
+  try {
+    const sessionKey = "web:cron-source";
+    const storage = createAgentProjectSessionStorage({ projectRoot, pilotHome, sessionId: sessionKey });
+    await storage.transcript.recordAcceptedInput(sessionKey, "source-turn", [{ role: "user", content: [{ type: "text", text: "Schedule a report" }] }]);
+    await storage.transcript.recordDurableMessage(sessionKey, "source-turn", { role: "assistant", content: [{ type: "text", text: "Report scheduled" }] });
+    const deliveryStorage = createAgentProjectSessionStorage({ projectRoot, pilotHome, sessionId: sessionKey });
+    for (const kind of ["status", "status", "error"] as const) {
+      await deliveryStorage.transcript.recordAgentStatusMessage(sessionKey, `cron-result:${kind}`, {
+        event: "cron_result", kind, text: `Scheduled report: ${kind}`, detail: { runId: kind, taskId: "task-1" },
+      });
+    }
+    const replay = await readWebSessionMessages({ sessionKey }, { projectRoot, pilotHome });
+    const results = replay.messages.filter(message => message.id.startsWith("cron-result:"));
+    assert.equal(results.length, 2);
+    assert.deepEqual(replay.messages.filter(message => message.kind === "text").slice(-2).map(message => message.id), ["cron-result:status", "cron-result:error"]);
+    for (const message of results) {
+      assert.equal(message.kind, "text");
+      assert.equal(message.role, "assistant");
+      assert.equal(message.turnId, message.id);
+      assert.match(message.text!, /^Scheduled report:/);
+    }
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+    await rm(pilotHome, { recursive: true, force: true });
+  }
+});
+
 test("history replay preserves agent status i18n metadata and user hint", async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), "pilotdeck-status-i18n-project-"));
   const pilotHome = await mkdtemp(join(tmpdir(), "pilotdeck-status-i18n-home-"));
