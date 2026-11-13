@@ -372,7 +372,7 @@
       "noText": "本次执行已结束，没有文本结果。",
       "runDetails": "执行详情",
       "finishedAt": "完成时间",
-      "firstRun": "等待第一次执行",
+      "firstRun": "等待首次执行",
       "noSavedRuns": "暂无已保存的结果",
       "sourceConversation": "来源对话",
       "openTask": "查看任务",

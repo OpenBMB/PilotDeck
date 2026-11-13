@@ -54,6 +54,9 @@ with project and conversation navigation. Task rows use the same theme, selectio
 heading and compact-entry primitives. Compact entries expose actions through
 right-click or Shift+F10; list options retain search and filters in a portaled
 popover. Its title-bar plus button opens the task editor. Selecting a
+task that has never started shows a fixed waiting view with its next run time;
+instructions remain in the editor. The conversation pipeline is mounted when
+execution starts and retained for recurring tasks between runs. A started
 task shows its dedicated conversation through the existing `MessagesPane`,
 `useChatSessionState`, `useChatRealtimeHandlers` and `useSessionStore` pipeline.
 Thinking, tools, file previews, history pagination and reading position use the

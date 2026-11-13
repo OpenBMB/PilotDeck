@@ -372,7 +372,7 @@
       "noText": "This run finished without a text response.",
       "runDetails": "Run details",
       "finishedAt": "Finished",
-      "firstRun": "Your first result is on its way",
+      "firstRun": "Waiting for the first run",
       "noSavedRuns": "No saved results yet",
       "sourceConversation": "Source conversation",
       "openTask": "Open task",
