@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, Pause, Pencil, Play, Square, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -8,8 +8,8 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog';
 import { useFloatingPanel } from '../../ui/useFloatingPanel';
 import { taskEditDisabled } from './cronPresentation';
 
-export default function CronTaskActions({ job, compact = false, onEdit, onRefresh, onError, onDeleted, onRunStarted }: {
-  job: CronJobOverview; compact?: boolean; onEdit: (job: CronJobOverview) => void;
+export default function CronTaskActions({ job, compact = false, onEdit, onRefresh, onError, onDeleted, onRunStarted, menuAnchor, menuRequest = 0 }: {
+  job: CronJobOverview; compact?: boolean; menuAnchor?: RefObject<HTMLButtonElement>; menuRequest?: number; onEdit: (job: CronJobOverview) => void;
   onRefresh: () => Promise<void>; onError: (message: string) => void; onDeleted?: (id: string) => void;
   onRunStarted?: () => void;
 }) {
@@ -18,9 +18,14 @@ export default function CronTaskActions({ job, compact = false, onEdit, onRefres
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const anchor = useRef<HTMLButtonElement>(null);
+  const defaultAnchor = useRef<HTMLButtonElement>(null);
+  const anchor = menuAnchor || defaultAnchor;
+  useEffect(() => { if (menuRequest) setOpen(true); }, [menuRequest]);
+  useEffect(() => { setOpen(false); }, [menuAnchor]);
   const { panelRef, style } = useFloatingPanel(open, anchor, () => setOpen(false), { side: 'below', width: 180, maxHeight: 270 });
-  useEffect(() => { if (open) panelRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus(); }, [open, panelRef, style.visibility]);
+  useLayoutEffect(() => {
+    if (open && style.visibility !== 'hidden') panelRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+  }, [open, panelRef, style.visibility]);
   const canResume = job.enabled === false || ['paused', 'failed', 'missed', 'completed'].includes(job.status);
   const canToggle = job.schedule?.type !== 'once' || ['scheduled', 'running', 'paused'].includes(job.status) || Date.parse(job.schedule.runAt) > Date.now();
   const disabled = taskEditDisabled(job);
@@ -53,7 +58,7 @@ export default function CronTaskActions({ job, compact = false, onEdit, onRefres
     {!compact && <button className={`cron-button cron-run-button${job.status === 'running' ? ' danger' : ''}`} type="button" disabled={busy} onClick={() => void action(job.status === 'running' ? 'stop' : 'run')}>
       {job.status === 'running' ? <Square size={14} /> : <Play size={14} />}{runLabel}
     </button>}
-    <button ref={anchor} type="button" className="cron-icon-button" aria-label={compact ? t('cron.workspace.actionsFor', { defaultValue: 'Task actions: {{name}}', name: job.name || job.prompt }) : t('cron.workspace.taskActions', { defaultValue: 'Task actions' })} aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(!open)}><MoreHorizontal size={18} /></button>
+    {!menuAnchor && <button ref={anchor} type="button" className="cron-icon-button" aria-label={compact ? t('cron.workspace.actionsFor', { defaultValue: 'Task actions: {{name}}', name: job.name || job.prompt }) : t('cron.workspace.taskActions', { defaultValue: 'Task actions' })} aria-haspopup="menu" aria-expanded={open} disabled={busy} onClick={() => setOpen(!open)}><MoreHorizontal size={18} /></button>}
     {open && createPortal(<div ref={panelRef} role="menu" className="cron-action-menu" style={style} onKeyDown={event => {
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault(); const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];

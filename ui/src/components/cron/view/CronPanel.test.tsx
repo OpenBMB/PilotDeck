@@ -70,7 +70,7 @@ function makeJob(overrides: Partial<CronJobOverview>): CronJobOverview {
 
 function TaskSidebarHost() {
   const sidebar = useCronSidebar();
-  return <aside aria-label="Shell sidebar"><div ref={sidebar?.setHost} /></aside>;
+  return <aside aria-label="Shell sidebar"><button onClick={() => sidebar?.setCompact(!sidebar.compact)}>Toggle compact task list</button><div ref={sidebar?.setHost} /></aside>;
 }
 
 function setup(jobs: CronJobOverview[], projectEntries: Project[] = [project], options: { initialEntry?: string; onSelect?: () => void } = {}) {
@@ -160,6 +160,47 @@ describe('scheduled task management', () => {
     await screen.findByRole('heading', { name: 'First task' });
     act(() => taskEvent(null, 'job-1'));
     expect(await screen.findByRole('heading', { name: 'Remaining task' })).toBeTruthy();
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains filtering, selection and task actions in the compact sidebar without refetching', async () => {
+    const onSelect = vi.fn();
+    setup([makeJob({ name: 'Weekly report' }), makeJob({ id: 'second', name: 'Finished report', status: 'completed' })], [project], { onSelect });
+    await screen.findByRole('heading', { name: 'Weekly report' });
+    fireEvent.change(searchInput(), { target: { value: 'Weekly' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle compact task list' }));
+    const row = screen.getByRole('button', { name: 'View task details: Weekly report' });
+    expect(row.classList.contains('compact-project-entry')).toBe(true);
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(screen.queryByRole('button', { name: 'View task details: Finished report' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Task list options' }));
+    const menu = screen.getByRole('menu', { name: 'Task list options' });
+    expect(menu.closest('aside')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(within(menu).getByLabelText('Search tasks')));
+    expect((within(menu).getByLabelText('Search tasks') as HTMLInputElement).value).toBe('Weekly');
+    fireEvent.change(within(menu).getByLabelText('Search tasks'), { target: { value: '' } });
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'All tasks' }));
+    const other = screen.getByRole('button', { name: 'View task details: Finished report' });
+    fireEvent.keyDown(other, { key: 'F10', shiftKey: true });
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeTruthy();
+    expect(row.getAttribute('aria-current')).toBe('true');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(other);
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle compact task list' }));
+    expect(screen.getByRole('button', { name: 'View task details: Weekly report' }).classList.contains('tree-row')).toBe(true);
+    expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapses the wide task section without hiding its new-task entry or clearing the selection', async () => {
+    setup([makeJob({ name: 'Collapsible task' })]);
+    await screen.findByRole('heading', { name: 'Collapsible task' });
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse tasks' }));
+    expect(screen.queryByRole('button', { name: 'View task details: Collapsible task' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Collapsible task' })).toBeTruthy();
+    expect(createEntry()).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand tasks' }));
+    expect(screen.getByRole('button', { name: 'View task details: Collapsible task' }).getAttribute('aria-current')).toBe('true');
     expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
   });
 

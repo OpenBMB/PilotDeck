@@ -1,3 +1,4 @@
+import WorkspaceProjectLabel from './WorkspaceProjectLabel';
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -404,17 +405,7 @@ function MainAreaContent(props: MainAreaProps) {
               {headerTitle}
             </h1>
           )}
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[var(--pd-muted,#687080)]">
-            <svg aria-hidden="true" className="icon" fill="none" height="13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="13">
-              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-              <path d="M8 10v4" />
-              <path d="M12 10v2" />
-              <path d="M16 10v6" />
-            </svg>
-            <span className="min-w-0 max-w-[24rem] truncate" title={projectName}>
-              {projectName}
-            </span>
-          </span>
+          <WorkspaceProjectLabel label={projectName} />
         </div>
 
         <div className="workspace-actions ml-4 h-9 shrink-0" aria-label={t('common:uiText.tools')}>

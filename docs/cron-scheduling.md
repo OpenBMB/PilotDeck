@@ -49,7 +49,11 @@ occurrences missed under the older intersection rule.
 ## Web workspace
 
 The scheduled-task route replaces the shell's project/conversation tree with a
-compact task list. Its title-bar plus button opens the task editor. Selecting a
+compact task list. The shell owns its width and compact-mode threshold, shared
+with project and conversation navigation. Task rows use the same theme, selection,
+heading and compact-entry primitives. Compact entries expose actions through
+right-click or Shift+F10; list options retain search and filters in a portaled
+popover. Its title-bar plus button opens the task editor. Selecting a
 task shows its dedicated conversation through the existing `MessagesPane`,
 `useChatSessionState`, `useChatRealtimeHandlers` and `useSessionStore` pipeline.
 Thinking, tools, file previews, history pagination and reading position use the

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, within, waitFor, type RenderOptions } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
 import { createTestI18n } from '../../i18n/testInstance';
@@ -8,6 +8,7 @@ import zhSidebar from '../../i18n/locales/zh-CN/sidebar.json';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../types/app';
 import Sidebar from './Sidebar';
+import { CronSidebarProvider, useCronSidebar } from '../cron/CronSidebarContext';
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
@@ -57,7 +58,7 @@ function renderSidebar(selectedProject: Project | null, extra?: Partial<Componen
     ...extra,
   };
 
-  return render(<Sidebar {...props} />, options);
+  return { ...render(<Sidebar {...props} />, options), props };
 }
 
 afterEach(() => {
@@ -65,6 +66,14 @@ afterEach(() => {
   localStorage.clear();
   delete window.pilotdeckDesktop;
 });
+
+function TaskLayoutProbe() {
+  const sidebar = useCronSidebar();
+  return <output data-testid="task-compact-state">{String(sidebar?.compact)}</output>;
+}
+function TaskLayoutWrapper({ children }: { children: ReactNode }) {
+  return <CronSidebarProvider onSelect={() => {}}><div className="app-shell">{children}<TaskLayoutProbe /></div></CronSidebarProvider>;
+}
 
 describe('Sidebar layout', () => {
   it('replaces the project tree with the task list slot in scheduled-task mode', () => {
@@ -74,6 +83,52 @@ describe('Sidebar layout', () => {
     expect(screen.queryByText('Conversations')).toBeNull();
     expect(screen.getByText('Scheduled Tasks')).toBeTruthy();
     expect(screen.getByText('Settings')).toBeTruthy();
+  });
+
+  it('shares compact width and shell geometry when switching between tasks and chat', () => {
+    localStorage.setItem('sidebar-v2-width', '76');
+    const { container, rerender, props } = renderSidebar(project, { activeTab: 'cron' }, { wrapper: TaskLayoutWrapper });
+    const sidebar = container.querySelector<HTMLElement>('[data-sidebar-root]')!;
+    expect(sidebar.style.width).toBe('76px');
+    expect(sidebar.classList.contains('compact')).toBe(true);
+    expect(sidebar.closest<HTMLElement>('.app-shell')!.style.gridTemplateColumns).toBe('76px 1px minmax(0, 1fr)');
+    expect(screen.getByTestId('task-compact-state').textContent).toBe('true');
+    expect(screen.queryByRole('img', { name: 'PILOTDECK' })).toBeNull();
+    rerender(<Sidebar {...props} activeTab="chat" />);
+    expect(sidebar.style.width).toBe('76px');
+    expect(sidebar.classList.contains('compact')).toBe(true);
+    rerender(<Sidebar {...props} activeTab="cron" />);
+    expect(sidebar.style.width).toBe('76px');
+    expect(sidebar.classList.contains('compact')).toBe(true);
+  });
+
+  it('drags tasks through the same compact threshold in both directions and persists the final width', () => {
+    localStorage.setItem('sidebar-v2-width', '300');
+    const { container } = renderSidebar(project, { activeTab: 'cron' }, { wrapper: TaskLayoutWrapper });
+    const sidebar = container.querySelector<HTMLElement>('[data-sidebar-root]')!;
+    const resizer = screen.getByRole('separator', { name: 'Resize sidebar' });
+    fireEvent.mouseDown(resizer, { clientX: 300 });
+    fireEvent.mouseMove(document, { clientX: 100 });
+    fireEvent.mouseUp(document);
+    expect(sidebar.style.width).toBe('100px');
+    expect(sidebar.classList.contains('compact')).toBe(true);
+    expect(screen.getByTestId('task-compact-state').textContent).toBe('true');
+    expect(localStorage.getItem('sidebar-v2-width')).toBe('100');
+    fireEvent.mouseDown(resizer, { clientX: 100 });
+    fireEvent.mouseMove(document, { clientX: 300 });
+    fireEvent.mouseUp(document);
+    expect(sidebar.style.width).toBe('300px');
+    expect(sidebar.classList.contains('compact')).toBe(false);
+    expect(screen.getByTestId('task-compact-state').textContent).toBe('false');
+    expect(sidebar.closest<HTMLElement>('.app-shell')!.style.gridTemplateColumns).toBe('300px 1px minmax(0, 1fr)');
+    expect(screen.getByRole('img', { name: 'PILOTDECK' })).toBeTruthy();
+  });
+
+  it('keeps the full task list layout in the mobile overlay even with a compact desktop preference', () => {
+    localStorage.setItem('sidebar-v2-width', '76');
+    const { container } = renderSidebar(project, { activeTab: 'cron', isMobile: true }, { wrapper: TaskLayoutWrapper });
+    expect(container.querySelector('[data-sidebar-root]')!.classList.contains('compact')).toBe(false);
+    expect(screen.getByTestId('task-compact-state').textContent).toBe('false');
   });
 
   it('distinguishes a project load failure from an empty project list', () => {

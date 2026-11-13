@@ -344,6 +344,9 @@
       "conflict": "The task changed. Refresh and try again."
     },
     "workspace": {
+      "listOptions": "Task list options",
+      "expandTasks": "Expand tasks",
+      "collapseTasks": "Collapse tasks",
       "newTask": "New task",
       "showTasks": "Show task list",
       "result": "Result",

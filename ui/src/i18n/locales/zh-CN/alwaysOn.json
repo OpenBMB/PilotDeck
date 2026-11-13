@@ -344,6 +344,9 @@
       "conflict": "任务已发生变化，请刷新后重试。"
     },
     "workspace": {
+      "listOptions": "任务列表选项",
+      "expandTasks": "展开任务列表",
+      "collapseTasks": "折叠任务列表",
       "newTask": "新建任务",
       "showTasks": "展开任务列表",
       "result": "运行结果",

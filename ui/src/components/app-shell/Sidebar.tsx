@@ -2,6 +2,7 @@ import { createFrameBatcher } from '../../utils/frameBatcher';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -34,6 +35,7 @@ import {
   useCustomNamesVersion,
 } from '../../lib/customNames';
 import { compareProjectsBySidebarOrder, isGeneralProject } from './appShellSelection';
+import SidebarSectionHeading from './SidebarSectionHeading';
 import { useCronSidebar } from '../cron/CronSidebarContext';
 
 const asTimestamp = (value: unknown): number => {
@@ -208,68 +210,6 @@ function workingDirectory(project: Project, session?: ProjectSession): string | 
   return cwd || project.workspaceCwd || project.fullPath;
 }
 
-function SectionHeading({
-  title,
-  expanded,
-  expandLabel,
-  collapseLabel,
-  actionLabel,
-  actionIcon,
-  onAction,
-  onToggle,
-}: {
-  title: string;
-  expanded: boolean;
-  expandLabel: string;
-  collapseLabel: string;
-  actionLabel?: string;
-  actionIcon?: ReactNode;
-  onAction?: () => void;
-  onToggle: () => void;
-}) {
-  const toggleLabel = expanded ? collapseLabel : expandLabel;
-  return (
-    <div className="tree-heading shrink-0">
-      <span>{title}</span>
-      <div className="tree-heading-actions">
-        {actionLabel && onAction ? (
-          <button
-            type="button"
-            onClick={onAction}
-            aria-label={actionLabel}
-            title={actionLabel}
-          >
-            {actionIcon ?? (
-              <MessageSquarePlus aria-hidden="true" className="icon" size={15} strokeWidth={1.8} />
-            )}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          aria-label={toggleLabel}
-          title={toggleLabel}
-        >
-          <svg
-            aria-hidden="true"
-            className={cn('icon transition-transform', !expanded && '-rotate-90')}
-            fill="none"
-            height="15"
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="1.8"
-            viewBox="0 0 24 24"
-            width="15"
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export default function Sidebar({
   projects,
@@ -355,7 +295,9 @@ export default function Sidebar({
     return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, parsed));
   });
   const [isResizing, setIsResizing] = useState(false);
-  const isCompact = activeTab !== 'cron' && !isMobile && sidebarWidth <= SIDEBAR_COMPACT_THRESHOLD;
+  const isCompact = !isMobile && sidebarWidth <= SIDEBAR_COMPACT_THRESHOLD;
+  const setTaskCompact = cronSidebar?.setCompact;
+  useLayoutEffect(() => { setTaskCompact?.(isCompact); }, [isCompact, setTaskCompact]);
   useEffect(() => {
     const panel = projectsConversationsSplitRef.current;
     if (!panel || typeof ResizeObserver === 'undefined') return;
@@ -1129,7 +1071,7 @@ export default function Sidebar({
       <aside
       ref={sidebarRootRef}
       data-sidebar-root
-      style={{ width: `${activeTab === 'cron' ? Math.max(220, sidebarWidth) : sidebarWidth}px` }}
+      style={{ width: `${sidebarWidth}px` }}
       className={cn(
         // On mobile the parent wraps this aside in an overlay constrained
         // to 85vw, so force the inline width style off with !w-full there.
@@ -1221,7 +1163,7 @@ export default function Sidebar({
       </nav>
       {isCompact ? <span className="compact-divider" /> : null}
 
-      {activeTab === 'cron' ? <div ref={cronSidebar?.setHost} className="cron-task-slot" data-cron-sidebar-slot /> : isCompact ? (
+      {activeTab === 'cron' ? <div ref={cronSidebar?.setHost} className="cron-task-slot" data-compact={isCompact || undefined} data-cron-sidebar-slot /> : isCompact ? (
         <nav
           className="recent-list"
           aria-label={t('sidebar:projects.recent', { defaultValue: 'Recently opened' }) as string}
@@ -1274,7 +1216,7 @@ export default function Sidebar({
                 : { minHeight: 0, flex: '1 1 0%' }
           }
         >
-          <SectionHeading
+          <SidebarSectionHeading
             title={t('sidebar:projects.title', { defaultValue: 'Projects' })}
             expanded={projectsExpanded}
             expandLabel={t('sidebar:projects.expand', { defaultValue: 'Expand projects' }) as string}
@@ -1367,7 +1309,7 @@ export default function Sidebar({
               ? { minHeight: SIDEBAR_SECTION_MIN_HEIGHT, flex: '1 1 0%' }
               : { flex: '0 0 auto' }}
           >
-          <SectionHeading
+          <SidebarSectionHeading
             title={t('sidebar:conversations.title', { defaultValue: 'Conversations' })}
             expanded={conversationsExpanded}
             expandLabel={t('sidebar:conversations.expand', { defaultValue: 'Expand conversations' }) as string}

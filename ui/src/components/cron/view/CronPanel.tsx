@@ -8,6 +8,7 @@ import { api } from '../../../utils/api';
 import { useWebSocket } from '../../../contexts/WebSocketContext';
 import { useCronSidebar } from '../CronSidebarContext';
 import CronTaskSidebar from './CronTaskSidebar';
+import WorkspaceProjectLabel from '../../app-shell/WorkspaceProjectLabel';
 import CronTaskDetails from './CronTaskDetails';
 import CronTaskEditor from './CronTaskEditor';
 import CronTaskActions from './CronTaskActions';
@@ -34,6 +35,7 @@ export default function CronPanel({ isSidebarCollapsed, onOpenSidebar, projects:
   const [editor, setEditor] = useState<{ job: CronJobOverview | null } | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
+  const [listExpanded, setListExpanded] = useState(true);
   const request = useRef<AbortController | null>(null);
   const changes = useRef(new Map<string, CronJobOverview | null>());
   const [seenRuns, setSeenRuns] = useState<Record<string, string>>(() => {
@@ -100,19 +102,21 @@ export default function CronPanel({ isSidebarCollapsed, onOpenSidebar, projects:
   const select = (job: CronJobOverview) => { setSelectedId(job.id); setParams({ taskId: job.id }, { replace: true }); sidebar?.onSelect(); setError(null); };
   const edit = (job: CronJobOverview) => { if (!taskEditDisabled(job)) setEditor({ job }); };
   const deleted = (id: string) => { if (id === selected?.id) { setSelectedId(null); setParams({}, { replace: true }); } };
-  const list = <CronTaskSidebar jobs={jobs} projects={projects} selectedId={selected?.id} loading={loading}
+  const list = <CronTaskSidebar compact={sidebar?.compact} expanded={listExpanded} onToggle={() => setListExpanded(current => !current)} jobs={jobs} projects={projects} selectedId={selected?.id} loading={loading}
     query={query} setQuery={setQuery} filter={filter} setFilter={setFilter} seenRuns={seenRuns}
     onSelect={select} onCreate={() => setEditor({ job: null })} onEdit={edit} onRefresh={noRefresh} onError={setError} onDeleted={deleted} />;
   const project = selected && projects.find(item => item.fullPath === selected.projectKey || item.name === selected.projectKey);
+  const projectLabel = project?.kind === 'general' || project?.name === 'general' ? t('sidebar:general.name', { defaultValue: 'General conversation' })
+    : project?.displayName || project?.name || selected?.projectKey || '';
   return <div className="cron-workspace">
     {active && (sidebar ? sidebar.host && createPortal(list, sidebar.host) : <aside className="cron-standalone-sidebar">{list}</aside>)}
     <div className="cron-result-workspace">
-      <header className="workspace-header cron-workspace-header">
-        {isSidebarCollapsed && <button type="button" className="cron-icon-button" onClick={onOpenSidebar} aria-label={t('cron.workspace.showTasks')}><PanelLeftOpen size={18} /></button>}
-        <div className="min-w-0 flex-1"><h1>{selected?.name || selected?.prompt.split('\n')[0] || t('cron.title')}</h1>
-          {selected && <p className="cron-workspace-subtitle">{project?.displayName || project?.name || selected.projectKey} · {cronScheduleLabel(selected.schedule, selected.timezone, t)}</p>}
+      <header className="workspace-header relative z-[80] shrink-0 overflow-visible">
+        {isSidebarCollapsed && <button type="button" className="icon-button mr-4" onClick={onOpenSidebar} aria-label={t('cron.workspace.showTasks')}><PanelLeftOpen size={18} /></button>}
+        <div className="workspace-title flex-1"><h1 className="min-w-0 max-w-[34rem] truncate text-[15px] font-semibold leading-5 text-neutral-950 dark:text-neutral-50">{selected?.name || selected?.prompt.split('\n')[0] || t('cron.title')}</h1>
+          {selected && <WorkspaceProjectLabel label={projectLabel}><span className="min-w-0 truncate">· {cronScheduleLabel(selected.schedule, selected.timezone, t)}</span></WorkspaceProjectLabel>}
         </div>
-        {selected && <CronTaskActions key={selected.id} job={selected} onEdit={edit} onRefresh={noRefresh} onError={setError} onDeleted={deleted} />}
+        {selected && <div className="workspace-actions ml-4 h-9 shrink-0"><CronTaskActions key={selected.id} job={selected} onEdit={edit} onRefresh={noRefresh} onError={setError} onDeleted={deleted} /></div>}
       </header>
       {error && <div role="alert" className="cron-workspace-error">{error}<button type="button" className="cron-text-button ml-3" onClick={() => void load()}>{t('actions.refresh', { defaultValue: 'Retry' })}</button></div>}
       {selected ? <CronTaskDetails job={selected} projects={projects} />
