@@ -1,6 +1,6 @@
 import { jsonrepair } from "jsonrepair";
 import { randomUUID } from "node:crypto";
-import type { CanonicalModelEvent, CanonicalToolCall } from "../../protocol/canonical.js";
+import type { CanonicalModelEvent, CanonicalToolCall, CanonicalUsage } from "../../protocol/canonical.js";
 import { ModelProviderError } from "../../protocol/errors.js";
 import { normalizeOpenAIFinishReason } from "../../response/normalizeFinishReason.js";
 import { normalizeOpenAIUsage } from "../../response/normalizeUsage.js";
@@ -11,6 +11,14 @@ type OpenAIStreamToolCallState = Partial<CanonicalToolCall> & {
   toolIndex: number;
 };
 
+type OpenAIStreamUsageSnapshot = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  total_tokens?: number;
+};
+
 export type OpenAIStreamState = {
   started: boolean;
   toolCalls: Map<string, OpenAIStreamToolCallState>;
@@ -19,6 +27,7 @@ export type OpenAIStreamState = {
   streamResponseId?: string;
   toolCallBaseId?: string;
   reasoningSnapshot: string;
+  usageSnapshot?: OpenAIStreamUsageSnapshot;
 };
 
 export function createOpenAIStreamState(): OpenAIStreamState {
@@ -62,7 +71,7 @@ export function normalizeOpenAIStreamEvent(
     events.push({ type: "message_start", role: "assistant", raw });
   }
 
-  const usage = normalizeOpenAIUsage(chunk.usage);
+  const usage = normalizeStreamUsage(chunk.usage, state);
   if (usage) {
     events.push({ type: "usage", usage, raw });
   }
@@ -110,6 +119,27 @@ export function normalizeOpenAIStreamEvent(
   }
 
   return events;
+}
+
+function normalizeStreamUsage(raw: unknown, state: OpenAIStreamState): CanonicalUsage | undefined {
+  const partial = normalizeOpenAIUsage(raw);
+  if (!partial) return undefined;
+  const usage = asRecord(raw);
+  const previous = state.usageSnapshot;
+  // Retain prompt totals before cache subtraction and total-token inference.
+  // Later chunks may report only output, cache details, or an alternate alias.
+  state.usageSnapshot = {
+    prompt_tokens: readNumber(usage.prompt_tokens) ?? readNumber(usage.input_tokens) ?? previous?.prompt_tokens,
+    completion_tokens: partial.outputTokens ?? previous?.completion_tokens,
+    cache_read_input_tokens: partial.cacheReadTokens ?? previous?.cache_read_input_tokens,
+    cache_creation_input_tokens: partial.cacheWriteTokens ?? previous?.cache_creation_input_tokens,
+    total_tokens: readNumber(usage.total_tokens) ?? previous?.total_tokens,
+  };
+  return normalizeOpenAIUsage({ ...state.usageSnapshot, cost: partial.nativeCost });
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function toolCallEvents(
