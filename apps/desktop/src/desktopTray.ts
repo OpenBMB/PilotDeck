@@ -16,6 +16,7 @@ export function createDesktopTray(options: Options) {
   let tray: Tray | null = null;
   let quitting = false;
   let notificationCount = 0;
+  let approvalWaiting = false;
   const available = () => tray !== null && !tray.isDestroyed();
   const invoke = (action: () => Promise<void>) => {
     if (!quitting) void action().catch(options.reportError);
@@ -24,8 +25,16 @@ export function createDesktopTray(options: Options) {
     if (!available()) return;
     const zh = options.isChinese();
     const quittingLabel = zh ? '正在退出…' : 'Quitting…';
-    tray!.setToolTip(quitting ? `PilotDeck — ${quittingLabel}` : notificationCount
-      ? `PilotDeck — ${notificationCount} ${zh ? '个后台任务提醒' : 'background task reminders'}` : 'PilotDeck');
+    const approvalLabel = zh ? '等待授权' : 'Waiting for approval';
+    tray!.setToolTip(
+      quitting
+        ? `PilotDeck — ${quittingLabel}`
+        : approvalWaiting
+          ? `PilotDeck — ${approvalLabel}`
+          : notificationCount
+            ? `PilotDeck — ${notificationCount} ${zh ? '个后台任务提醒' : 'background task reminders'}`
+            : 'PilotDeck',
+    );
     if (options.notificationImage) tray!.setImage(options.notificationImage(notificationCount));
     tray!.setContextMenu(options.buildMenu([
       { label: zh ? '打开主界面' : 'Open main window', enabled: !quitting, click: () => invoke(options.open) },
@@ -54,5 +63,6 @@ export function createDesktopTray(options: Options) {
   return { available, refreshMenu, dispose,
     setNotificationCount(value: number) { if (notificationCount !== value) { notificationCount = value; refreshMenu(); } },
     setQuitting(value: boolean) { quitting = value; refreshMenu(); },
+    setApprovalWaiting(value: boolean) { if (approvalWaiting !== value) { approvalWaiting = value; refreshMenu(); } },
   };
 }

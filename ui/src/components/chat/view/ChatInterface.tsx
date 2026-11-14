@@ -18,6 +18,7 @@ import { useChatProviderState } from '../hooks/useChatProviderState';
 import { useChatSessionState } from '../hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '../hooks/useChatRealtimeHandlers';
 import { useChatComposerState } from '../hooks/useChatComposerState';
+import { useApprovalWaitingAlert } from '../hooks/useApprovalWaitingAlert';
 import { useSessionInputQueue } from '../hooks/useSessionInputQueue';
 import { isSendingInput } from '../types/queuedInput';
 import {
@@ -438,6 +439,14 @@ function ChatInterface({
     onNavigateToSession,
     onWebSocketReconnect: handleWebSocketReconnect,
     sessionStore,
+  });
+
+  useApprovalWaitingAlert({
+    pendingPermissionRequests,
+    fallbackSessionId: currentSessionId ?? selectedSession?.id ?? null,
+    waitingLabel: t('approvalAlert.documentTitle', {
+      defaultValue: '⚠ Waiting for approval',
+    }) as string,
   });
 
   useEffect(() => {
