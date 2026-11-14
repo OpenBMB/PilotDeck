@@ -11,7 +11,6 @@ import type { ChatInterfaceProps, ChatMessage, ChatRunMode, PermissionMode, Prov
 import {
   getSessionRequestParams,
   isReadOnlySession,
-<<<<<<< HEAD:ui/src/components/chat/view/ChatInterface.tsx
 } from '../../../types/app';
 import { chooseDefaultProject, isGeneralProject } from '../../app-shell/appShellSelection';
 import { projectDisplayName, useCustomNamesVersion } from '../../../lib/customNames';
