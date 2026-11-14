@@ -1164,44 +1164,74 @@ function attachTurnProcessGroups(messages: ChatMessage[], items: RenderableMessa
       && !item.message.isThinking && !item.message.isToolUse && !item.message.isSubagentContainer
       && !item.message.isInteractivePrompt && !item.message.isTaskNotification
       && !item.message.isInterruptedNotice && !item.message.isAgentActivity && !item.message.isAgentActivitySummary;
-    const output = cancelled ? undefined : [...turnItems].reverse().find(isReply);
-    const seats = turnItems.filter(item => {
-      if (item.mediaArtifact || item.message.type === 'error' || item.message.isInterruptedNotice) return false;
-      if (item.turnTrace) return true;
-      if (isReply(item)) return true;
-      // Pending questions/approvals stay reachable until the user stops the turn.
-      if (!completed && !cancelled && isPermissionToolError(item.message)) return false;
-      if (!cancelled && isUserVisibleTool(item.message) && !item.message.toolResult) return false;
-      return Boolean(item.message.isThinking || item.message.isToolUse || item.message.isSubagentContainer
-        || (item.message.isInteractivePrompt && (completed || cancelled))
-        || item.message.isTaskNotification || item.message.isCompactBoundary);
-    });
-    const members = seats.filter(item => item !== output);
-    const durationMs = getTurnRunDurationMs(messages, turn);
-    const timing = getRecordedTurnTiming(raw);
-    if (!running && !seats.length && durationMs === null) continue;
-    const startedAtMs = parseMessageTime(anchor.timestamp);
-    const group: TurnProcessGroup = {
-      id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`,
-      isRunning: running, defaultExpanded: !completed && !cancelled && turnIndex === turns.length - 1, durationMs,
-      outcome,
-      hasRecordedDuration: Boolean(timing) || (typeof turn.summary?.message.durationMs === 'number' && Number.isFinite(turn.summary.message.durationMs)),
-      startedAt: timing ? new Date(timing.startedAt).toISOString() : turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
-      memberIds: members.map(getTurnProcessMemberId),
+    const identityOfItem = (item: RenderableMessageItem): string | null => {
+      const first = item.turnTrace ? item.turnTrace.items[0]?.message : item.message;
+      const id = first?.turnId || first?.runId;
+      return id ? String(id) : null;
     };
-    for (const item of turnItems) { item.beforeRunAttachment = null; item.afterRunAttachment = null; }
-    for (const item of seats) { item.processRun = group; item.processOutput = item === output; }
-    if (running || members.length || durationMs !== null) {
-      const user = turnItems.find(item => item.message.type === 'user');
-      if (user) user.afterTurnProcess = group;
-      else turnItems[0].beforeTurnProcess = group;
+    // One user turn can carry rows of more than one agent run: a refresh can
+    // pair a transcript snapshot that predates the newest accepted inputs with
+    // the active-run baseline, so the tail rows arrive without their user
+    // prompt. Later runs keep their own fold region with their own output
+    // instead of presenting the anchored prompt together with their reply;
+    // rows without a run identity stay in the segment they landed in. File
+    // results above remain a footer of the whole turn.
+    const runSegments: RenderableMessageItem[][] = [];
+    let segmentIdentity: string | null = null;
+    for (const item of turnItems) {
+      const id = identityOfItem(item);
+      if (id && segmentIdentity !== null && id !== segmentIdentity) {
+        runSegments.push([item]);
+        segmentIdentity = id;
+        continue;
+      }
+      if (!runSegments.length) runSegments.push([]);
+      runSegments[runSegments.length - 1].push(item);
+      if (id && segmentIdentity === null) segmentIdentity = id;
     }
+    const startedAtMs = parseMessageTime(anchor.timestamp);
+    for (const item of turnItems) { item.beforeRunAttachment = null; item.afterRunAttachment = null; }
+    runSegments.forEach((segment, segmentIndex) => {
+      const segmentRawStart = Math.max(turn.start, Math.floor(segment[0].originalIndex));
+      const segmentRawEnd = Math.min(turn.end, Math.floor(segment[segment.length - 1].originalIndex) + 1);
+      const segmentTiming = getRecordedTurnTiming(messages.slice(segmentRawStart, segmentRawEnd));
+      const output = cancelled ? undefined : [...segment].reverse().find(isReply);
+      const seats = segment.filter(item => {
+        if (item.mediaArtifact || item.message.type === 'error' || item.message.isInterruptedNotice) return false;
+        if (item.turnTrace) return true;
+        if (isReply(item)) return true;
+        // Pending questions/approvals stay reachable until the user stops the turn.
+        if (!completed && !cancelled && isPermissionToolError(item.message)) return false;
+        if (!cancelled && isUserVisibleTool(item.message) && !item.message.toolResult) return false;
+        return Boolean(item.message.isThinking || item.message.isToolUse || item.message.isSubagentContainer
+          || (item.message.isInteractivePrompt && (completed || cancelled))
+          || item.message.isTaskNotification || item.message.isCompactBoundary);
+      });
+      const members = seats.filter(item => item !== output);
+      const durationMs = getTurnRunDurationMs(messages, { start: segmentRawStart, end: segmentRawEnd, summary: turn.summary });
+      if (!running && !seats.length && durationMs === null) return;
+      const group: TurnProcessGroup = {
+        id: `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}${segmentIndex > 0 ? `-${segmentIndex}` : ''}`,
+        isRunning: running, defaultExpanded: !completed && !cancelled && turnIndex === turns.length - 1, durationMs,
+        outcome,
+        hasRecordedDuration: Boolean(segmentTiming) || (typeof turn.summary?.message.durationMs === 'number' && Number.isFinite(turn.summary.message.durationMs)),
+        startedAt: segmentTiming ? new Date(segmentTiming.startedAt).toISOString() : turn.summary?.message.startedAt || (startedAtMs !== null ? new Date(startedAtMs).toISOString() : undefined),
+        memberIds: members.map(getTurnProcessMemberId),
+      };
+      for (const item of seats) { item.processRun = group; item.processOutput = item === output; }
+      if (running || members.length || durationMs !== null) {
+        const user = segment.find(item => item.message.type === 'user');
+        if (user) user.afterTurnProcess = group;
+        else segment[0].beforeTurnProcess = group;
+      }
+    });
+    const baseGroupId = `turn-process-${String(anchor.renderKey || anchor.id || anchor.turnId || anchor.runId || turn.start)}`;
     // Timing summaries can confirm a stop without a separate transcript
     // notice. Project one status row outside the fold; never persist or duplicate it.
     const finalRunSegment = !identity || lastRunTurns.get(identity) === turnIndex;
     const hasStopNotice = identity ? interruptedRuns.has(identity) : turnItems.some(item => item.message.isInterruptedNotice);
     if (cancelled && finalRunSegment && !hasStopNotice) {
-      const id = `${group.id}-interrupted`;
+      const id = `${baseGroupId}-interrupted`;
       stopNotices.push({
         message: { id, renderKey: id, type: 'system', content: '', isInterruptedNotice: true,
           timestamp: terminal?.endedAt || turn.summary?.message.endedAt || reversed[0]?.timestamp || anchor.timestamp },
