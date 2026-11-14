@@ -87,7 +87,11 @@ reparenting content or replaying its text animation. Tool details retain their
 individual disclosure state when their enclosing group closes and reopens.
 Interrupted work and pending interactive prompts remain accessible. Disclosures
 retain mounted content after opening, use inert hidden subtrees, and respect
-reduced motion. Conversation scrollbars reserve their gutter, and disclosure
+reduced motion. Rows of a later agent run inside one user turn keep their own
+fold header and output: a refreshed page can pair a snapshot that predates the
+newest accepted inputs with the active-run baseline, so that tail must never be
+presented under the earlier prompt's fold. File results keep their whole-turn
+footer placement. Conversation scrollbars reserve their gutter, and disclosure
 columns constrain intrinsic content widths so expansion never shifts the transcript
 horizontally. All process and tool disclosures animate in both directions.
 Scroll following pauses on explicit upward wheel, touch, keyboard or scrollbar
@@ -221,11 +225,16 @@ permanent empty tail after short or interrupted replies.
   identity, and 150 deterministic randomized replay schedules.
 - `ui/src/stores/useSessionStore.timeline.test.tsx`: real store history/live race
   and edited-turn tombstones.
+- `ui/src/stores/useSessionStore.issue750.pipeline.test.tsx`: refresh races that
+  pair a stale page with the active-run baseline keep every reply under its own
+  prompt, including pages whose tail predates the newest accepted inputs.
 - `tests/web/history-pagination.spec.ts` and
   `ui/src/stores/useSessionStore.pagination.test.tsx`: complete-turn cursors,
   repeated prompts, live appends, overlapping pages, refresh races and retries.
 - `ui/e2e/history-loading.spec.mjs`: automatic backward loading, bounded DOM,
   prepend anchors, long turns and offscreen fold height invalidation.
+- `ui/e2e/issue750-refresh-pairing.spec.mjs`: virtualized refresh pairing — a
+  long transcript keeps every tail prompt and reply in order on first paint.
 - `ui/src/components/chat/view/ThinkingBlock.test.tsx`: localized clocks, completion,
   manual expansion and legacy-history fallback.
 - `ui/src/components/chat/view/ConversationI18n.test.tsx`: in-place language changes
