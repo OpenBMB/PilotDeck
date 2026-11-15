@@ -149,6 +149,19 @@ export const CATALOG_PROVIDERS: CatalogProvider[] = [
     ],
   },
   {
+    id: 'requesty',
+    displayName: 'Requesty',
+    protocol: 'openai',
+    defaultUrl: 'https://router.requesty.ai/v1',
+    apiKeyEnvVar: 'REQUESTY_API_KEY',
+    models: [
+      { id: 'anthropic/claude-sonnet-5', displayName: 'Claude Sonnet 5', supportsImage: true, maxContextTokens: 1000000, maxOutputTokens: 128000 },
+      { id: 'openai/gpt-5.4', displayName: 'GPT-5.4', supportsImage: true, maxContextTokens: 1050000, maxOutputTokens: 128000 },
+      { id: 'google/gemini-3.1-pro-preview', displayName: 'Gemini 3.1 Pro Preview', supportsImage: true, maxContextTokens: 1048576, maxOutputTokens: 65535 },
+      { id: 'deepseek/deepseek-chat', displayName: 'DeepSeek Chat', maxContextTokens: 1000000, maxOutputTokens: 384000 },
+    ],
+  },
+  {
     id: 'ollama',
     displayName: 'Ollama',
     protocol: 'openai',
