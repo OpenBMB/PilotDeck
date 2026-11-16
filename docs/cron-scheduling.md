@@ -81,8 +81,8 @@ Task transcripts are excluded from ordinary lists, counts and search, including
 legacy per-run transcripts; direct task history reads remain supported.
 
 Create/edit use a modal with task instructions, workspace, timing controls and
-an IANA timezone selector. Names are generated asynchronously with the existing
-model title generator; naming failure retains the instruction-based fallback
+an IANA timezone selector. Names and reminder timing are generated asynchronously by a task-only
+model classifier; naming failure retains the instruction-based fallback
 and never delays execution. Description changes regenerate names, while explicit
 Agent/API names remain supported. The editor offers standard recurrence controls
 and preserves existing complex schedules without exposing expression inputs.
@@ -148,7 +148,38 @@ unread attention (`all`, `findings`, `failures`); findings checks may return
 `[NO_UPDATE]`. Legacy delivery-retry requests retain records without resubmitting
 the model or sending source-chat messages.
 
+## Persistent reminders
+
+Task reminders are independent of ordinary conversation unread indicators and
+notifications. `reminderTiming: due` records a reminder at the intended occurrence
+before execution admission, including when a task conversation is busy. `result`
+(the compatibility default) records completed or failed results, subject to
+`notificationPolicy` and `[NO_UPDATE]` suppression. Stopped runs do not alert.
+Successful due-mode runs do not create a second result reminder; failures remain
+visible according to the notification policy. The naming classifier selects due delivery for simple user reminders and result
+delivery for agent work; Agent creation and the editor can explicitly override it.
+
+Web shows persistent cards; desktop uses a separate non-modal, always-on-top
+window with the existing notification preferences, sound throttle and appearance.
+Viewing a task, focusing the application and reading its transcript never dismiss
+reminders. Only explicit close acknowledges a reminder for the authenticated user.
+Failed close requests retain it. Ordinary chat notifications keep their existing
+focus/read behavior. System delivery follows notification preferences; Web cards
+remain available even when browser system notifications are disabled.
+
+Pending reminders survive runtime and client restarts. Initial connection and
+reconnect read a snapshot; `cron-reminder-changed` events merge live changes with
+in-flight snapshots. There is no periodic reminder query. Each occurrence has a
+stable unique ID; later occurrences cannot replace earlier unacknowledged alerts.
+Local scheduling still requires the runtime and computer to remain running.
+
 ## Storage and interfaces
+
+Reminder records and per-user acknowledgements are in
+`<PILOT_HOME>/cron/reminders.json`, written atomically with serialized mutations.
+`GET /api/always-on/cron-reminders` returns the current user’s pending records;
+`POST /api/always-on/cron-reminders/:id/dismiss` acknowledges only that user’s
+record. Gateway equivalents are `cron_reminder_list` and `cron_reminder_dismiss`.
 
 Tasks are in `<PILOT_HOME>/cron/projects/<projectId>/tasks.json`, with a `.cwd`
 project marker. JSON writes use a serialized mutation queue and atomic replace.

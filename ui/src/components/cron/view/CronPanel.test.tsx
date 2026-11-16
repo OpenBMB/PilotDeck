@@ -632,6 +632,7 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-edit', {
         notificationPolicy: 'all',
+        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -722,6 +723,7 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-once-to-cron', {
         notificationPolicy: 'all',
+        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -757,6 +759,7 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once', {
         notificationPolicy: 'all',
+        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -793,6 +796,7 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-date-boundary', {
         notificationPolicy: 'all',
+        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -873,6 +877,7 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-fallback', {
         notificationPolicy: 'all',
+        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,

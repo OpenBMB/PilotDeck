@@ -275,6 +275,7 @@ function normalizeTask(value: unknown): CronTask | undefined {
     workspaceCwd: typeof candidate.workspaceCwd === "string" ? candidate.workspaceCwd : undefined,
     targetSessionKey: candidate.targetSessionKey,
     notificationPolicy: candidate.notificationPolicy ?? "all",
+    reminderTiming: candidate.reminderTiming === "due" || candidate.reminderTiming === "result" ? candidate.reminderTiming : undefined,
     workspaceMode: candidate.workspaceMode ?? "local",
     modelSelection: candidate.modelSelection,
     statusDetail: candidate.statusDetail,

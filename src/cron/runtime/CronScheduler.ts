@@ -15,6 +15,7 @@ export type CronSchedulerDependencies = {
   uuid: () => string;
   now: () => Date;
   activeRunCount: () => number;
+  onDue?: (task: CronTask) => Promise<void>;
   logger?: {
     warn: (message: string, data?: Record<string, unknown>) => void;
   };
@@ -105,6 +106,8 @@ export class CronScheduler {
     const tasks = await this.deps.store.listTasks();
     const dueTasks = tasks.filter((task) => isDue(task, now));
     for (const task of dueTasks) {
+      // Arrival reminders must not wait for model admission or concurrency slots.
+      await this.deps.onDue?.(task);
       if (this.deps.activeRunCount() >= this.deps.config.maxConcurrentRuns) {
         continue;
       }

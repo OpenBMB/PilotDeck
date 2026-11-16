@@ -6,7 +6,7 @@ import { createErrorDiagnostics, handleUnexpectedError } from './middleware/erro
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from './services/workspaceFileUpload.js';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
 import { createSessionNotificationRegistry } from './session-notifications.js';
-import { notifySessionAttention } from './services/notification-orchestrator.js';
+import { notifySessionAttention, notifyTaskReminder } from './services/notification-orchestrator.js';
 import '../../scripts/check-node-runtime.mjs';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
 import { installGlobalProxy } from './utils/proxy.js';
@@ -92,6 +92,7 @@ import {
     isGatewayUnavailableError,
     registerAlwaysOnNotificationForwarding,
     registerCronNotificationForwarding,
+    registerCronReminderForwarding,
     registerSessionInputNotificationForwarding,
     getSessionTokenBudget,
     getInputQueueStateViaGateway,
@@ -106,6 +107,7 @@ import sessionManager from './sessionManager.js';
 import { createComputerUseService } from './services/computerUse.js';
 import { createComputerUseRouter } from './routes/computer-use.js';
 import { configureTrustedProxy } from './utils/trustedProxy.js';
+import { createCronReminderRoutes } from './routes/cron-reminders.js';
 import gitRoutes from './routes/git.js';
 import checkpointRoutes from './routes/checkpoints.js';
 import authRoutes from './routes/auth.js';
@@ -246,6 +248,15 @@ const forwardBackgroundFrame = createBackgroundSessionForwarder({
 registerAlwaysOnNotificationForwarding(connectedClients, (sessionId, frame) => {
     if (sessionId.startsWith('cron:')) broadcastToSessionWatchers(sessionId, frame, userDb.getFirstUser()?.id);
     else forwardBackgroundFrame(sessionId, frame);
+});
+registerCronReminderForwarding(change => {
+    for (const client of connectedClients) {
+        const scope = String(client.__pilotdeckUserId ?? 'local');
+        if (client.readyState === WebSocket.OPEN && (!change.dismissedScope || change.dismissedScope === scope)) {
+            client.send(JSON.stringify({ type: 'cron-reminder-changed', ...change, scope }));
+        }
+    }
+    if (change.reminder) notifyTaskReminder(userDb.getFirstUser()?.id, change.reminder);
 });
 registerCronNotificationForwarding(change => {
     const userId = userDb.getFirstUser()?.id;
@@ -763,6 +774,8 @@ app.get('/api/always-on/events', authenticateToken, async (req, res) => {
     }
 });
 
+app.use('/api/always-on/cron-reminders', authenticateToken, createCronReminderRoutes({ getGateway: getPilotDeckGateway }));
+
 app.get('/api/always-on/cron-jobs', authenticateToken, async (_req, res) => {
     try {
         const result = await getProjectCronJobsOverview();
@@ -806,6 +819,7 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
             workspaceCwd: projectKey === resolvePilotHome(process.env) ? await ensureGeneralWorkspaceDirectory(process.env) : req.body?.workspaceCwd,
             sessionKey: req.body?.sessionKey,
             notificationPolicy: req.body?.notificationPolicy,
+            reminderTiming: req.body?.reminderTiming,
             mode: req.body?.mode,
             workspaceMode: req.body?.workspaceMode,
             modelSelection: req.body?.modelSelection,

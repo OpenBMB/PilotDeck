@@ -2,6 +2,8 @@ import type { Gateway, GatewayEvent } from "../../gateway/index.js";
 import type { CronResultDeliveryHandler, CronRunRecord, CronRunOutcome, CronTask } from "../protocol/types.js";
 import type { CronTaskStore } from "../storage/CronTaskStore.js";
 import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION } from "./CronSchedule.js";
+import { taskReminder } from "../storage/CronReminderStore.js";
+import type { CronReminder } from "../protocol/types.js";
 
 export type CronActiveRun = {
   runId: string;
@@ -42,6 +44,7 @@ export type CronFireDependencies = {
   prepareRun?: (task: CronTask, runId: string, sessionKey: string) => Promise<string | undefined>;
   releaseRun?: (task: CronTask, sessionKey: string) => Promise<void>;
   onFinished?: () => void;
+  onReminder?: (reminder: CronReminder) => Promise<void>;
 };
 
 export type CronFireOptions = {
@@ -174,6 +177,12 @@ export class CronFire {
           terminal = await this.deliverResult(task, terminal);
           await this.deps.store.appendRun(terminal).catch((caught) => this.warn("cron delivery record write failed", caught, task.taskId, runId));
           await this.finishTask(task, snapshot, terminal, trigger).catch((caught) => this.warn("cron task post-run update failed", caught, task.taskId, runId));
+          if ((task.reminderTiming !== "due" || outcome !== "completed") && outcome !== "stopped" && outcome !== "aborted"
+            && (outcome !== "completed" || task.notificationPolicy !== "failures")
+            && !(outcome === "completed" && task.notificationPolicy === "findings" && output.trim() === "[NO_UPDATE]")) {
+            await this.deps.onReminder?.(taskReminder(task, outcome === "completed" ? "completed" : "failed", finishedAt.toISOString(), terminal))
+              .catch(caught => this.warn("cron reminder persistence failed", caught, task.taskId, runId));
+          }
           await this.deps.releaseRun?.(task, sessionKey).catch((caught) => this.warn("cron session cleanup failed", caught, task.taskId, runId));
           // The stream has drained and Gateway admission is released. The Web
           // bridge can now dispatch ordinary queued replies in this same session.

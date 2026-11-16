@@ -1,3 +1,4 @@
+import type { CronReminder, CronReminderListInput, CronReminderDismissInput } from "../../cron/protocol/types.js";
 import { readCronMessageHistory } from "../../cron/runtime/CronMessageHistory.js";
 import { ActiveTimeline } from "../stream/ActiveTimeline.js";
 import { FileInputProgress } from "../stream/FileInputProgress.js";
@@ -1055,6 +1056,14 @@ export class InProcessGateway implements Gateway {
           .map((event) => cloneGatewayEvent(event)),
       ...(replay.truncated ? { truncated: true } : {}),
     };
+  }
+
+  async cronReminderList(input: CronReminderListInput): Promise<{ reminders: CronReminder[] }> {
+    return await this.requireCron().listReminders?.(input) ?? { reminders: [] };
+  }
+
+  async cronReminderDismiss(input: CronReminderDismissInput): Promise<{ dismissed: boolean }> {
+    return await this.requireCron().dismissReminder?.(input) ?? { dismissed: false };
   }
 
   async cronCreate(input: CronCreateInput): Promise<CronCreateResult> {

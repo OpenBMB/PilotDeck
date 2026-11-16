@@ -30,6 +30,7 @@ export function createCronTools(runtime: CronToolRuntime): PilotDeckToolDefiniti
     inputSchema: { type: "object", required: ["taskId", "expectedRevision"], additionalProperties: false, properties: {
       ...identity, expectedRevision: { type: "integer", minimum: 0 }, name: { type: "string", minLength: 1, maxLength: 120 },
       message: { type: "string", minLength: 1 }, schedule: CRON_SCHEDULE_SCHEMA, timezone: { type: "string" }, enabled: { type: "boolean" },
+      reminderTiming: { type: "string", enum: ["due", "result"], description: "due for meeting or event reminders that must alert at the scheduled time; result for research/work notifications after execution." },
       notificationPolicy: { type: "string", enum: ["all", "findings", "failures"] },
       mode: { type: "string", enum: ["default", "plan", "bypassPermissions"] }, workspaceMode: { type: "string", enum: ["local", "worktree"] },
       modelSelection: { anyOf: [{ type: "null" }, { type: "object", required: ["provider", "model"], additionalProperties: false,

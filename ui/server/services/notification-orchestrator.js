@@ -1,6 +1,6 @@
 import webPush from 'web-push';
 import { notificationPreferencesDb, pushSubscriptionsDb, sessionNamesDb } from '../database/db.js';
-import { buildSystemNotification, normalizeNotificationPreferences } from '../../shared/notifications.js';
+import { buildSystemNotification, buildTaskReminderNotification, normalizeNotificationPreferences } from '../../shared/notifications.js';
 
 export function notifySessionAttention(userId, notification) {
   if (userId === undefined || userId === null) return;
@@ -20,6 +20,26 @@ export function notifySessionAttention(userId, notification) {
     } }, JSON.stringify(payload), { TTL: 3600 }).catch(error => {
       if (error.statusCode === 404 || error.statusCode === 410) pushSubscriptionsDb.removeSubscription(subscription.endpoint, userId);
       else console.warn('Web push delivery failed:', error.statusCode || error.message);
+    });
+  }
+}
+
+/** Scheduled reminders share transport/preferences, never the chat-read registry. */
+export function notifyTaskReminder(userId, reminder) {
+  if (userId === undefined || userId === null) return;
+  for (const subscription of pushSubscriptionsDb.getSubscriptions(userId)) {
+    let saved = {};
+    try { saved = JSON.parse(subscription.preferences_json || '{}'); } catch {}
+    const preferences = normalizeNotificationPreferences({ enabled: true, ...saved });
+    if (!preferences.enabled) continue;
+    const payload = buildTaskReminderNotification(reminder, preferences, saved.language || 'en', String(userId));
+    payload.taskReminder = { ...reminder, body: preferences.preview ? reminder.body : '' };
+    payload.preferences = preferences;
+    webPush.sendNotification({ endpoint: subscription.endpoint, keys: {
+      p256dh: subscription.keys_p256dh, auth: subscription.keys_auth,
+    } }, JSON.stringify(payload), { TTL: 3600 }).catch(error => {
+      if (error.statusCode === 404 || error.statusCode === 410) pushSubscriptionsDb.removeSubscription(subscription.endpoint, userId);
+      else console.warn('Scheduled reminder push failed:', error.statusCode || error.message);
     });
   }
 }

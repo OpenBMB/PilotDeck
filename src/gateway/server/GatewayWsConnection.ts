@@ -245,6 +245,10 @@ export class GatewayWsConnection {
         });
       case "cron_create":
         return this.options.gateway.cronCreate(frame.params as never);
+      case "cron_reminder_list":
+        return this.options.gateway.cronReminderList?.(frame.params as never) ?? Promise.reject(new Error("Scheduled reminders are unavailable"));
+      case "cron_reminder_dismiss":
+        return this.options.gateway.cronReminderDismiss?.(frame.params as never) ?? Promise.reject(new Error("Scheduled reminders are unavailable"));
       case "cron_list":
         return this.options.gateway.cronList(frame.params as never);
       case "cron_update":

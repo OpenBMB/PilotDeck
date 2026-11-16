@@ -36,6 +36,8 @@ Quit, update installation and runtime replacement cancel pending readiness befor
 
 Caption menus retain each native popup through deferred close completion. `close()` stops hover tracking and returns a promise that resolves after native teardown. Renderer acknowledgements and queued menu switches resume after the native close callback exits; repeated close requests do not cancel that settlement. Native acceptance controls popup closure through renderer IPC and reads main-process debugger state after dismissal.
 
+Scheduled reminders use [taskReminderWindow.ts](src/taskReminderWindow.ts) and its dedicated sandboxed preload for a persistent, non-modal, always-on-top window. The shared Web reminder store restores pending records after restart; viewing a task never acknowledges it. Explicit close awaits the authenticated server acknowledgement. Ordinary chat notification focus/read behavior is separate.
+
 Notifications follow application preferences and OS policy. Windows uses native Toasts without numeric app badges. Supported app badges count background tasks and clear when the main window gains focus; conversation unread state is independent.
 
 General uses a registered PilotDeckGeneral workspace (Documents on Windows, home on macOS/Linux). Configuration may select another location; selection and migration must preserve existing files, validate directory identity and reject overlap with installation or state directories. See [configuration and paths](../../src/pilot/README.md).

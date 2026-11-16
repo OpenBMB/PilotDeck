@@ -21,8 +21,10 @@ export function validateNotification(value: unknown): SystemNotification {
       typeof item.data?.scope !== 'string' ||
       (item.data.taskId !== undefined && (typeof item.data.taskId !== 'string' || !item.data.taskId || item.data.taskId.length > 512))) throw new Error('Invalid notification');
   return { id: item.id, title: item.title.slice(0, 80), body: item.body.slice(0, 400), silent: item.silent === true,
+    ...(item.persistent === true ? { persistent: true } : {}),
     data: { sessionId: item.data.sessionId, eventId: item.id, scope: item.data.scope, kind: item.data.kind,
-      taskId: item.data.taskId, createdAt: item.data.createdAt } };
+      taskId: item.data.taskId, createdAt: item.data.createdAt,
+      ...(typeof item.data.reminderId === 'string' ? { reminderId: item.data.reminderId } : {}) } };
 }
 
 /** A small bitmap avoids an SVG renderer or a new native dependency on Windows. */
@@ -116,6 +118,11 @@ export function createDesktopNotifications(options: {
       active.clear();
     },
     status: () => ({ supported: options.supported(), permission: 'unknown' as const, preferences }),
+    allowReminderSound() {
+      if (!preferences.enabled || !preferences.sound || now() - lastSound < 2000) return false;
+      lastSound = now();
+      return true;
+    },
     preferences(value: unknown) {
       const next = normalizePreferences(value);
       options.save(next);

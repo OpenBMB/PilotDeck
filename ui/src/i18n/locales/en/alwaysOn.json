@@ -378,7 +378,21 @@
       "openTask": "Open task",
       "everyMinute": "Every minute"
     },
-    "detailsFor": "View task details: {{name}}"
+    "detailsFor": "View task details: {{name}}",
+    "reminders": {
+      "title": "Scheduled task reminders",
+      "due": "Scheduled reminder",
+      "completed": "Task completed",
+      "failed": "Task needs attention",
+      "view": "View task",
+      "close": "Dismiss reminder: {{title}}",
+      "error": "Reminders could not sync. Existing reminders are retained.",
+      "retry": "Retry",
+      "timing": "Reminder timing",
+      "auto": "Automatic",
+      "onDue": "At the scheduled time",
+      "onResult": "After execution"
+    }
   },
   "sessionMissing": "This chat record no longer exists."
 }

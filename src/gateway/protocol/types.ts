@@ -1,3 +1,4 @@
+import type { CronReminder, CronReminderListInput, CronReminderDismissInput } from "../../cron/protocol/types.js";
 import type { TimelinePosition, StreamBoundary } from "../../model/protocol/timeline.js";
 import type { AgentTurnResult } from "../../agent/index.js";
 import type { AgentStatusMessageInput } from "../../session/transcript/TranscriptWriter.js";
@@ -529,6 +530,8 @@ export type UploadedAttachmentRef = {
 export type GatewayCronController = {
   /** Resolve task ownership and prepare its trusted execution directory for chat turns. */
   prepareConversation?(input: { sessionKey: string; projectKey?: string }): Promise<{ task: import('../../cron/protocol/types.js').CronTask; workspaceCwd: string }>;
+  listReminders?(input: CronReminderListInput): Promise<{ reminders: CronReminder[] }>;
+  dismissReminder?(input: CronReminderDismissInput): Promise<{ dismissed: boolean }>;
   createTask(input: CronCreateInput): Promise<CronCreateResult>;
   listTasks(input: CronListInput): Promise<CronListResult>;
   updateTask(input: CronUpdateInput): Promise<CronUpdateResult>;
@@ -602,6 +605,8 @@ export interface Gateway {
   sessionModelSet?(input: SessionModelSetInput): Promise<SessionModelResult>;
   sessionModelClear?(input: SessionModelInput): Promise<void>;
   getActiveTurnSnapshot?(input: GatewayActiveTurnSnapshotInput): Promise<GatewayActiveTurnSnapshot>;
+  cronReminderList?(input: CronReminderListInput): Promise<{ reminders: CronReminder[] }>;
+  cronReminderDismiss?(input: CronReminderDismissInput): Promise<{ dismissed: boolean }>;
   cronCreate(input: CronCreateInput): Promise<CronCreateResult>;
   cronList(input: CronListInput): Promise<CronListResult>;
   cronUpdate(input: CronUpdateInput): Promise<CronUpdateResult>;

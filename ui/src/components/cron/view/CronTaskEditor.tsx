@@ -376,6 +376,7 @@ export default function CronTaskEditor({
   const isEditing = editingJob !== null;
   const [message, setMessage] = useState(initialValues.message);
   const [execution, setExecution] = useState<CronExecutionDraft>({
+    reminderTiming: editingJob ? editingJob.reminderTiming || 'result' : undefined,
     notificationPolicy: editingJob?.notificationPolicy || 'all', mode: editingJob?.mode || 'default',
     workspaceMode: editingJob?.workspaceMode || 'local', modelSelection: editingJob?.modelSelection,
   });

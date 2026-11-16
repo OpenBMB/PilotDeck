@@ -1,3 +1,6 @@
+import { createTaskReminderWindow, type TaskReminderSnapshot } from './taskReminderWindow';
+import { deriveAppearanceColors } from './appearancePalette';
+import { normalizeLightAppearance } from './lightAppearance';
 import { registerWindowsNotifications, TOAST_ACTIVATOR_CLSID } from './windowsNotifications';
 import { installRendererRecovery } from "./rendererRecovery";
 import { commandEnabled, emptyMenuState, normalizeMenuState, type DesktopCommand } from "./desktopCommands";
@@ -15,7 +18,7 @@ import { createRuntimeLogWriter, normalizeLogRetentionDays, redactDiagnostic, re
 import { startupProgress } from './startupPresentation';
 import { exportRuntimeLogs } from './runtimeLogExport';
 import { createDesktopUninstaller } from './desktopUninstall';
-import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions } from './notifications';
+import { badgeBitmap, createDesktopNotifications, nativeNotificationOptions, validateNotification } from './notifications';
 import { normalizeAppearance, renderLoadingHtml, startupText, type DesktopAppearance } from "./appearance";
 import { saveAppearancePatch, appearanceImagePath, writeAppearanceImage } from './appearanceStorage';
 import { createFilePicker } from './filePicker';
@@ -1088,11 +1091,40 @@ const notifications = createDesktopNotifications({
   },
   report: error => console.warn('Desktop notification:', error),
 });
+const taskReminders = createTaskReminderWindow({
+  platform: process.platform, create: options => new BrowserWindow(options),
+  preloadPath: path.join(__dirname, 'taskReminderPreload.js'),
+  workArea: () => screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea,
+  palette: () => {
+    const colors = deriveAppearanceColors(normalizeLightAppearance(readAppearance().lightAppearance), nativeTheme.shouldUseDarkColors);
+    return { background: colors.surface, foreground: colors.ink, muted: colors.muted, border: colors.border, accent: colors.strong, soft: colors.soft };
+  },
+  isQuitting: () => isQuitting,
+  view: async data => { await restoreMainWindow(); mainWindow?.webContents.send('pilotdeck:notification-navigate', data); },
+  dismiss: id => mainWindow?.webContents.send('pilotdeck:task-reminder-dismiss', id),
+  allowSound: () => notifications.allowReminderSound(), beep: () => shell.beep(),
+  report: error => console.warn('Task reminder window:', error),
+});
+ipcMain.handle('pilotdeck:task-reminders', async (event, value: TaskReminderSnapshot) => {
+  requireUpdateSender(event);
+  if (!value || typeof value.scope !== 'string' || !value.scope || value.scope.length > 128 || typeof value.language !== 'string'
+    || !Array.isArray(value.reminders)) throw new Error('Invalid reminder snapshot');
+  const preferences = notifications.status().preferences;
+  const reminders = value.reminders.map(item => {
+    const payload = validateNotification(item);
+    if (payload.data.scope !== value.scope || payload.data.kind !== 'reminder' || payload.data.reminderId !== payload.id
+      || !/^[a-f0-9]{64}$/.test(payload.id) || !payload.data.taskId) throw new Error('Invalid task reminder');
+    if (!preferences.preview) payload.body = payload.body.split('\n')[0];
+    return payload;
+  });
+  await taskReminders.update({ ...value, reminders: preferences.enabled ? reminders : [] });
+});
+ipcMain.on('pilotdeck:task-reminder-action', (event, value) => taskReminders.handle(event, value));
 ipcMain.handle('pilotdeck:notification-status', event => { requireUpdateSender(event); return notifications.status(); });
-ipcMain.handle('pilotdeck:notification-preferences', (event, value) => { requireUpdateSender(event); return notifications.preferences(value); });
+ipcMain.handle('pilotdeck:notification-preferences', (event, value) => { requireUpdateSender(event); const result = notifications.preferences(value); if (!result.enabled) taskReminders.setScope(null); return result; });
 ipcMain.handle('pilotdeck:notification-show', (event, value) => { requireUpdateSender(event); return notifications.show(value); });
 ipcMain.handle('pilotdeck:notification-reminder', (event, value) => { requireUpdateSender(event); return notifications.record(value); });
-ipcMain.handle('pilotdeck:notification-scope', (event, value) => { requireUpdateSender(event); notifications.setScope(value); });
+ipcMain.handle('pilotdeck:notification-scope', (event, value) => { requireUpdateSender(event); notifications.setScope(value); taskReminders.setScope(value); });
 ipcMain.handle('pilotdeck:notification-settings', async event => {
   requireUpdateSender(event);
   if (process.platform === 'darwin') {
@@ -1239,12 +1271,13 @@ ipcMain.handle("pilotdeck:show-menu", (event, request?: CaptionMenuRequest) => {
   }
   return menus.show(request);
 });
-nativeTheme.on("updated", publishWindowState);
+nativeTheme.on("updated", () => { publishWindowState(); taskReminders.refresh(); });
 
 ipcMain.handle("pilotdeck:set-appearance", (event, value: unknown) => {
   requireUpdateSender(event);
   const current = readAppearance();
   const appearance = saveAppearancePatch(app.getPath('userData'), current, value, app.getLocale());
+  taskReminders.refresh();
   if (current.themeMode !== appearance.themeMode) nativeTheme.themeSource = appearance.themeMode;
   const paletteChanged = JSON.stringify(windowPalette(nativeTheme.shouldUseDarkColors, process.platform, current.lightAppearance)) !== JSON.stringify(windowPalette(nativeTheme.shouldUseDarkColors, process.platform, appearance.lightAppearance));
   if (paletteChanged || current.themeMode !== appearance.themeMode) publishWindowState();
@@ -1457,4 +1490,5 @@ app.on("before-quit", event => lifecycle.beforeQuit(event));
 app.on("will-quit", () => {
   lifecycle.dispose();
   desktopTray?.dispose();
+  taskReminders.dispose();
 });

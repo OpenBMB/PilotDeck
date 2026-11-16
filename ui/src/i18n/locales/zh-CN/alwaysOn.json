@@ -378,7 +378,21 @@
       "openTask": "查看任务",
       "everyMinute": "每分钟"
     },
-    "detailsFor": "查看任务详情：{{name}}"
+    "detailsFor": "查看任务详情：{{name}}",
+    "reminders": {
+      "title": "定时任务提醒",
+      "due": "定时提醒",
+      "completed": "任务已完成",
+      "failed": "任务需要处理",
+      "view": "查看任务",
+      "close": "关闭提醒：{{title}}",
+      "error": "提醒同步失败，已显示的提醒会保留。",
+      "retry": "重试",
+      "timing": "提醒时机",
+      "auto": "自动判断",
+      "onDue": "到点提醒",
+      "onResult": "执行完成后提醒"
+    }
   },
   "sessionMissing": "此对话记录已不存在。"
 }

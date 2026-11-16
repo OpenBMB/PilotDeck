@@ -156,10 +156,11 @@ async function closeReadNotifications(scope, progress) {
   const notifications = await self.registration.getNotifications();
   for (const notification of notifications) {
     const data = notification.data;
-    if (data?.scope === scope && atOrBefore(notificationRecord(data), progress[data.sessionId])) notification.close();
+    if (data?.kind !== 'reminder' && data?.scope === scope && atOrBefore(notificationRecord(data), progress[data.sessionId])) notification.close();
   }
 }
 async function showNotificationOnce(payload, forwardToClients = false) {
+  if (payload.data?.kind === 'reminder') return showTaskReminderOnce(payload, forwardToClients);
   const data = payload.data || {};
   const record = notificationRecord({ ...data, eventId: data.eventId || payload.id,
     createdAt: data.createdAt || payload.event?.createdAt });
@@ -207,12 +208,52 @@ async function showNotificationOnce(payload, forwardToClients = false) {
   return true;
 }
 
+async function showTaskReminderOnce(payload, forwardToClients) {
+  const data = payload.data;
+  const key = JSON.stringify([data.scope, 'task-reminder', data.reminderId]);
+  let accepted = false, show = false, silent = payload.silent === true;
+  await notificationState(state => {
+    if (state.scope && data.scope !== state.scope || state.seen.includes(key)) return;
+    state.seen.push(key);
+    accepted = true;
+    const preferences = state.preferences || payload.preferences || {};
+    show = preferences.enabled !== false;
+    silent = silent || preferences.sound === false || Date.now() - state.lastSound < 2000;
+    if (show && !silent) state.lastSound = Date.now();
+    if (preferences.preview === false) payload.body = payload.body.split('\n')[0];
+    return state;
+  });
+  if (accepted && forwardToClients && payload.taskReminder) {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) client.postMessage({ type: 'cron-reminder-changed', id: data.reminderId,
+      reminder: payload.taskReminder, scope: data.scope });
+  }
+  if (!show) return false;
+  await self.registration.showNotification(payload.title || 'PilotDeck', {
+    body: payload.body, icon: '/logo-256.png', badge: '/logo-128.png', data,
+    tag: `${data.scope}:task-reminder:${data.reminderId}`, requireInteraction: true, silent,
+  });
+  return true;
+}
+
 self.addEventListener('message', event => {
   const { type, value } = event.data || {};
   if (!type?.startsWith('notification:')) return;
   event.waitUntil(serializeNotifications(async () => {
     let result;
     if (type === 'notification:show') result = await showNotificationOnce(value);
+    else if (type === 'notification:task-dismiss') {
+      await notificationState(state => {
+        if (state.scope && state.scope !== value.scope) return;
+        const key = JSON.stringify([value.scope, 'task-reminder', value.id]);
+        if (!state.seen.includes(key)) state.seen.push(key);
+        return state;
+      });
+      for (const notification of await self.registration.getNotifications()) {
+        if (notification.data?.scope === value.scope && notification.data?.reminderId === value.id) notification.close();
+      }
+      result = true;
+    }
     else if (type === 'notification:preferences') {
       await notificationState(state => {
         if (value.scope && state.scope && state.scope !== value.scope) { state.pending = {}; state.seen = []; state.readProgress = {}; }
@@ -271,7 +312,9 @@ self.addEventListener('notificationclick', event => {
 
   const sessionId = event.notification.data?.sessionId;
   const provider = event.notification.data?.provider || null;
-  const urlPath = sessionId ? `/session/${encodeURIComponent(sessionId)}` : '/';
+  const reminder = event.notification.data?.kind === 'reminder';
+  const urlPath = reminder && event.notification.data?.taskId ? `/cron?taskId=${encodeURIComponent(event.notification.data.taskId)}`
+    : sessionId ? `/session/${encodeURIComponent(sessionId)}` : '/';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async clientList => {
@@ -284,6 +327,8 @@ self.addEventListener('notificationclick', event => {
             provider,
             scope: event.notification.data?.scope,
             eventId: event.notification.data?.eventId,
+            kind: event.notification.data?.kind,
+            taskId: event.notification.data?.taskId,
             urlPath
           });
           return;

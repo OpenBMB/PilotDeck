@@ -30,6 +30,8 @@ import { createCronTools } from "../tool/createCronTools.js";
 import { migrateCronStores } from "../storage/CronStoreMigration.js";
 import { CronRuntime, type CronRuntimeLogger, type CreateCronRuntimeOptions } from "./CronRuntime.js";
 import type { CronTurnEventHandler } from "./CronFire.js";
+import { CronReminderStore } from "../storage/CronReminderStore.js";
+import type { CronReminder, CronReminderListInput, CronReminderDismissInput } from "../protocol/types.js";
 
 export type CreateCronManagerOptions = {
   config: CronConfig;
@@ -42,6 +44,7 @@ export type CreateCronManagerOptions = {
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
   onTaskChange?: (change: CronTaskChange) => void;
+  onReminderChange?: (change: { id: string; reminder?: CronReminder; dismissedScope?: string }) => void;
   generateTaskTitle?: CreateCronRuntimeOptions["generateTaskTitle"];
 };
 
@@ -54,11 +57,14 @@ export class CronManager {
   private readonly tools: PilotDeckToolDefinition[];
   private gateway?: Gateway;
   private started = false;
+  private readonly reminders: CronReminderStore;
+  private readonly emittedReminders = new Set<string>();
 
   constructor(private readonly options: CreateCronManagerOptions) {
     this.config = options.config;
     this.pilotHome = resolve(options.pilotHome);
     this.tools = createCronTools(this);
+    this.reminders = new CronReminderStore(resolve(this.pilotHome, "cron", "reminders.json"));
   }
 
   getTools(): PilotDeckToolDefinition[] {
@@ -162,6 +168,26 @@ export class CronManager {
     return runtime.updateTask(input);
   }
 
+  async listReminders(input: CronReminderListInput): Promise<{ reminders: CronReminder[] }> {
+    validateReminderScope(input.scope);
+    return { reminders: await this.reminders.list(input.scope) };
+  }
+
+  async dismissReminder(input: CronReminderDismissInput): Promise<{ dismissed: boolean }> {
+    validateReminderScope(input.scope);
+    if (typeof input.id !== "string" || !/^[a-f0-9]{64}$/.test(input.id)) throw new Error("Invalid reminder ID.");
+    const dismissed = await this.reminders.dismiss(input.scope, input.id, (this.options.now?.() ?? new Date()).toISOString());
+    if (dismissed) this.options.onReminderChange?.({ id: input.id, dismissedScope: input.scope });
+    return { dismissed };
+  }
+
+  private async recordReminder(reminder: CronReminder): Promise<void> {
+    if (this.emittedReminders.has(reminder.id)) return;
+    const created = await this.reminders.put(reminder);
+    this.emittedReminders.add(reminder.id);
+    if (created) this.options.onReminderChange?.({ id: reminder.id, reminder });
+  }
+
   async prepareConversation(input: { sessionKey: string; projectKey?: string }): Promise<{ task: CronTask; workspaceCwd: string }> {
     const task = (await this.listTasks()).tasks.find(task => task.sessionKey === input.sessionKey);
     if (!task || (input.projectKey && resolve(input.projectKey) !== resolve(task.projectKey!))) {
@@ -221,6 +247,7 @@ export class CronManager {
       onResultDelivery: this.options.onResultDelivery,
       onTurnEvent: this.options.onTurnEvent,
       onTaskChange: this.options.onTaskChange,
+      onReminder: reminder => this.recordReminder(reminder),
       generateTaskTitle: this.options.generateTaskTitle,
       activeRunCount: () => this.activeRunCount(),
       onRunFinished: () => { for (const loaded of this.runtimes.values()) loaded.poke(); },
@@ -297,6 +324,10 @@ function requireProjectKey(projectKey: string | undefined): string {
     throw new Error("Cron task creation requires a projectKey.");
   }
   return resolve(projectKey);
+}
+
+function validateReminderScope(scope: string): void {
+  if (typeof scope !== "string" || !scope || scope.length > 128) throw new Error("Invalid reminder scope.");
 }
 
 async function discoverCronProjectKeys(

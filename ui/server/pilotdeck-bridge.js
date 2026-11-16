@@ -2751,3 +2751,11 @@ export function registerCronNotificationForwarding(onChange) {
     if (gateway) gateway.onNotification(handler);
     ensureGateway().catch(error => console.warn('[cron] notification connection unavailable:', error.message));
 }
+
+export function registerCronReminderForwarding(onChange) {
+    const handler = (name, payload) => { if (name === 'cron:reminder-changed') onChange(payload); };
+    gatewayNotificationHandlers.add(handler);
+    const gateway = gatewayConnections.current();
+    if (gateway) gateway.onNotification(handler);
+    ensureGateway().catch(error => console.warn('[cron] reminder connection unavailable:', error.message));
+}

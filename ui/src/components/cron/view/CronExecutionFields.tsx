@@ -4,6 +4,7 @@ import type { Project } from '../../../types/app';
 import { api } from '../../../utils/api';
 
 export type CronExecutionDraft = {
+  reminderTiming?: 'due' | 'result';
   notificationPolicy: 'all' | 'findings' | 'failures';
   mode: 'default' | 'plan' | 'bypassPermissions';
   workspaceMode: 'local' | 'worktree';
@@ -11,7 +12,7 @@ export type CronExecutionDraft = {
 };
 type Model = { provider: string; model: string; displayName: string; available: boolean };
 
-export default function CronExecutionFields({ value, onChange, project }: {
+export default function CronExecutionFields({ value, onChange, project, editing }: {
   value: CronExecutionDraft; onChange: (value: CronExecutionDraft) => void; project?: Project; editing?: boolean;
 }) {
   const { t } = useTranslation('alwaysOn');
@@ -35,6 +36,11 @@ export default function CronExecutionFields({ value, onChange, project }: {
     <summary>{t('cron.execution.advanced')}{configured && <span>{t('cron.workspace.customized')}</span>}</summary>
     <div className="space-y-4 pt-4">
       <div className="grid gap-4 sm:grid-cols-2">
+        <label className="text-[13px]">{t('cron.reminders.timing')}
+          <select className="pd-form-field mt-1.5" value={value.reminderTiming || ''} onChange={event => update({ reminderTiming: event.target.value ? event.target.value as 'due' | 'result' : undefined })}>
+            {!editing && <option value="">{t('cron.reminders.auto')}</option>}<option value="due">{t('cron.reminders.onDue')}</option><option value="result">{t('cron.reminders.onResult')}</option>
+          </select>
+        </label>
         <label className="text-[13px]">{t('cron.execution.notifications')}
           <select className="pd-form-field mt-1.5" value={value.notificationPolicy} onChange={event => update({ notificationPolicy: event.target.value as CronExecutionDraft['notificationPolicy'] })}>
             <option value="all">{t('cron.execution.all')}</option><option value="findings">{t('cron.execution.findings')}</option><option value="failures">{t('cron.execution.failures')}</option>

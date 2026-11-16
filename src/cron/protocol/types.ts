@@ -8,6 +8,20 @@ export type CronExecutionMode = "independent" | "conversation" | "persistent";
 /** Legacy mode names remain readable; every task now owns one persistent session. */
 export type CronTaskChange = { taskId: string; projectKey?: string; task?: CronTask };
 export type CronNotificationPolicy = "all" | "findings" | "failures";
+export type CronReminder = {
+  id: string;
+  taskId: string;
+  projectKey: string;
+  sessionKey: string;
+  title: string;
+  body: string;
+  kind: "due" | "completed" | "failed";
+  createdAt: string;
+  occurrenceAt: string;
+  runId?: string;
+};
+export type CronReminderListInput = { scope: string };
+export type CronReminderDismissInput = { scope: string; id: string };
 
 export type CronTask = {
   schemaVersion: 1;
@@ -24,6 +38,7 @@ export type CronTask = {
   executionMode?: CronExecutionMode;
   enabled?: boolean;
   notificationPolicy?: CronNotificationPolicy;
+  reminderTiming?: "due" | "result";
   workspaceMode?: "local" | "worktree";
   modelSelection?: { provider: string; model: string };
   statusDetail?: string;
@@ -88,6 +103,7 @@ export type CronRunRecord = {
 };
 
 export type CronCreateInput = {
+  reminderTiming?: "due" | "result";
   name?: string;
   message: string;
   schedule: CronCreateSchedule;
@@ -111,6 +127,7 @@ export type CronCreateResult = {
 };
 
 export type CronUpdateInput = {
+  reminderTiming?: "due" | "result";
   taskId: string;
   projectKey: string;
   expectedRevision: number;

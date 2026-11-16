@@ -1,3 +1,4 @@
+import TaskReminderNotifications from '../cron/view/TaskReminderNotifications';
 import { useDesktopCommands } from '../desktop/useDesktopCommands';
 import { useAuth } from '../auth/context/AuthContext';
 import { SessionViewReadyContext, useSessionIndicators } from './useSessionIndicators';
@@ -363,6 +364,11 @@ function AppShellContent() {
       // Provider hint from notifications is no longer stored; all sessions
       // go through the unified pilotdeck gateway.
 
+      if (message.kind === 'reminder' && typeof message.taskId === 'string') {
+        setSidebarOpen(false);
+        navigate(`/cron?taskId=${encodeURIComponent(message.taskId)}`);
+        return;
+      }
       setActiveTab('chat');
       setSidebarOpen(false);
       void refreshProjectsSilently();
@@ -758,6 +764,7 @@ function AppShellContent() {
     <SessionViewReadyContext.Provider value={setReadySessionId}>
     <div className="app-root fixed inset-0 flex flex-col font-sans text-neutral-900 dark:text-neutral-100">
       <ConnectionBanner />
+      <TaskReminderNotifications />
       {isSettingsRoute ? (
         <SettingsComponent
           onClose={onCloseSettings}

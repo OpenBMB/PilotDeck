@@ -17,6 +17,7 @@ export function cronTaskOverview(task, latestRun = task.lastRun || null) {
         executionMode: task.executionMode || 'persistent',
         enabled: task.enabled !== false,
         notificationPolicy: task.notificationPolicy || 'all',
+        reminderTiming: task.reminderTiming,
         workspaceMode: task.workspaceMode || 'local',
         mode: task.mode || 'default',
         modelSelection: task.modelSelection,

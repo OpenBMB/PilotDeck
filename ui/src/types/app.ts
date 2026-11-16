@@ -144,6 +144,7 @@ export interface CronJobOverview {
   workspaceCwd?: string;
   workspaceMode?: 'local' | 'worktree';
   notificationPolicy?: 'all' | 'findings' | 'failures';
+  reminderTiming?: 'due' | 'result';
   mode?: 'default' | 'plan' | 'bypassPermissions';
   modelSelection?: { provider: string; model: string };
   originSessionKey?: string;

@@ -94,6 +94,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           deferredBroadcast?.("always-on:turn-event", { sessionKey, channelKey, event });
         },
         onTaskChange: (change) => deferredBroadcast?.("cron:task-changed", change),
+        onReminderChange: (change) => deferredBroadcast?.("cron:reminder-changed", change),
         generateTaskTitle: (task, signal) => generateTaskTitle(task, signal),
       });
     }

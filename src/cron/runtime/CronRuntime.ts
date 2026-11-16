@@ -27,6 +27,8 @@ import { resolveCronPaths, type CronPaths } from "../storage/CronPaths.js";
 import { CronTaskStore } from "../storage/CronTaskStore.js";
 import { isValidCronTimezone, resolveCronTimezone } from "../CronTimezone.js";
 import { CronFire, type CronActiveRun, type CronTurnEventHandler } from "./CronFire.js";
+import { taskReminder } from "../storage/CronReminderStore.js";
+import type { CronReminder } from "../protocol/types.js";
 import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION } from "./CronSchedule.js";
 import { CronScheduler } from "./CronScheduler.js";
 import { prepareCronWorkspace } from "./CronWorkspace.js";
@@ -54,7 +56,8 @@ export type CreateCronRuntimeOptions = {
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
   onTaskChange?: (change: CronTaskChange) => void;
-  generateTaskTitle?: (task: CronTask, signal: AbortSignal) => Promise<string | null>;
+  generateTaskTitle?: (task: CronTask, signal: AbortSignal) => Promise<string | { title: string; reminderTiming: "due" | "result" } | null>;
+  onReminder?: (reminder: CronReminder) => Promise<void>;
   onRunFinished?: () => void;
 };
 
@@ -77,6 +80,7 @@ export class CronRuntime {
   private readonly telemetry?: TelemetryClient;
   private readonly onResultDelivery?: CronResultDeliveryHandler;
   private readonly onTurnEvent?: CronTurnEventHandler;
+  private readonly onReminder?: CreateCronRuntimeOptions["onReminder"];
   private readonly sessionOverrides: SessionConfigOverrides;
   private readonly tools: PilotDeckToolDefinition[];
   private readonly activeRuns = new Map<string, CronActiveRun>();
@@ -100,6 +104,7 @@ export class CronRuntime {
     this.telemetry = options.telemetry;
     this.onResultDelivery = options.onResultDelivery;
     this.onTurnEvent = options.onTurnEvent;
+    this.onReminder = options.onReminder;
     this.sessionOverrides = options.sessionOverrides ?? new SessionConfigOverrides();
     this.sharedActiveRunCount = options.activeRunCount;
     this.onRunFinished = options.onRunFinished;
@@ -135,6 +140,7 @@ export class CronRuntime {
       onFinished: () => { this.scheduler?.poke(); this.onRunFinished?.(); },
       onResultDelivery: this.onResultDelivery,
       onTurnEvent: this.onTurnEvent,
+      onReminder: this.onReminder,
       onPhaseEvent: (event) => {
         this.telemetry?.trackFeatureLoopStage({
           module: "cron_job",
@@ -171,6 +177,11 @@ export class CronRuntime {
       now: this.now,
       logger: this.logger,
       activeRunCount: () => this.sharedActiveRunCount?.() ?? this.activeRuns.size,
+      onDue: async task => {
+        if (task.reminderTiming === "due" && (task.notificationPolicy ?? "all") === "all") {
+          await this.onReminder?.(taskReminder(task, "due", this.now().toISOString()));
+        }
+      },
     });
   }
 
@@ -251,6 +262,7 @@ export class CronRuntime {
       executionMode,
       workspaceCwd: input.workspaceCwd ? resolve(input.workspaceCwd) : this.projectKey,
       notificationPolicy: input.notificationPolicy ?? "all",
+      reminderTiming: input.reminderTiming,
       workspaceMode: input.workspaceMode ?? "local",
       modelSelection: input.modelSelection,
       schedule,
@@ -302,12 +314,15 @@ export class CronRuntime {
     // Naming is independent of admission and must never delay scheduled work.
     void (async () => {
       try {
-        const title = (await this.generateTaskTitle!(task, controller.signal))?.replace(/\s+/g, " ").trim().slice(0, 120);
+        const presentation = await this.generateTaskTitle!(task, controller.signal);
+        const title = (typeof presentation === "string" ? presentation : presentation?.title)?.replace(/\s+/g, " ").trim().slice(0, 120);
         if (!title || controller.signal.aborted) return;
         await this.store.updateTask(task.taskId, current => {
           if (controller.signal.aborted || current.message !== task.message || current.name !== task.name) return current;
           // A derived title is metadata: do not invalidate an open schedule edit.
-          return { ...current, name: title, updatedAt: this.now().toISOString() };
+          return { ...current, name: title,
+            reminderTiming: current.reminderTiming ?? (typeof presentation === "object" ? presentation?.reminderTiming : undefined),
+            updatedAt: this.now().toISOString() };
         });
       } catch (error) {
         if (!controller.signal.aborted) this.logger.warn("cron task title generation failed", { taskId: task.taskId });
@@ -353,7 +368,7 @@ export class CronRuntime {
       if ((current.revision ?? 0) !== input.expectedRevision) { reason = "conflict"; return current; }
       const scheduleChanged = JSON.stringify(current.schedule) !== JSON.stringify(schedule) || current.timezone !== timezone;
       const changedConfiguration = scheduleChanged
-        || ["notificationPolicy", "mode", "workspaceMode", "modelSelection"].some((key) =>
+        || ["notificationPolicy", "reminderTiming", "mode", "workspaceMode", "modelSelection"].some((key) =>
           input[key as keyof CronUpdateInput] !== undefined
           && JSON.stringify(input[key as keyof CronUpdateInput]) !== JSON.stringify(current[key as keyof CronTask]));
       if (current.status === "running" && changedConfiguration) { reason = "running"; return current; }
@@ -373,6 +388,7 @@ export class CronRuntime {
         schedule, timezone, nextRunAt, enabled,
         executionMode, targetSessionKey: undefined, sessionKey: current.sessionKey.startsWith('cron:') ? current.sessionKey : buildCronSessionKey(current.taskId),
         notificationPolicy: input.notificationPolicy ?? current.notificationPolicy,
+        reminderTiming: input.reminderTiming ?? current.reminderTiming,
         mode: input.mode ?? current.mode, workspaceMode, modelSelection: input.modelSelection === null ? undefined : input.modelSelection ?? current.modelSelection,
         status: current.status === "running" ? "running" : !enabled
           ? input.enabled === false ? "paused" : current.status : "scheduled",
@@ -662,6 +678,7 @@ function taskName(name: string | undefined, message: string): string {
   return result;
 }
 function validateTaskOptions(input: Partial<CronCreateInput> | Partial<CronUpdateInput>): void {
+  if (input.reminderTiming !== undefined && !["due", "result"].includes(input.reminderTiming)) throw new Error("Invalid Cron reminder timing.");
   if (input.executionMode !== undefined && !["independent", "conversation", "persistent"].includes(input.executionMode)) throw new Error("Invalid Cron execution mode.");
   if (input.mode !== undefined && !["default", "plan", "bypassPermissions"].includes(input.mode)) throw new Error("Invalid Cron permission mode.");
   if (input.notificationPolicy !== undefined && !["all", "findings", "failures"].includes(input.notificationPolicy)) throw new Error("Invalid Cron notification policy.");

@@ -9,7 +9,7 @@ export function createCronCreateTool(runtime: CronToolRuntime): PilotDeckToolDef
   return {
     name: "cron_create",
     title: "Create Cron Task",
-    description: "Create a durable scheduled task managed by the Scheduled Tasks page. Each task owns a dedicated task conversation; recurring runs continue that same conversation. Results stay in Scheduled Tasks and never enter the source chat. Project defaults to this conversation; projectKey may select another absolute project path or 'general'. For relative reminders use delay. Before resolving tonight/tomorrow/next Monday, call get_current_time and pass an explicit timezone. Give every task a short name and a durable instruction that works on future dates. Creation saves the task without running it immediately; report its timezone and nextRunAt. Unattended tasks cannot ask questions; default permissions remain restricted unless the user explicitly requests Full Access.",
+    description: "Create a durable scheduled task managed by the Scheduled Tasks page. Each task owns a dedicated task conversation; recurring runs continue that same conversation. Results stay in Scheduled Tasks and never enter the source chat. Project defaults to this conversation; projectKey may select another absolute project path or 'general'. For meeting/event reminders set reminderTiming=due; for work/research set reminderTiming=result. For relative reminders use delay. Before resolving tonight/tomorrow/next Monday, call get_current_time and pass an explicit timezone. Give every task a short name and a durable instruction that works on future dates. Creation saves the task without running it immediately; report its timezone and nextRunAt. Unattended tasks cannot ask questions; default permissions remain restricted unless the user explicitly requests Full Access.",
     kind: "session",
     inputSchema: {
       type: "object",
@@ -20,6 +20,7 @@ export function createCronCreateTool(runtime: CronToolRuntime): PilotDeckToolDef
         message: { type: "string", minLength: 1 },
         schedule: CRON_SCHEDULE_SCHEMA,
         projectKey: { type: "string", description: "Absolute project directory or 'general'; omitted means this project." },
+        reminderTiming: { type: "string", enum: ["due", "result"], description: "due for meeting or event reminders that must alert at the scheduled time; result for research/work notifications after execution." },
         notificationPolicy: { type: "string", enum: ["all", "findings", "failures"] },
         workspaceMode: { type: "string", enum: ["local", "worktree"] },
         mode: { type: "string", enum: ["default", "plan", "bypassPermissions"] },

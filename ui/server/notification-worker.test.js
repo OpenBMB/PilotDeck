@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { expect, it, vi } from 'vitest';
-import { buildSystemNotification } from '../shared/notifications.js';
+import { buildSystemNotification, buildTaskReminderNotification } from '../shared/notifications.js';
 
 const source = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 // Only the IndexedDB request/transaction surface is faked. Execute the actual
@@ -81,6 +81,24 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
 }
 const event = (id, minute, scope = '1') => ({ id, sessionId: 's1', scope, kind: 'completed', createdAt: `2026-10-27T03:0${minute}:00Z` });
 const record = event => ({ id: event.id, sessionId: event.sessionId, createdAt: event.createdAt });
+
+it('keeps scheduled reminders visible after viewing the conversation and deduplicates across worker restarts', async () => {
+  let w = worker(); await w.preferences(); w.surfaces.visible = true;
+  const reminder = { id: 'a'.repeat(64), title: 'Meeting', body: 'Meeting now', kind: 'due', taskId: 'task',
+    sessionKey: 'cron:task', createdAt: '2026-10-27T03:01:00Z' };
+  const payload = buildTaskReminderNotification(reminder, { enabled: true }, 'en', '1');
+  await w.message('notification:show', payload);
+  expect(w.surfaces.shown).toHaveLength(1);
+  expect(w.surfaces.shown[0].requireInteraction).toBe(true);
+  await w.read([{ sessionId: 'cron:task', id: reminder.id, createdAt: reminder.createdAt }]);
+  expect(w.surfaces.shown[0].closed).toBe(false);
+  w = w.restart(); await w.message('notification:show', payload);
+  expect(w.surfaces.shown).toHaveLength(1);
+  await w.message('notification:task-dismiss', { scope: '1', id: reminder.id });
+  expect(w.surfaces.shown[0].closed).toBe(true);
+  await w.restart().message('notification:show', payload);
+  expect(w.surfaces.shown).toHaveLength(1);
+});
 
 it('clears a legacy PWA badge while preserving pending conversation unread records', async () => {
   const surfaces = { shown: [], forwarded: [], badge: 25, visible: false };

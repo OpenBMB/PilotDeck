@@ -38,7 +38,7 @@ export function createCronUpdateHandler({ getGateway }) {
                 message,
                 schedule,
                 timezone,
-                ...Object.fromEntries(['name', 'enabled', 'notificationPolicy', 'mode', 'workspaceMode', 'modelSelection']
+                ...Object.fromEntries(['name', 'enabled', 'notificationPolicy', 'reminderTiming', 'mode', 'workspaceMode', 'modelSelection']
                     .filter(key => Object.hasOwn(req.body, key)).map(key => [key, req.body[key]])),
             });
             if (!result.updated) {
