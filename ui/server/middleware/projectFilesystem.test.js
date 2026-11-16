@@ -5,12 +5,20 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createLocalGateway } from '../../../src/cli/createLocalGateway.js';
+import { createCronManager, defaultCronConfig } from '../../../src/cron/index.js';
+import { createProjectId } from '../../../src/pilot/paths.js';
+import { createModelRuntime } from '../../../src/model/index.js';
+import { SessionConfigOverrides } from '../../../src/always-on/runtime/SessionConfigOverrides.js';
+import { createCronWorkspaceResolver } from '../services/cronWorkspace.js';
+import { cronTaskOverview } from '../services/cronOverview.js';
 import { runWorkspaceFileOperation } from '../../../src/session/checkpoints/workspaceFileOperation.js';
 import { createProjectFilesystemMiddleware } from './projectFilesystem.js';
 import { isPathInsideOrEqual } from '../utils/pathSafety.js';
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from '../services/workspaceFileUpload.js';
 
-let root, home, workspace, server, url, env;
+let root, home, workspace, server, url, env, taskResolver;
 const source = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8');
 
 // Mount the production handlers without starting the gateway, database or UI.
@@ -32,6 +40,7 @@ function mountReportedHandlers(app, authenticateToken, requireRealProjectFilesys
 }
 
 beforeEach(async () => {
+    taskResolver = null;
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'reported-project-injection-'));
     home = path.join(root, 'state');
     workspace = path.join(root, 'workspace');
@@ -46,6 +55,7 @@ beforeEach(async () => {
     const authenticateToken = (req, res, next) => req.headers.authorization === 'Bearer test' ? next() : res.sendStatus(401);
     env = { PILOT_HOME: home };
     const guard = createProjectFilesystemMiddleware({ env, resolveTaskWorkspace: async id => {
+      if (taskResolver) return taskResolver(id);
       if (id === 'local') return { root: workspace, sourceRoot: workspace };
       if (id === 'owned') return { root: path.join(home, 'cron/worktrees/owned'), sourceRoot: workspace, worktree: true };
       if (id === 'outside') return { root, sourceRoot: workspace };
@@ -220,4 +230,72 @@ it('resolves only trusted task roots for General and owned worktree files', asyn
     expect((await request('cron-task:owned', '/file?filePath=../../../server-token')).status).toBe(403);
     await fs.symlink(home, path.join(home, 'cron/worktrees/symlink'), 'dir');
     expect((await request('cron-task:symlink', '/file?filePath=server-token')).status).toBe(403);
+});
+
+it('previews files from task chat before its first worktree execution and follows the current workspace', async () => {
+    const git = (...args) => execFileSync('git', ['-C', workspace, ...args], { stdio: 'pipe' });
+    git('init'); git('config', 'user.name', 'Task QA'); git('config', 'user.email', 'task@example.invalid');
+    await fs.writeFile(path.join(workspace, 'report.txt'), 'Source report');
+    git('add', '.'); git('commit', '-m', 'Fixture');
+    const registered = path.join(home, 'projects', createProjectId(workspace));
+    await fs.mkdir(registered, { recursive: true }); await fs.writeFile(path.join(registered, '.cwd'), workspace);
+    const skills = path.join(root, 'skills'); await fs.mkdir(skills);
+    const configPath = path.join(home, 'pilotdeck.yaml');
+    await fs.writeFile(configPath, `schemaVersion: 1
+agent: { model: test/model }
+model:
+  providers:
+    test:
+      protocol: openai
+      url: https://example.test/v1
+      apiKey: synthetic
+      models: { model: {} }
+extension:
+  builtinPluginsEnabled: { windows-skills: false, browser-use: false, funasr: false }
+runtime: { python: { enabled: false } }
+memory: { enabled: false }
+telemetry: { enabled: false }
+`);
+    const sessionOverrides = new SessionConfigOverrides();
+    const cron = createCronManager({ config: defaultCronConfig(), pilotHome: home, sessionOverrides });
+    let calls = 0, writtenCwd;
+    const local = createLocalGateway({ pilotHome: home, projectRoot: workspace, builtinSkillsRoot: skills,
+        env: { ...env, PILOTDECK_CONFIG_PATH: configPath }, cron, sessionOverrides,
+        extraTools: [{ name: 'write_report', kind: 'filesystem', description: 'Write the synthetic task report',
+            inputSchema: { type: 'object', properties: {} }, isReadOnly: () => false,
+            execute: async (_input, context) => { writtenCwd = context.cwd;
+                await fs.writeFile(path.join(context.cwd, 'report.txt'), 'Task chat report'); return { content: [] }; } }],
+        __testModelFactory(snapshot) { return { ...createModelRuntime(snapshot.config.model), async *stream() {
+            yield { type: 'message_start', role: 'assistant' };
+            if (++calls === 1) {
+                const toolCall = { id: 'writer', name: 'write_report', input: {} };
+                yield { type: 'tool_call_start', id: toolCall.id, name: toolCall.name };
+                yield { type: 'tool_call_end', toolCall }; yield { type: 'message_end', finishReason: 'tool_call' };
+            } else { yield { type: 'text_delta', text: 'Report ready' }; yield { type: 'message_end', finishReason: 'stop' }; }
+        } }; },
+    });
+    cron.bindGateway(local.gateway);
+    taskResolver = createCronWorkspaceResolver({ getGateway: () => local.gateway, env });
+    try {
+        const task = (await cron.createTask({ name: 'Report', message: 'Prepare a report', projectKey: workspace,
+            mode: 'bypassPermissions', workspaceMode: 'worktree', schedule: { type: 'once', runAt: new Date(Date.now() + 3600000).toISOString() } })).task;
+        const id = `cron-task:${task.taskId}`;
+        expect((await request(id, '/file?filePath=report.txt')).status).toBe(404);
+        for await (const _ of local.gateway.submitTurn({ sessionKey: task.sessionKey, projectKey: workspace,
+            channelKey: 'web', mode: 'bypassPermissions', message: 'Generate the report' })) { /* Consume the actual tool turn. */ }
+        const current = (await local.gateway.cronList({ taskId: task.taskId, includeHistory: true }));
+        expect(current.tasks[0].lastRun).toBeUndefined();
+        expect(current.recentRuns).toEqual([]);
+        expect(writtenCwd).toBe(path.join(home, 'cron', 'worktrees', task.taskId));
+        expect(cronTaskOverview(current.tasks[0], null, home).workspaceCwd).toBe(writtenCwd);
+        for (const filePath of ['report.txt', path.join(writtenCwd, 'report.txt')]) {
+            const loaded = await request(id, '/file?filePath=' + encodeURIComponent(filePath));
+            expect(loaded.status).toBe(200); expect((await loaded.json()).content).toBe('Task chat report');
+            expect(await (await request(id, '/files/content?path=' + encodeURIComponent(filePath))).text()).toBe('Task chat report');
+        }
+        expect((await request(id, '/file?filePath=' + encodeURIComponent(path.join(home, 'auth.db')))).status).toBe(403);
+        await cron.updateTask({ ...task, taskId: task.taskId, expectedRevision: current.tasks[0].revision, workspaceMode: 'local' });
+        expect((await (await request(id, '/file?filePath=report.txt')).json()).content).toBe('Source report');
+        expect(await fs.readFile(path.join(workspace, 'report.txt'), 'utf8')).toBe('Source report');
+    } finally { await cron.stop(); local.dispose(); }
 });

@@ -1,6 +1,8 @@
 import { mapCronRunOutcome } from '../../../src/cron/protocol/types.js';
+import { currentCronWorkspace } from './cronWorkspace.js';
+import { resolvePilotHome } from '../utils/pilotPaths.js';
 
-export function cronTaskOverview(task, latestRun = task.lastRun || null) {
+export function cronTaskOverview(task, latestRun = task.lastRun || null, pilotHome = resolvePilotHome(process.env)) {
     const isCron = task.schedule?.type === 'cron';
     return {
         id: task.taskId,
@@ -13,7 +15,7 @@ export function cronTaskOverview(task, latestRun = task.lastRun || null) {
         revision: Number.isSafeInteger(task.revision) && task.revision >= 0 ? task.revision : 0,
         name: task.name || task.message?.split('\n')[0]?.slice(0, 120) || '',
         prompt: task.message || '',
-        workspaceCwd: task.workspaceCwd || task.projectKey,
+        workspaceCwd: task.workspaceCwd || task.projectKey ? currentCronWorkspace(task, pilotHome) : undefined,
         executionMode: task.executionMode || 'persistent',
         enabled: task.enabled !== false,
         notificationPolicy: task.notificationPolicy || 'all',

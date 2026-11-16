@@ -76,11 +76,20 @@ when switching views; cached sessions are reused when revisited. Missing history
 older pages and reconnect recovery use the shared message endpoints.
 Task history caches confirm the observed run identity and reconnect epoch. A
 changed run repairs only that conversation on selection; unchanged task visits
-reuse the confirmed cache. Workspace changes recreate the cached execution
+reuse the confirmed cache. Ordinary task-chat completions, failures and stops
+also invalidate their conversation through shared session-activity revisions;
+they do not need a scheduled run record. Reconnect recovery resets those
+connection-local revisions. Workspace changes recreate the cached execution
 session at the next admitted turn while preserving its transcript and context.
 Preparation failures use the shared persisted error-message contract even when
 no model turn starts. Notification result policy is synthetic model context,
 separate from the task input displayed and reconciled in history.
+
+Task overviews and file authorization resolve the current workspace using the
+same destination rule as execution. Chat-created files in a prepared worktree
+are previewable before the first scheduled run, and a previous run's directory
+does not override the current workspace. File reads never create worktrees and
+retain source registration, owned-worktree and canonical-path checks.
 
 Task and ordinary-chat event consumers have separate session scopes. Task frames
 cannot consume ordinary session-status replies or trigger project-list refreshes.

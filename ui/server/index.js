@@ -127,6 +127,7 @@ import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
 import { cronTaskOverview } from './services/cronOverview.js';
+import { createCronWorkspaceResolver } from './services/cronWorkspace.js';
 import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 import { resolvePilotHome } from './utils/pilotPaths.js';
 import { normalizeSchedule } from '../../src/cron/runtime/CronRuntime.js';
@@ -169,7 +170,6 @@ import { getConnectableHost } from '../shared/networkHosts.js';
 import { contentDispositionAttachment } from './utils/downloadHeaders.js';
 import { createSessionWatchRegistry } from './session-watch-registry.js';
 import { isPathInsideOrEqual } from './utils/pathSafety.js';
-import { resolveRegisteredProject } from './services/projectRegistration.js';
 import { createProjectFilesystemMiddleware } from './middleware/projectFilesystem.js';
 
 // PilotDeck-only mode: chat execution always goes through src/gateway via
@@ -177,18 +177,7 @@ import { createProjectFilesystemMiddleware } from './middleware/projectFilesyste
 const VALID_PROVIDERS = ['pilotdeck'];
 
 const requireRealProjectFilesystem = createProjectFilesystemMiddleware({
-    resolveTaskWorkspace: async taskId => {
-        const gateway = await getPilotDeckGateway();
-        const result = await gateway.cronList({});
-        const task = result.tasks.find(item => item.taskId === taskId);
-        if (!task) return null;
-        const pilotHome = resolvePilotHome(process.env);
-        const sourceRoot = path.resolve(task.projectKey) === path.resolve(pilotHome)
-            ? await ensureGeneralWorkspaceDirectory(process.env)
-            : await resolveRegisteredProject(task.projectKey, pilotHome);
-        return { root: task.lastRun?.workspaceCwd || task.workspaceCwd || sourceRoot, sourceRoot,
-            worktree: task.workspaceMode === 'worktree' };
-    },
+    resolveTaskWorkspace: createCronWorkspaceResolver({ getGateway: getPilotDeckGateway }),
 });
 
 // File-system watchers for the chat transcript root maintained by

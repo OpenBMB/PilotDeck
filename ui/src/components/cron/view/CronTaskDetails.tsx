@@ -5,7 +5,7 @@ import CronTaskConversation from './CronTaskConversation';
 import { formatCronTime } from './cronPresentation';
 
 /** The shared chat owns messages; the task supplies scheduling controls and its empty view. */
-export default function CronTaskDetails({ job, projects, historyEpoch = 0 }: { job: CronJobOverview; projects: Project[]; historyEpoch?: number }) {
+export default function CronTaskDetails({ job, projects, historyEpoch = 0, conversationRevision = 0 }: { job: CronJobOverview; projects: Project[]; historyEpoch?: number; conversationRevision?: number }) {
   const { t } = useTranslation('alwaysOn');
   const waiting = !job.lastRun && !job.lastFiredAt && ['scheduled', 'paused'].includes(job.status);
 
@@ -20,5 +20,5 @@ export default function CronTaskDetails({ job, projects, historyEpoch = 0 }: { j
   </section> : <div className="cron-workspace-empty h-full">{job.status !== 'running' && (job.lastRun?.error?.message || job.statusDetail)
     ? <p role="alert" className="max-w-2xl whitespace-pre-wrap text-red-600 dark:text-red-400">{job.lastRun?.error?.message || job.statusDetail}</p>
     : <h2>{t(job.status === 'running' ? 'cron.workspace.runningHint' : 'cron.workspace.noSavedRuns')}</h2>}</div>;
-  return <CronTaskConversation job={job} projects={projects} historyEpoch={historyEpoch} emptyState={emptyState} />;
+  return <CronTaskConversation job={job} projects={projects} historyEpoch={historyEpoch} conversationRevision={conversationRevision} emptyState={emptyState} />;
 }

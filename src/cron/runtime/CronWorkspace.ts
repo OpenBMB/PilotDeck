@@ -6,13 +6,21 @@ import type { CronTask } from "../protocol/types.js";
 
 const execute = promisify(execFile);
 
+/** Current task destination; resolving it does not create a worktree. */
+export function resolveCronWorkspacePath(task: CronTask, root: string): string {
+  const cwd = task.workspaceCwd ?? task.projectKey;
+  if (!cwd) throw new Error("Cron task has no workspace.");
+  return task.workspaceMode === "worktree"
+    ? resolve(root, task.taskId.replace(/[^A-Za-z0-9_-]/g, "-")) : cwd;
+}
+
 /** Worktrees start from committed HEAD; never stage or commit the user's checkout. */
 export async function prepareCronWorkspace(task: CronTask, runId: string, root: string): Promise<string> {
   const cwd = task.workspaceCwd ?? task.projectKey;
   if (!cwd) throw new Error("Cron task has no workspace.");
-  if (task.workspaceMode !== "worktree") return cwd;
+  const target = resolveCronWorkspacePath(task, root);
+  if (task.workspaceMode !== "worktree") return target;
   const { stdout } = await execute("git", ["-C", cwd, "rev-parse", "--show-toplevel"], { timeout: 10_000 });
-  const target = resolve(root, task.taskId.replace(/[^A-Za-z0-9_-]/g, "-"));
   const existing = await lstat(target).catch(() => undefined);
   if (existing) {
     if (!existing.isDirectory() || existing.isSymbolicLink()) throw new Error("Cron task worktree path is unavailable.");

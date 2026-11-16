@@ -9,14 +9,14 @@ import EditorSidebar from '../../code-editor/view/EditorSidebar';
 import ChatInterface from '../../chat/view/ChatInterface';
 
 /** Scheduling adds ownership and controls; messages use the ordinary chat pipeline. */
-export default function CronTaskConversation({ job, projects, emptyState, historyEpoch = 0 }: { job: CronJobOverview; projects: Project[]; emptyState?: ReactNode; historyEpoch?: number }) {
+export default function CronTaskConversation({ job, projects, emptyState, historyEpoch = 0, conversationRevision = 0 }: { job: CronJobOverview; projects: Project[]; emptyState?: ReactNode; historyEpoch?: number; conversationRevision?: number }) {
   const { ws, sendMessage, subscribe } = useWebSocket();
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const { preferences } = useUiPreferences();
   const project = useMemo<Project>(() => projects.find(item => item.fullPath === job.projectKey || item.name === job.projectKey)
     || { name: job.projectKey || 'general', fullPath: job.projectKey || '', displayName: job.projectKey?.split(/[\\/]/).at(-1) || 'General' }, [projects, job.projectKey]);
   const session = useMemo<ProjectSession>(() => ({ id: job.sessionKey || `cron:${job.id}`, provider: 'pilotdeck', title: job.name }), [job.id, job.sessionKey, job.name]);
-  const workspace = job.lastRun?.workspaceCwd || job.workspaceCwd || project.fullPath;
+  const workspace = job.workspaceCwd || job.lastRun?.workspaceCwd || project.fullPath;
   const editorProject = useMemo(() => ({ ...project, name: `cron-task:${job.id}`, fullPath: workspace }), [project, workspace, job.id]);
   const editor = useEditorSidebar({ selectedProject: editorProject, isMobile });
   return <ChatHistorySearchControllerProvider>
@@ -24,7 +24,7 @@ export default function CronTaskConversation({ job, projects, emptyState, histor
       <div className="pd-chat-canvas flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white dark:bg-neutral-950">
         <ChatInterface selectedProject={project} selectedSession={session} projects={projects}
           ws={ws} sendMessage={sendMessage} subscribe={subscribe} sessionScope="task" emptyState={emptyState}
-          historyRevision={JSON.stringify([historyEpoch, job.lastRun?.runId, job.lastRun?.finishedAt, job.lastRun?.outcome, job.lastFiredAt])}
+          historyRevision={JSON.stringify([historyEpoch, conversationRevision, job.lastRun?.runId, job.lastRun?.finishedAt, job.lastRun?.outcome, job.lastFiredAt])}
           autoScrollToBottom={preferences.autoScrollToBottom} sendByCtrlEnter={preferences.sendByCtrlEnter}
           autoExpandTools={preferences.autoExpandTools} showThinking={preferences.showThinking} inlineThinking={preferences.inlineThinking}
           onFileOpen={(path, diff) => editor.handleFileOpen(path, diff)} />
