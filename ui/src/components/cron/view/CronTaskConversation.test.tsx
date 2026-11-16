@@ -13,7 +13,7 @@ import CronTaskConversation from './CronTaskConversation';
 
 const live = vi.hoisted(() => ({ connected: true, handlers: new Set<(frame: any) => void>(),
   subscribe: (handler: (frame: any) => void) => { live.handlers.add(handler); return () => live.handlers.delete(handler); } }));
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), projects: vi.fn(), jobs: vi.fn(), editor: vi.fn() }));
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), projects: vi.fn(), jobs: vi.fn(), editor: vi.fn(), chat: vi.fn() }));
 vi.mock('../../../utils/api', () => ({ authenticatedFetch: mocks.fetch,
   api: { projects: mocks.projects, allCronJobs: mocks.jobs } }));
 vi.mock('../../../contexts/WebSocketContext', () => ({ useWebSocket: () => ({ subscribe: live.subscribe, isConnected: live.connected, ws: null, sendMessage: () => {} }) }));
@@ -30,6 +30,7 @@ vi.mock('../../chat/hooks/useScrollFollow', () => ({ useScrollFollow: () => ({
 const noop = () => {};
 // Retain the production history/cache hook; omit only the heavy chat renderer.
 vi.mock('../../chat/view/ChatInterface', () => ({ default: function TaskChat(props: ChatInterfaceProps) {
+  mocks.chat(props);
   const store = useSessionStore(), pendingViewSessionRef = useRef(null);
   const view = useChatSessionState({ ...props, eventDriven: true, sessionStore: store, pendingViewSessionRef,
     resetStreamingState: noop, sendMessage: noop });
@@ -84,6 +85,9 @@ it('uses the current workspace for file previews even when the last run used ano
     workspaceCwd: '/current/task-worktree', lastRun: { runId: 'old', taskId: 'task-a', sessionKey: 'cron:task-a', startedAt: '2026-01-01', workspaceCwd: '/old/source' } }} /></I18nextProvider>);
   await waitFor(() => expect(screen.getByTestId('editor-root').textContent).toBe('/current/task-worktree'));
   expect(mocks.editor).toHaveBeenCalledWith(expect.objectContaining({ selectedProject: expect.objectContaining({ fullPath: '/current/task-worktree', name: 'cron-task:task-a' }) }));
+  expect(mocks.chat).toHaveBeenCalledWith(expect.objectContaining({ selectedProject: expect.objectContaining({
+    name: '/fixture', fullPath: '/fixture', workspaceCwd: '/current/task-worktree', fileOperationsKey: 'cron-task:task-a',
+  }) }));
 });
 
 it('accepts lower activity revisions after a server restart and reconnect', async () => {

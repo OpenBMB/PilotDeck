@@ -90,6 +90,8 @@ same destination rule as execution. Chat-created files in a prepared worktree
 are previewable before the first scheduled run, and a previous run's directory
 does not override the current workspace. File reads never create worktrees and
 retain source registration, owned-worktree and canonical-path checks.
+File cards use the task's filesystem route for version checks and downloads;
+references retain the source project's conversation identity.
 
 Task and ordinary-chat event consumers have separate session scopes. Task frames
 cannot consume ordinary session-status replies or trigger project-list refreshes.

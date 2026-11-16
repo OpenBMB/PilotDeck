@@ -14,15 +14,16 @@ export type WorkspaceFileTarget = {
 export function useWorkspaceFileActions(file: WorkspaceFileTarget, project: Project | null, onBrowse?: (path: string) => void, verifyVersion = true) {
   const { t } = useTranslation('chat');
   const confirm = useConfirm();
-  const root = project?.fullPath || project?.path || '';
+  const fileOperationsKey = project?.fileOperationsKey || project?.name;
+  const root = (project?.fileOperationsKey && project.workspaceCwd) || project?.fullPath || project?.path || '';
   const relativePath = file.workspaceBacked === false ? null : root ? getWorkspaceRelativePath(file.path, root) : file.path.replace(/^\.\//, '') || null;
   const canBrowse = Boolean(onBrowse && file.workspaceBacked !== false);
   const canUseWorkspaceActions = Boolean(project?.name && relativePath);
   const browse = async () => {
     if (!canBrowse || !onBrowse) return;
-    if (verifyVersion && project?.name && relativePath && file.sha256) {
+    if (verifyVersion && fileOperationsKey && relativePath && file.sha256) {
       try {
-        const response = await api.fileContentSha256(project.name, relativePath);
+        const response = await api.fileContentSha256(fileOperationsKey, relativePath);
         const currentHash = response.headers.get('X-PilotDeck-Content-SHA256');
         if (response.ok && currentHash && currentHash !== file.sha256 && !await confirm({
           message: t('fileArtifacts.updatedSinceMessage', { defaultValue: 'This file has changed since this message. Open the current version?' }) as string,
@@ -35,9 +36,9 @@ export function useWorkspaceFileActions(file: WorkspaceFileTarget, project: Proj
     onBrowse(relativePath || file.path);
   };
   const download = () => {
-    if (!project?.name || !relativePath) return;
+    if (!fileOperationsKey || !relativePath) return;
     const anchor = document.createElement('a');
-    anchor.href = api.fileDownloadUrl(project.name, relativePath);
+    anchor.href = api.fileDownloadUrl(fileOperationsKey, relativePath);
     anchor.download = file.name;
     document.body.appendChild(anchor);
     anchor.click();

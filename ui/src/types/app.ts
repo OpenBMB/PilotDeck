@@ -299,6 +299,8 @@ export interface Project {
   kind?: 'project' | 'general';
   workspaceCwd?: string;
   workspaceNotice?: { directory: string; originalDirectory: string } | null;
+  /** Filesystem-only route identity; conversation ownership remains name/fullPath. */
+  fileOperationsKey?: string;
   workspaceUnavailable?: boolean;
   capabilities?: {
     files?: boolean;

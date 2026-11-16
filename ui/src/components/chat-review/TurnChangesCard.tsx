@@ -48,7 +48,7 @@ export default function TurnFileResults({ turnId, artifacts = EMPTY_ARTIFACTS, p
   const [expanded, setExpanded] = useState(false);
   useEffect(() => { setExpanded(false); }, [turnId]);
   if (!files.length) return null;
-  const changes = visibleReviewFiles(checkpoint?.changes ?? [], project?.fullPath || project?.path);
+  const changes = visibleReviewFiles(checkpoint?.changes ?? [], (project?.fileOperationsKey && project.workspaceCwd) || project?.fullPath || project?.path);
   const restoration = activeRestoration(review?.data.operations ?? [], checkpoint?.id);
   const blocked = streaming || review?.running || review?.data.busy || review?.readOnly || review?.restoring;
   const restore = () => {

@@ -16,7 +16,7 @@ export type TurnFile = {
 // Both records describe the same result. Checkpoints own change semantics;
 // artifacts supply file metadata and existing workspace actions.
 export function mergeTurnFiles(artifacts: ChatFileArtifact[], checkpoint: CheckpointSummary | undefined, project: Project | null): TurnFile[] {
-  const root = project?.fullPath || project?.path || '';
+  const root = (project?.fileOperationsKey && project.workspaceCwd) || project?.fullPath || project?.path || '';
   const files = new Map<string, TurnFile>();
   const entry = (path: string) => {
     const key = getWorkspaceFileIdentity(path, root);
