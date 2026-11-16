@@ -92,6 +92,13 @@ does not override the current workspace. File reads never create worktrees and
 retain source registration, owned-worktree and canonical-path checks.
 File cards use the task's filesystem route for version checks and downloads;
 references retain the source project's conversation identity.
+The `@` index uses `GET /api/projects/:projectName/files/index` with the
+task's `cron-task:<id>` filesystem identity and the same trusted-root guard.
+It reuses the shared project index's query, pagination and symlink boundaries;
+client-supplied directories cannot redirect it. General tasks enable file
+references for their concrete execution workspace without enabling file mentions
+in ordinary General chats. Retained, inactive task composers ignore global
+document and file reference events; their existing drafts remain intact.
 
 Task and ordinary-chat event consumers have separate session scopes. Task frames
 cannot consume ordinary session-status replies or trigger project-list refreshes.

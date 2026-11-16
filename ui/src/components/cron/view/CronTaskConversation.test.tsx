@@ -90,6 +90,29 @@ it('uses the current workspace for file previews even when the last run used ano
   }) }));
 });
 
+it('forwards retained task visibility to the composer without replacing the conversation', async () => {
+  mocks.fetch.mockImplementation(async () => json({ messages: [], hasMore: false, total: 0 }));
+  const view = (active: boolean) => <I18nextProvider i18n={i18n}><MemoryRouter initialEntries={['/cron?taskId=task-a']}><CronPanel active={active} /></MemoryRouter></I18nextProvider>;
+  const { rerender } = render(view(true));
+  await waitFor(() => expect(mocks.chat).toHaveBeenLastCalledWith(expect.objectContaining({ active: true })));
+  const session = mocks.chat.mock.lastCall?.[0].selectedSession;
+  rerender(view(false));
+  expect(mocks.chat).toHaveBeenLastCalledWith(expect.objectContaining({ active: false, selectedSession: session }));
+  rerender(view(true));
+  expect(mocks.chat).toHaveBeenLastCalledWith(expect.objectContaining({ active: true, selectedSession: session }));
+  expect(mocks.jobs).toHaveBeenCalledTimes(1);
+});
+
+it('enables file context for General task workspaces without changing conversation ownership', () => {
+  mocks.fetch.mockImplementation(async () => json({ messages: [], hasMore: false, total: 0 }));
+  render(<I18nextProvider i18n={i18n}><CronTaskConversation projects={[{ name: 'general', displayName: 'General', kind: 'general', fullPath: '/general',
+    capabilities: { files: false, projectFileMentions: false } }]} job={{ ...job('general-task'), projectKey: '/general', workspaceCwd: '/general/workspace' }} /></I18nextProvider>);
+  expect(mocks.chat).toHaveBeenCalledWith(expect.objectContaining({ selectedProject: expect.objectContaining({
+    name: 'general', kind: 'general', fullPath: '/general', workspaceCwd: '/general/workspace', fileOperationsKey: 'cron-task:general-task',
+    capabilities: { files: false, projectFileMentions: true },
+  }) }));
+});
+
 it('accepts lower activity revisions after a server restart and reconnect', async () => {
   let answer = 'Initial';
   mocks.fetch.mockImplementation(async (url: string) => url.includes('/token-usage') ? json({ used: 20 }) : json({

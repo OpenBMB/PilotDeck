@@ -9,7 +9,7 @@ import EditorSidebar from '../../code-editor/view/EditorSidebar';
 import ChatInterface from '../../chat/view/ChatInterface';
 
 /** Scheduling adds ownership and controls; messages use the ordinary chat pipeline. */
-export default function CronTaskConversation({ job, projects, emptyState, historyEpoch = 0, conversationRevision = 0 }: { job: CronJobOverview; projects: Project[]; emptyState?: ReactNode; historyEpoch?: number; conversationRevision?: number }) {
+export default function CronTaskConversation({ job, projects, active = true, emptyState, historyEpoch = 0, conversationRevision = 0 }: { job: CronJobOverview; projects: Project[]; active?: boolean; emptyState?: ReactNode; historyEpoch?: number; conversationRevision?: number }) {
   const { ws, sendMessage, subscribe } = useWebSocket();
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const { preferences } = useUiPreferences();
@@ -18,13 +18,16 @@ export default function CronTaskConversation({ job, projects, emptyState, histor
   const session = useMemo<ProjectSession>(() => ({ id: job.sessionKey || `cron:${job.id}`, provider: 'pilotdeck', title: job.name }), [job.id, job.sessionKey, job.name]);
   const workspace = job.workspaceCwd || job.lastRun?.workspaceCwd || project.fullPath;
   const editorProject = useMemo(() => ({ ...project, name: `cron-task:${job.id}`, fullPath: workspace }), [project, workspace, job.id]);
-  const chatProject = useMemo(() => ({ ...project, workspaceCwd: workspace, fileOperationsKey: `cron-task:${job.id}` }), [project, workspace, job.id]);
+  const chatProject = useMemo(() => ({ ...project, workspaceCwd: workspace, fileOperationsKey: `cron-task:${job.id}`,
+    // General's ordinary chat has no file context; a task owns a concrete workspace.
+    capabilities: { ...project.capabilities, projectFileMentions: Boolean(workspace) },
+  }), [project, workspace, job.id]);
   const editor = useEditorSidebar({ selectedProject: editorProject, isMobile });
   return <ChatHistorySearchControllerProvider>
     <div className="cron-conversation flex min-h-0 min-w-0 flex-1 overflow-hidden" data-task-conversation={session.id}>
       <div className="pd-chat-canvas flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white dark:bg-neutral-950">
         <ChatInterface selectedProject={chatProject} selectedSession={session} projects={projects}
-          ws={ws} sendMessage={sendMessage} subscribe={subscribe} sessionScope="task" emptyState={emptyState}
+          ws={ws} sendMessage={sendMessage} subscribe={subscribe} active={active} sessionScope="task" emptyState={emptyState}
           historyRevision={JSON.stringify([historyEpoch, conversationRevision, job.lastRun?.runId, job.lastRun?.finishedAt, job.lastRun?.outcome, job.lastFiredAt])}
           autoScrollToBottom={preferences.autoScrollToBottom} sendByCtrlEnter={preferences.sendByCtrlEnter}
           autoExpandTools={preferences.autoExpandTools} showThinking={preferences.showThinking} inlineThinking={preferences.inlineThinking}

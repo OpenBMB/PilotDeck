@@ -62,6 +62,7 @@ type PendingViewSession = {
 };
 
 interface UseChatComposerStateArgs {
+  active?: boolean;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   currentSessionId: string | null;
@@ -268,6 +269,7 @@ export function addAttachmentFiles(
 }
 
 export function useChatComposerState({
+  active = true,
   selectedProject,
   selectedSession,
   currentSessionId,
@@ -312,6 +314,8 @@ export function useChatComposerState({
   const draftStorageKey = selectedProject
     ? getDraftInputStorageKey(selectedProject.name, selectedSession?.id)
     : null;
+  const activeComposerRef = useRef({ active, draftStorageKey });
+  activeComposerRef.current = { active, draftStorageKey };
   const [input, setInput] = useState(() => {
     if (typeof window !== 'undefined' && draftStorageKey) {
       return safeLocalStorage.getItem(draftStorageKey) || '';
@@ -563,6 +567,8 @@ export function useChatComposerState({
 
   useEffect(() => {
     const handleAddDocumentReference = (event: Event) => {
+      const owner = activeComposerRef.current;
+      if (!owner.active || !owner.draftStorageKey) return;
       const detail = (event as CustomEvent).detail;
       const reference = normalizeContentReference(detail);
       if (!reference) return;
@@ -571,7 +577,9 @@ export function useChatComposerState({
         return [...previous, reference];
       });
       requestAnimationFrame(() => {
-        textareaRef.current?.focus();
+        if (activeComposerRef.current.active && activeComposerRef.current.draftStorageKey === owner.draftStorageKey) {
+          textareaRef.current?.focus();
+        }
       });
     };
 
@@ -1006,7 +1014,9 @@ export function useChatComposerState({
     handleFileMentionsKeyDown,
   } = useFileMentions({
     selectedProject,
-    enabled: Boolean(selectedProject && !isGeneralProject(selectedProject)
+    active,
+    enabled: Boolean(selectedProject && (!isGeneralProject(selectedProject)
+      || (selectedSession?.id.startsWith('cron:') && selectedProject.fileOperationsKey?.startsWith('cron-task:') && selectedProject.workspaceCwd))
       && selectedProject.capabilities?.projectFileMentions !== false),
     mentionScopeKey: draftStorageKey,
     input,
@@ -1373,7 +1383,7 @@ export function useChatComposerState({
         .filter((mention) => mention.kind === 'file')
         .map((mention) => projectMentionToAttachment(
           mention,
-          selectedProject.fullPath || selectedProject.path || '',
+          selectedProject.workspaceCwd || selectedProject.fullPath || selectedProject.path || '',
         ));
       const documentReferenceAttachments = submitDocumentReferences.map(contentReferenceToAttachment);
       const turnAttachments = [...projectMentionAttachments, ...documentReferenceAttachments];

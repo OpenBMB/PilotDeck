@@ -60,6 +60,7 @@ const EDIT_RECONCILIATION_HINT = [
 // Active chat surface. Shared session, streaming, composer and permission logic
 // lives in chat/hooks; this module owns how that state is presented.
 function ChatInterface({
+  active = true,
   sessionScope = 'chat',
   historyRevision,
   emptyState,
@@ -336,6 +337,7 @@ function ChatInterface({
     handleGrantSessionToolPermission,
     handleInputFocusChange,
   } = useChatComposerState({
+    active,
     selectedProject,
     selectedSession,
     currentSessionId,

@@ -128,7 +128,7 @@ export default function CronPanel({ isSidebarCollapsed, onOpenSidebar, projects:
         {selected && <div className="workspace-actions ml-4 h-9 shrink-0"><CronTaskActions key={selected.id} job={selected} onEdit={edit} onRefresh={noRefresh} onError={setError} onDeleted={deleted} /></div>}
       </header>
       {error && <div role="alert" className="cron-workspace-error">{error}<button type="button" className="cron-text-button ml-3" onClick={() => void load()}>{t('actions.refresh', { defaultValue: 'Retry' })}</button></div>}
-      {selected ? <CronTaskDetails job={selected} projects={projects} historyEpoch={historyEpoch}
+      {selected ? <CronTaskDetails job={selected} projects={projects} active={active} historyEpoch={historyEpoch}
         conversationRevision={conversationRevisions[selected.sessionKey || `cron:${selected.id}`]} />
         : <div className="cron-workspace-empty"><span className="cron-empty-icon"><CalendarClock size={30} strokeWidth={1.35} /></span>
           <h2>{t('cron.workspace.emptyTitle')}</h2>

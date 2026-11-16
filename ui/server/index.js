@@ -128,6 +128,7 @@ import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
 import { cronTaskOverview } from './services/cronOverview.js';
 import { createCronWorkspaceResolver } from './services/cronWorkspace.js';
+import { projectFileIndex } from './services/projectFileIndex.js';
 import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
 import { resolvePilotHome } from './utils/pilotPaths.js';
 import { normalizeSchedule } from '../../src/cron/runtime/CronRuntime.js';
@@ -2062,6 +2063,8 @@ app.put('/api/projects/:projectName/file', authenticateToken, requireRealProject
         }
     }
 });
+
+app.get('/api/projects/:projectName/files/index', authenticateToken, requireRealProjectFilesystem, projectFileIndex);
 
 app.get('/api/projects/:projectName/files', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {

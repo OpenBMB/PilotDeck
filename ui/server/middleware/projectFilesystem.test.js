@@ -13,6 +13,7 @@ import { createModelRuntime } from '../../../src/model/index.js';
 import { SessionConfigOverrides } from '../../../src/always-on/runtime/SessionConfigOverrides.js';
 import { createCronWorkspaceResolver } from '../services/cronWorkspace.js';
 import { cronTaskOverview } from '../services/cronOverview.js';
+import { projectFileIndex } from '../services/projectFileIndex.js';
 import { runWorkspaceFileOperation } from '../../../src/session/checkpoints/workspaceFileOperation.js';
 import { createProjectFilesystemMiddleware } from './projectFilesystem.js';
 import { isPathInsideOrEqual } from '../utils/pathSafety.js';
@@ -23,6 +24,9 @@ const source = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8'
 
 // Mount the production handlers without starting the gateway, database or UI.
 function mountReportedHandlers(app, authenticateToken, requireRealProjectFilesystem) {
+    const indexRoute = "app.get('/api/projects/:projectName/files/index', authenticateToken, requireRealProjectFilesystem, projectFileIndex);";
+    expect(source).toContain(indexRoute);
+    new Function('app', 'authenticateToken', 'requireRealProjectFilesystem', 'projectFileIndex', indexRoute)(app, authenticateToken, requireRealProjectFilesystem, projectFileIndex);
     for (const [method, suffix] of [['get', 'file'], ['get', 'files/content'], ['put', 'file'], ['delete', 'files']]) {
         const start = source.indexOf(`app.${method}('/api/projects/:projectName/${suffix}',`);
         const end = source.indexOf('\n});', start) + '\n});'.length;
@@ -86,7 +90,7 @@ describe('reported project root injection', () => {
         expect((await fetch(`${url}${encodeURIComponent(root)}/file?filePath=state/server-token`)).status).toBe(401);
         for (const name of ['/root', '/etc', root, '-root', '-etc', 'unknown']) {
             for (const args of [
-                ['/file?filePath=state/server-token'], ['/files/content?path=state/auth.db'],
+                ['/file?filePath=state/server-token'], ['/files/content?path=state/auth.db'], ['/files/index'],
                 ['/file', 'PUT', { filePath: 'marker', content: 'changed' }],
                 ['/files', 'DELETE', { path: 'marker' }],
                 ['/files/upload/check', 'POST', { relativePaths: ['marker'] }],
@@ -204,7 +208,7 @@ describe('reported project root injection', () => {
 
     it('wires every project file route to the guard and uses only its resolved root', () => {
         const fileRoutes = source.match(/app\.(?:get|put|post|delete)\('\/api\/projects\/:projectName\/(?:file(?:'|s[/'\w]*')|preview\/\*'|download')[^\n]*/g);
-        expect(fileRoutes.length).toBe(15);
+        expect(fileRoutes.length).toBe(16);
         for (const route of fileRoutes) expect(route).toContain('authenticateToken, requireRealProjectFilesystem');
         const start = source.indexOf('// Read file content endpoint');
         const end = source.indexOf("app.post('/api/projects/:projectName/files/upload',", start);
@@ -230,6 +234,30 @@ it('resolves only trusted task roots for General and owned worktree files', asyn
     expect((await request('cron-task:owned', '/file?filePath=../../../server-token')).status).toBe(403);
     await fs.symlink(home, path.join(home, 'cron/worktrees/symlink'), 'dir');
     expect((await request('cron-task:symlink', '/file?filePath=server-token')).status).toBe(403);
+    for (const [id, status] of [['missing', 404], ['outside', 403], ['forbidden', 403], ['symlink', 403]]) {
+        expect((await request(`cron-task:${id}`, '/files/index')).status).toBe(status);
+    }
+    expect((await fetch(`${url}cron-task%3Aowned/files/index`)).status).toBe(401);
+    await fs.symlink(home, path.join(owned, 'escape'), 'dir');
+    const page = await (await request('cron-task:owned', '/files/index?projectKey=' + encodeURIComponent(home))).json();
+    expect(page.projectKey).toBe(await fs.realpath(owned));
+    expect(page.items.map(item => item.relativePath)).toEqual(['report.txt']);
+    expect((await request('cron-task:owned', '/files/index?limit=0')).status).toBe(400);
+    expect((await request('cron-task:owned', '/files/index?cursor=invalid')).status).toBe(400);
+});
+
+it('keeps task file-index pagination and queries scoped to the trusted workspace', async () => {
+    const owned = path.join(home, 'cron/worktrees/owned');
+    await fs.mkdir(owned, { recursive: true });
+    for (const name of ['alpha.md', 'beta.md']) await fs.writeFile(path.join(owned, name), name);
+    const first = await (await request('cron-task:owned', '/files/index?limit=1')).json();
+    expect(first.items).toHaveLength(1); expect(first.nextCursor).toBeTruthy();
+    const second = await (await request('cron-task:owned', '/files/index?limit=1&cursor=' + encodeURIComponent(first.nextCursor))).json();
+    expect([...first.items, ...second.items].map(item => item.relativePath).sort()).toEqual(['alpha.md', 'beta.md']);
+    expect((await request('cron-task:local', '/files/index?cursor=' + encodeURIComponent(first.nextCursor))).status).toBe(400);
+    const matched = await (await request('cron-task:owned', '/files/index?query=beta&includeDirs=false')).json();
+    expect(matched.items.map(item => item.relativePath)).toEqual(['beta.md']);
+    expect(matched.items[0].matches).toEqual(expect.arrayContaining([expect.objectContaining({ start: 0, end: 4 })]));
 });
 
 it('previews files from task chat before its first worktree execution and follows the current workspace', async () => {
@@ -237,6 +265,7 @@ it('previews files from task chat before its first worktree execution and follow
     git('init'); git('config', 'user.name', 'Task QA'); git('config', 'user.email', 'task@example.invalid');
     await fs.writeFile(path.join(workspace, 'report.txt'), 'Source report');
     git('add', '.'); git('commit', '-m', 'Fixture');
+    await fs.writeFile(path.join(workspace, 'source-only.md'), 'Uncommitted source file');
     const registered = path.join(home, 'projects', createProjectId(workspace));
     await fs.mkdir(registered, { recursive: true }); await fs.writeFile(path.join(registered, '.cwd'), workspace);
     const skills = path.join(root, 'skills'); await fs.mkdir(skills);
@@ -264,6 +293,7 @@ telemetry: { enabled: false }
         extraTools: [{ name: 'write_report', kind: 'filesystem', description: 'Write the synthetic task report',
             inputSchema: { type: 'object', properties: {} }, isReadOnly: () => false,
             execute: async (_input, context) => { writtenCwd = context.cwd;
+                await fs.writeFile(path.join(context.cwd, 'worktree-only.md'), 'Task report context');
                 await fs.writeFile(path.join(context.cwd, 'report.txt'), 'Task chat report'); return { content: [] }; } }],
         __testModelFactory(snapshot) { return { ...createModelRuntime(snapshot.config.model), async *stream() {
             yield { type: 'message_start', role: 'assistant' };
@@ -281,6 +311,8 @@ telemetry: { enabled: false }
             mode: 'bypassPermissions', workspaceMode: 'worktree', schedule: { type: 'once', runAt: new Date(Date.now() + 3600000).toISOString() } })).task;
         const id = `cron-task:${task.taskId}`;
         expect((await request(id, '/file?filePath=report.txt')).status).toBe(404);
+        expect((await request(id, '/files/index')).status).toBe(404);
+        await expect(fs.access(path.join(home, 'cron/worktrees', task.taskId))).rejects.toThrow();
         for await (const _ of local.gateway.submitTurn({ sessionKey: task.sessionKey, projectKey: workspace,
             channelKey: 'web', mode: 'bypassPermissions', message: 'Generate the report' })) { /* Consume the actual tool turn. */ }
         const current = (await local.gateway.cronList({ taskId: task.taskId, includeHistory: true }));
@@ -288,6 +320,9 @@ telemetry: { enabled: false }
         expect(current.recentRuns).toEqual([]);
         expect(writtenCwd).toBe(path.join(home, 'cron', 'worktrees', task.taskId));
         expect(cronTaskOverview(current.tasks[0], null, home).workspaceCwd).toBe(writtenCwd);
+        const fileNames = async () => (await (await request(id, '/files/index')).json()).items.map(item => item.relativePath);
+        expect(await fileNames()).toContain('worktree-only.md');
+        expect(await fileNames()).not.toContain('source-only.md');
         for (const filePath of ['report.txt', path.join(writtenCwd, 'report.txt')]) {
             const loaded = await request(id, '/file?filePath=' + encodeURIComponent(filePath));
             expect(loaded.status).toBe(200); expect((await loaded.json()).content).toBe('Task chat report');
@@ -295,6 +330,8 @@ telemetry: { enabled: false }
         }
         expect((await request(id, '/file?filePath=' + encodeURIComponent(path.join(home, 'auth.db')))).status).toBe(403);
         await cron.updateTask({ ...task, taskId: task.taskId, expectedRevision: current.tasks[0].revision, workspaceMode: 'local' });
+        expect(await fileNames()).toContain('source-only.md');
+        expect(await fileNames()).not.toContain('worktree-only.md');
         expect((await (await request(id, '/file?filePath=report.txt')).json()).content).toBe('Source report');
         expect(await fs.readFile(path.join(workspace, 'report.txt'), 'utf8')).toBe('Source report');
     } finally { await cron.stop(); local.dispose(); }

@@ -23,6 +23,7 @@ export interface MentionableFile {
 interface UseFileMentionsOptions {
   selectedProject: Project | null;
   enabled?: boolean;
+  active?: boolean;
   mentionScopeKey: string | null;
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
@@ -32,6 +33,7 @@ interface UseFileMentionsOptions {
 export function useFileMentions({
   selectedProject,
   enabled = true,
+  active = true,
   mentionScopeKey,
   input,
   setInput,
@@ -49,6 +51,9 @@ export function useFileMentions({
   const [cursorPosition, setCursorPositionState] = useState(0);
   const [atSymbolPosition, setAtSymbolPosition] = useState(-1);
   const hasCursorPositionRef = useRef(false);
+  const filesystemKey = selectedProject?.fileOperationsKey || selectedProject?.fullPath || selectedProject?.path || '';
+  const ownerRef = useRef({ active, mentionScopeKey, filesystemKey });
+  ownerRef.current = { active, mentionScopeKey, filesystemKey };
 
   const setCursorPosition = useCallback((position: number) => {
     hasCursorPositionRef.current = true;
@@ -68,8 +73,8 @@ export function useFileMentions({
     cursor?: string;
     append?: boolean;
   }) => {
-    const projectKey = selectedProject?.fullPath || selectedProject?.path || '';
-    if (!enabled || !projectKey) {
+    if (!active) return;
+    if (!enabled || !filesystemKey) {
       setFilteredFiles([]);
       setNextCursor(undefined);
       setFileListError(t('input.projectPathMissing', { defaultValue: 'The current project path is unavailable.' }));
@@ -84,13 +89,17 @@ export function useFileMentions({
       setIsLoadingFiles(true);
       setFileListError(null);
       const params = new URLSearchParams({
-        projectKey,
         limit: '100',
         includeDirs: 'true',
       });
+      // Task identity is resolved and authorized on the server, just as for previews.
+      const endpoint = selectedProject?.fileOperationsKey
+        ? `/api/projects/${encodeURIComponent(filesystemKey)}/files/index`
+        : '/api/projects/files';
+      if (!selectedProject?.fileOperationsKey) params.set('projectKey', filesystemKey);
       if (query.trim()) params.set('query', query.trim());
       if (cursor) params.set('cursor', cursor);
-      const response = await authenticatedFetch(`/api/projects/files?${params}`, {
+      const response = await authenticatedFetch(`${endpoint}?${params}`, {
         signal: abortController.signal,
       });
       const contentType = response.headers?.get?.('content-type') || '';
@@ -101,6 +110,7 @@ export function useFileMentions({
         }));
       }
       const page = await response.json().catch(() => ({}));
+      if (abortController.signal.aborted || inFlightFetchRef.current !== abortController) return;
       if (!response.ok) {
         const code = page?.error?.code;
         const message = page?.error?.message || t('input.projectFilesLoadFailedStatus', {
@@ -130,7 +140,7 @@ export function useFileMentions({
       setSelectedFileIndex(-1);
     } catch (error) {
       // Ignore aborts from rapid project switches / refreshes.
-      if ((error as { name?: string })?.name === 'AbortError') {
+      if (abortController.signal.aborted || inFlightFetchRef.current !== abortController || (error as { name?: string })?.name === 'AbortError') {
         return;
       }
       console.error('Error fetching files:', error);
@@ -141,10 +151,10 @@ export function useFileMentions({
     } finally {
       if (inFlightFetchRef.current === abortController) {
         inFlightFetchRef.current = null;
+        setIsLoadingFiles(false);
       }
-      if (!abortController.signal.aborted) setIsLoadingFiles(false);
     }
-  }, [enabled, selectedProject?.fullPath, selectedProject?.path, t]);
+  }, [active, enabled, filesystemKey, selectedProject?.fileOperationsKey, selectedProject?.workspaceCwd, t]);
 
   // Cursor and mention UI state belong to a single draft. A conversation
   // switch can keep the same project mounted, so project identity alone is
@@ -161,21 +171,26 @@ export function useFileMentions({
     setAtSymbolPosition(-1);
     hasCursorPositionRef.current = false;
     inFlightFetchRef.current?.abort();
-  }, [enabled, mentionScopeKey]);
+    setIsLoadingFiles(false);
+  }, [enabled, mentionScopeKey, filesystemKey, selectedProject?.workspaceCwd]);
 
   // Query the gateway-backed project file index whenever the active @ query
   // changes. Keeping this server-side preserves cursor/query signatures and
   // allows the response's match ranges to stay authoritative.
   useEffect(() => {
-    if (!enabled || !showFileDropdown) {
+    if (!active || !enabled || !showFileDropdown) {
       inFlightFetchRef.current?.abort();
+      setIsLoadingFiles(false);
       return;
     }
     const timer = window.setTimeout(() => {
       void fetchProjectFiles({ query: mentionQuery });
     }, 120);
-    return () => window.clearTimeout(timer);
-  }, [enabled, fetchProjectFiles, mentionQuery, showFileDropdown]);
+    return () => {
+      window.clearTimeout(timer);
+      inFlightFetchRef.current?.abort();
+    };
+  }, [active, enabled, fetchProjectFiles, mentionQuery, showFileDropdown]);
 
   useEffect(() => {
     if (!enabled) {
@@ -209,11 +224,15 @@ export function useFileMentions({
 
   const focusMention = useCallback(
     (position: number) => {
+      const owner = ownerRef.current;
+      if (!owner.active) return;
       if (textareaRef.current && !textareaRef.current.matches(':focus')) {
         textareaRef.current.focus();
       }
 
       requestAnimationFrame(() => {
+        if (!ownerRef.current.active || ownerRef.current.mentionScopeKey !== owner.mentionScopeKey
+          || ownerRef.current.filesystemKey !== owner.filesystemKey) return;
         if (!textareaRef.current) return;
         textareaRef.current.setSelectionRange(position, position);
         if (!textareaRef.current.matches(':focus')) {
@@ -248,7 +267,7 @@ export function useFileMentions({
   useEffect(() => {
     const handleAddWorkspaceFileMention = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      if (!enabled) return;
+      if (!enabled || !ownerRef.current.active) return;
       if (!isWorkspaceFileMentionRequest(detail)) return;
       if (detail.projectName !== selectedProject?.name) return;
       addExternalFileMention(detail.relativePath);
