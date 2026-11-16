@@ -555,6 +555,7 @@ export default function CronTaskEditor({
           }
           return;
         }
+        if (body.code === 'cron_project_unavailable') throw new Error(t('cron.create.validation.projectUnavailable', { defaultValue: 'This workspace is unavailable. Select an existing project and try again.' }));
         throw new Error(body.error || `HTTP ${response.status}`);
       }
       if (!editingJob) {

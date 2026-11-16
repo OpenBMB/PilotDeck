@@ -235,7 +235,8 @@
         "runAtInvalid": "所选运行时间在该时区中不存在。",
         "runAtFuture": "运行时间必须晚于当前时间。",
         "expressionInvalid": "Cron 表达式格式无效。",
-        "interval": "请输入正整数分钟。"
+        "interval": "请输入正整数分钟。",
+        "projectUnavailable": "该工作区已不可用，请重新选择已有项目后重试。"
       },
       "actions": {
         "expandAdvanced": "展开",

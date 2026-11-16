@@ -827,7 +827,11 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('[always-on-cron-create] failed:', error);
-        res.status(/^(Invalid Cron|Cron |One-time Cron)/i.test(error?.message || '') ? 400 : 500).json({ error: error?.message || 'cron create failed' });
+        const projectUnavailable = error?.code === 'cron_project_unavailable';
+        res.status(projectUnavailable || /^(Invalid Cron|Cron |One-time Cron)/i.test(error?.message || '') ? 400 : 500).json({
+            error: error?.message || 'cron create failed',
+            ...(projectUnavailable ? { code: 'cron_project_unavailable' } : {}),
+        });
     }
 });
 

@@ -208,6 +208,11 @@ Agent tools are `cron_create`, `cron_list`, `cron_get`, `cron_update`,
 project and captures the actual working directory. Lists default to the current
 project; `scope: all` enables a host-wide query. Detail queries provide cursor
 pagination. Source session and project identity are supplied by the host.
+Creation revalidates the project's registration and directory using the same
+resolver as conversation submission, before writing any task or Cron project
+marker. Missing, unregistered, or removed projects reject with
+`cron_project_unavailable`; the Web API returns HTTP 400 and the editor preserves
+the draft. General retains its separate virtual identity and execution workspace.
 
 Web APIs keep `/api/always-on/cron-jobs` compatibility. Task detail is
 `GET /api/always-on/cron-jobs/:taskId`; history pagination uses `beforeRunId`.

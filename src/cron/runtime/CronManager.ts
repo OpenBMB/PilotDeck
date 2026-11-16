@@ -32,6 +32,7 @@ import { CronRuntime, type CronRuntimeLogger, type CreateCronRuntimeOptions } fr
 import type { CronTurnEventHandler } from "./CronFire.js";
 import { CronReminderStore } from "../storage/CronReminderStore.js";
 import type { CronReminder, CronReminderListInput, CronReminderDismissInput } from "../protocol/types.js";
+import { createRegisteredWebProjectResolver } from "../../web/server/listProjects.js";
 
 export type CreateCronManagerOptions = {
   config: CronConfig;
@@ -58,11 +59,13 @@ export class CronManager {
   private gateway?: Gateway;
   private started = false;
   private readonly reminders: CronReminderStore;
+  private readonly resolveRegisteredProject: ReturnType<typeof createRegisteredWebProjectResolver>;
   private readonly emittedReminders = new Set<string>();
 
   constructor(private readonly options: CreateCronManagerOptions) {
     this.config = options.config;
     this.pilotHome = resolve(options.pilotHome);
+    this.resolveRegisteredProject = createRegisteredWebProjectResolver({ pilotHome: this.pilotHome });
     this.tools = createCronTools(this);
     this.reminders = new CronReminderStore(resolve(this.pilotHome, "cron", "reminders.json"));
   }
@@ -112,6 +115,13 @@ export class CronManager {
   async createTask(input: CronCreateInput): Promise<CronCreateResult> {
     if (!this.config.enabled) throw new Error("Cron is disabled. Enable it in pilotdeck.yaml to create tasks.");
     const projectKey = input.projectKey === "general" ? this.pilotHome : requireProjectKey(input.projectKey);
+    // Check before creating a runtime, project marker, or durable task. Agent
+    // tools and Gateway/Web requests share this creation boundary.
+    if (projectKey !== this.pilotHome && !await this.resolveRegisteredProject(projectKey)) {
+      throw Object.assign(new Error("Cron project is not registered or its directory is unavailable. Select an existing project and try again."), {
+        code: "cron_project_unavailable",
+      });
+    }
     let workspaceCwd = input.workspaceCwd;
     if (projectKey === this.pilotHome && !workspaceCwd) {
       const configured = process.env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY?.trim();

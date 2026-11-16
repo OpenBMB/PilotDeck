@@ -564,6 +564,22 @@ describe('CronPanel', () => {
     expect(apiMock.cronCreate).not.toHaveBeenCalled();
   });
 
+  it('explains an unavailable project and retains the draft after the workspace was removed', async () => {
+    setup([]);
+    apiMock.cronCreate.mockResolvedValue(jsonResponse({ code: 'cron_project_unavailable', error: 'Internal project lookup detail' }, false));
+    fireEvent.click(createEntry());
+    await findText('New scheduled task');
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Keep my meeting reminder' } });
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: project.fullPath } });
+    fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '08:30' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
+    await findText('This workspace is unavailable. Select an existing project and try again.');
+    expect(screen.queryByText('Internal project lookup detail')).toBeNull();
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('Keep my meeting reminder');
+    expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('08:30');
+  });
+
   it('offers timezone selection and preserves an existing valid alias', async () => {
     setup([makeJob({ prompt: 'Timezone task', timezone: 'US/Eastern', revision: 1 })]);
     await findText('Timezone task');

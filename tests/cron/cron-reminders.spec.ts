@@ -6,10 +6,18 @@ import { tmpdir } from 'node:os';
 import { createCronManager, defaultCronConfig } from '../../src/cron/index.js';
 import { CronReminderStore, taskReminder } from '../../src/cron/storage/CronReminderStore.js';
 import type { Gateway, GatewaySubmitTurnInput } from '../../src/gateway/index.js';
+import { createProjectId } from '../../src/pilot/paths.js';
+
+async function registerProject(home: string, project: string) {
+  const record = join(home, 'projects', createProjectId(project));
+  await mkdir(record, { recursive: true });
+  await writeFile(join(record, '.cwd'), project);
+}
 
 test('due reminders survive busy conversations, duplicate ticks, acknowledgement and runtime restarts', async () => {
   const home = await mkdtemp(join(tmpdir(), 'pilotdeck-reminders-'));
   const project = join(home, 'project'); await mkdir(project);
+  await registerProject(home, project);
   let now = new Date('2026-06-01T08:00:00Z');
   let submissions = 0;
   const gateway = { getActiveTurnSnapshot: async () => ({ active: true }), closeSession: async () => {},
@@ -43,6 +51,7 @@ test('due reminders survive busy conversations, duplicate ticks, acknowledgement
 test('result notifications honor findings/failure policy and retain independent periodic occurrences', async () => {
   const home = await mkdtemp(join(tmpdir(), 'pilotdeck-reminder-results-'));
   const project = join(home, 'project'); await mkdir(project);
+  await registerProject(home, project);
   const manager = createCronManager({ config: { ...defaultCronConfig(), maxConcurrentRuns: 4 }, pilotHome: home,
     now: () => new Date('2026-06-01T08:00:00Z') });
   manager.bindGateway({ closeSession: async () => {}, abortTurn: async () => {}, async *submitTurn(input: GatewaySubmitTurnInput) {
