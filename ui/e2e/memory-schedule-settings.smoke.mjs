@@ -95,11 +95,13 @@ export async function verifyMemoryScheduleSettings({ browser, base, output, case
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   await page.screenshot({ path: path.join(output, `${language}-${mode}-${width}-schedule.png`), fullPage: true });
   if (width > 1000) {
-   await go('/cron'); await page.getByRole('button', { name: common.cron.tabs.create, exact: true }).click();
-   const workspace = page.getByRole('combobox', { name: common.cron.create.fields.workspace, exact: true });
+   await go('/cron'); await page.getByRole('region', { name: common.cron.title, exact: true })
+    .getByRole('button', { name: common.cron.workspace.newTask, exact: true }).click();
+   const editor = page.getByRole('dialog');
+   const workspace = editor.getByRole('combobox', { name: common.cron.create.fields.workspace, exact: true });
    expect(await workspace.evaluate(styles, fieldKeys)).toEqual(field);
    await workspace.selectOption('/fixture/demo');
-   const date = page.getByLabel(common.cron.create.fields.date, { exact: true });
+   const date = editor.getByLabel(common.cron.create.fields.date, { exact: true });
    expect(await date.evaluate(styles, fieldKeys)).toEqual(field);
    await page.screenshot({ path: path.join(output, language + '-' + mode + '-cron-create.png') });
    await go('/p/demo'); await expect(page.locator('.workspace-header')).toBeVisible();
