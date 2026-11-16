@@ -26,7 +26,7 @@ it.each(["en", "zh-CN"])("shows readable provider/engine labels in %s and tests 
   await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("SerpAPI"));
   fireEvent.keyDown(help, { key: "Escape" });
   expect(screen.queryByRole("tooltip")).toBe(null);
-  expect(provider.querySelectorAll("option")).toHaveLength(10);
+  expect(provider.querySelectorAll("option")).toHaveLength(11);
   for (const option of provider.querySelectorAll("option")) expect(option.textContent).not.toContain("pilotDeckConfig.");
   expect(screen.getByRole("option", { name: "Serper (Google)" })).toBeTruthy();
   expect(screen.getByRole("option", { name: "Brave Search" })).toBeTruthy();
@@ -68,6 +68,14 @@ it("keeps separately edited keys after switching, toggling and remounting", asyn
   select("tavily");
   expect(key().value).toBe("");
   editKey("tavily-saved");
+  select("parallel");
+  expect(screen.queryByLabelText("API key")).toBeNull();
+  expect(screen.getByText("Search queries are sent to Parallel. No API key is required.")).toBeTruthy();
+  fetch.mockResolvedValue({ json: async () => ({ ok: true }) });
+  fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ provider: "parallel" });
+  fetch.mockClear();
   select("glm");
   expect(key().value).toBe("glm-original");
   editKey("glm-updated");
