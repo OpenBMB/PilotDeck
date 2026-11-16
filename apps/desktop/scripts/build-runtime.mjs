@@ -195,13 +195,18 @@ function addDependency(target, sources, name) {
   throw new Error(`Missing runtime dependency version for ${name}`);
 }
 
+// Workspace packages are linked by path because the runtime installs with
+// --ignore-workspace and cannot resolve "workspace:*" specifiers.
+const WORKSPACE_RUNTIME_DEPENDENCIES = {
+  "@pilotdeck/sdk": "file:../../../packages/sdk",
+  "edgeclaw-memory-core": "file:../../../src/context/memory/edgeclaw-memory-core",
+};
+
 function createRuntimeDependencies(rootPackage, uiPackage) {
   const dependencies = {};
   for (const [name, version] of Object.entries(rootPackage.dependencies ?? {})) {
     if (!name.startsWith("@types/")) {
-      dependencies[name] = name === "edgeclaw-memory-core"
-        ? "file:../../../src/context/memory/edgeclaw-memory-core"
-        : version;
+      dependencies[name] = WORKSPACE_RUNTIME_DEPENDENCIES[name] ?? version;
     }
   }
   for (const name of uiServerDependencies) {
