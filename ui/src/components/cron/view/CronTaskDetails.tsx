@@ -4,19 +4,19 @@ import type { CronJobOverview, Project } from '../../../types/app';
 import CronTaskConversation from './CronTaskConversation';
 import { formatCronTime } from './cronPresentation';
 
-/** Only started tasks need a transcript, editor or conversation scroll controller. */
+/** The shared chat owns messages; the task supplies scheduling controls and its empty view. */
 export default function CronTaskDetails({ job, projects }: { job: CronJobOverview; projects: Project[] }) {
   const { t } = useTranslation('alwaysOn');
   const waiting = !job.lastRun && !job.lastFiredAt && ['scheduled', 'paused'].includes(job.status);
-  if (!waiting) return <CronTaskConversation job={job} projects={projects} />;
 
   const paused = job.status === 'paused' || job.enabled === false;
   const nextRunAt = job.nextRunAt && Number.isFinite(Date.parse(job.nextRunAt)) ? job.nextRunAt : undefined;
-  return <section className="cron-task-waiting bg-white dark:bg-neutral-950" data-task-waiting={job.id}>
+  const emptyState = waiting ? <section className="cron-task-waiting h-full bg-white dark:bg-neutral-950" data-task-waiting={job.id}>
     <div className="cron-task-waiting-content">
       <span className="cron-empty-icon" aria-hidden="true"><CalendarClock size={28} strokeWidth={1.35} /></span>
       <h2>{t(paused ? 'cron.status.paused' : 'cron.workspace.firstRun')}</h2>
       {!paused && nextRunAt && <p>{t('cron.workspace.nextAt', { time: formatCronTime(nextRunAt, job.timezone, 'medium') })}</p>}
     </div>
-  </section>;
+  </section> : <div className="cron-workspace-empty h-full"><h2>{t(job.status === 'running' ? 'cron.workspace.runningHint' : 'cron.workspace.noSavedRuns')}</h2></div>;
+  return <CronTaskConversation job={job} projects={projects} emptyState={emptyState} />;
 }

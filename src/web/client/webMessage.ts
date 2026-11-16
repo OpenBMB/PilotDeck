@@ -113,6 +113,7 @@ export type WebMessage = {
   timeline?: TimelinePosition;
   /** Stable queued-input identity, used to reconcile recovered in-flight guidance. */
   queueItemId?: string;
+  isSteer?: boolean;
   /** Transcript ordering sequence for deterministic history reconciliation. */
   sequence?: number;
   toolCallId?: string;

@@ -186,3 +186,15 @@ for (const method of ['fetchFromServer', 'refreshFromServer'] as const) {
     }
   });
 }
+
+it('merges live task guidance with its durable history once, in the original turn position', async () => {
+  const timeline = { version: 1 as const, turnId: 'run', id: 'steer:guidance', order: 4, revision: 12 };
+  const [live] = gatewayEventToFrames({ type: 'steer_applied', runId: 'run', itemId: 'guidance', timeline,
+    message: { role: 'user', content: [{ type: 'text', text: 'Use primary sources', timeline }] } }, 'cron:task', 'pilotdeck');
+  const history: NormalizedMessage = { ...live, id: 'history-guidance', turnId: 'run', queueItemId: 'guidance', isSteer: true, isFinal: true };
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ messages: [history] }))));
+  const { result } = renderHook(useSessionStore);
+  act(() => result.current.applyTimelineMessage('cron:task', live));
+  await act(async () => { await result.current.refreshFromServer('cron:task'); });
+  expect(result.current.getMessages('cron:task').filter(message => message.content === 'Use primary sources')).toHaveLength(1);
+});

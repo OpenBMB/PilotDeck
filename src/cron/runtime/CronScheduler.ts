@@ -81,7 +81,8 @@ export class CronScheduler {
       const next = tasks.filter((task) => task.status === "scheduled" && task.enabled !== false && task.nextRunAt)
         .reduce((at, task) => Math.min(at, Date.parse(task.nextRunAt!)), Infinity);
       waitMs = Number.isFinite(next) ? Math.max(0, next - this.deps.now().getTime()) : DEFAULT_IDLE_POLL_MS;
-      if (waitMs <= 0 && this.deps.activeRunCount() >= this.deps.config.maxConcurrentRuns) waitMs = 1_000;
+      // An overdue occurrence may be waiting for a user's turn in its session.
+      if (waitMs <= 0) waitMs = 1_000;
     }
     if (generation !== this.generation || this.stopped) return;
     if (this.timer) clearTimeout(this.timer);

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import AttachmentPreview from './subcomponents/AttachmentPreview';
 import ImageLightbox from './subcomponents/ImageLightbox';
 import ChatInterface from './ChatInterface';
+import { useChatRealtimeHandlers } from '../hooks/useChatRealtimeHandlers';
 import { api } from '../../../utils/api';
 
 vi.mock('../utils/rasterizeAttachmentImage', () => ({ rasterizeAttachmentImage: vi.fn(async () => new Blob(['pixels'], { type: 'image/png' })) }));
@@ -126,6 +127,18 @@ const emptyQueue = () => ({
 });
 
 describe('ChatInterface queue integration', () => {
+  it('uses the same composer and queue for a task, with task events and event-driven history', () => {
+    queueMocks.useChatSessionState.mockReturnValue(createChatSessionState({ isLoading: false, currentSessionId: 'cron:task' }));
+    queueMocks.useSessionInputQueue.mockReturnValue(emptyQueue());
+    const empty = <p>Waiting for the first run</p>;
+    render(<ChatInterface selectedProject={{ name: 'fixture', displayName: 'fixture', fullPath: '/fixture' }}
+      selectedSession={{ id: 'cron:task', provider: 'pilotdeck' }} sessionScope="task" emptyState={empty} ws={null} sendMessage={vi.fn()} />);
+    expect(queueMocks.useChatSessionState).toHaveBeenCalledWith(expect.objectContaining({ eventDriven: true }));
+    expect(useChatRealtimeHandlers).toHaveBeenCalledWith(expect.objectContaining({ sessionScope: 'task' }));
+    expect(queueMocks.useSessionInputQueue).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'cron:task', projectPath: '/fixture' }));
+    expect(screen.getByTestId('composer')).toBeTruthy();
+    expect(queueMocks.messagesPane.mock.calls.at(-1)![0]).toMatchObject({ emptyState: empty, onFork: undefined, onRegenerate: undefined });
+  });
   it('routes history Retry to the scoped history loader', async () => {
     const state = createChatSessionState({ isLoading: false, sessionLoadError: 'History unavailable' });
     queueMocks.useChatSessionState.mockReturnValue(state);

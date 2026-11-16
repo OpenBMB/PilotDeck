@@ -527,6 +527,8 @@ export type UploadedAttachmentRef = {
 };
 
 export type GatewayCronController = {
+  /** Resolve task ownership and prepare its trusted execution directory for chat turns. */
+  prepareConversation?(input: { sessionKey: string; projectKey?: string }): Promise<{ task: import('../../cron/protocol/types.js').CronTask; workspaceCwd: string }>;
   createTask(input: CronCreateInput): Promise<CronCreateResult>;
   listTasks(input: CronListInput): Promise<CronListResult>;
   updateTask(input: CronUpdateInput): Promise<CronUpdateResult>;

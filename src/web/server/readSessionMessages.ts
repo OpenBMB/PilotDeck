@@ -607,7 +607,7 @@ export function flattenCanonicalMessage(
   };
 
   for (const block of message.content) {
-    if (block.type === 'text' && role === 'assistant') {
+    if (block.type === 'text' && (role === 'assistant' || message.metadata?.purpose === 'mid_turn_steer')) {
       if (textBlockId !== block.blockId) flushText();
       textBlockId = block.blockId;
       textTimeline = block.timeline;
@@ -653,6 +653,7 @@ export function flattenCanonicalMessage(
   if (typeof queueItemId === "string" && queueItemId) {
     for (const webMessage of out) {
       webMessage.queueItemId = queueItemId;
+      if (message.metadata?.purpose === 'mid_turn_steer') webMessage.isSteer = true;
     }
   }
   return out;

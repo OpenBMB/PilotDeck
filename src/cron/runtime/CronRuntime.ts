@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import {
   SessionConfigOverrides,
-  UNATTENDED_SESSION_EXCLUDED_TOOLS,
 } from "../../always-on/runtime/SessionConfigOverrides.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { PilotDeckToolDefinition } from "../../tool/index.js";
@@ -330,6 +329,14 @@ export class CronRuntime {
     return result;
   }
 
+  async prepareConversation(taskId: string): Promise<{ task: CronTask; workspaceCwd: string }> {
+    const task = await this.store.getTask(taskId);
+    if (!task) throw new Error("Scheduled task is unavailable.");
+    const workspaceCwd = await prepareCronWorkspace(task, taskId, resolve(this.paths.rootDir, "worktrees"));
+    this.registerTaskSession({ ...task, workspaceCwd });
+    return { task, workspaceCwd };
+  }
+
   async updateTask(input: CronUpdateInput): Promise<CronUpdateResult> {
     if (!this.config.enabled) throw new Error("Cron is disabled. Enable it in pilotdeck.yaml to update tasks.");
     if (typeof input.projectKey !== "string" || !input.projectKey.trim() || !this.matchesProject(input.projectKey)) return { updated: false, reason: "not_found" };
@@ -345,8 +352,7 @@ export class CronRuntime {
       if (resolve(current.projectKey ?? this.projectKey) !== resolve(input.projectKey)) { reason = "not_found"; return current; }
       if ((current.revision ?? 0) !== input.expectedRevision) { reason = "conflict"; return current; }
       const scheduleChanged = JSON.stringify(current.schedule) !== JSON.stringify(schedule) || current.timezone !== timezone;
-      const changedConfiguration = scheduleChanged || input.message.trim() !== current.message
-        || (input.name !== undefined && taskName(input.name, input.message) !== current.name)
+      const changedConfiguration = scheduleChanged
         || ["notificationPolicy", "mode", "workspaceMode", "modelSelection"].some((key) =>
           input[key as keyof CronUpdateInput] !== undefined
           && JSON.stringify(input[key as keyof CronUpdateInput]) !== JSON.stringify(current[key as keyof CronTask]));
@@ -428,6 +434,7 @@ export class CronRuntime {
       return { started: result.deliveryStatus === "sent" || result.deliveryStatus === "skipped", taskId: task.taskId, runId: run.runId };
     }
     if (task.status === "running" || [...this.activeRuns.values()].some((run) => run.taskId === task.taskId)) return { started: false, reason: "already_running", taskId: task.taskId };
+    if ((await this.gateway?.getActiveTurnSnapshot?.({ sessionKey: task.sessionKey, includeEvents: false }))?.active) return { started: false, reason: "already_running", taskId: task.taskId };
     if ((this.sharedActiveRunCount?.() ?? this.activeRuns.size) >= this.config.maxConcurrentRuns) return { started: false, reason: "concurrency_limit", taskId: task.taskId };
     const runId = this.uuid();
     let resolveClaim!: (value: boolean) => void;
@@ -501,9 +508,8 @@ export class CronRuntime {
     this.sessionOverrides.set(task.sessionKey, {
       cwd: task.workspaceCwd,
       permissionMode: task.mode ?? "default",
-      bypassAvailable: task.mode === "bypassPermissions",
-      canPrompt: false,
-      excludeTools: [...UNATTENDED_SESSION_EXCLUDED_TOOLS],
+      // Interactive turns use the ordinary chat capabilities. CronFire applies
+      // canPrompt=false and hides interactive tools on unattended turns only.
     });
   }
 

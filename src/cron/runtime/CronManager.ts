@@ -162,6 +162,14 @@ export class CronManager {
     return runtime.updateTask(input);
   }
 
+  async prepareConversation(input: { sessionKey: string; projectKey?: string }): Promise<{ task: CronTask; workspaceCwd: string }> {
+    const task = (await this.listTasks()).tasks.find(task => task.sessionKey === input.sessionKey);
+    if (!task || (input.projectKey && resolve(input.projectKey) !== resolve(task.projectKey!))) {
+      throw new Error("Scheduled task conversation does not belong to this project.");
+    }
+    return (await this.ensureRuntime(task.projectKey!)).prepareConversation(task.taskId);
+  }
+
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
     const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
     if (!runtime) return { deleted: false };

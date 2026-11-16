@@ -73,6 +73,8 @@ export class CronFire {
     this.deps.registerActiveRun(active);
     let claimed = false;
     let notified = false;
+    let executionStarted = false;
+    let deferred = false;
     let task = snapshot;
     let output = "";
     let artifacts: CronRunRecord["artifacts"] = [];
@@ -84,7 +86,17 @@ export class CronFire {
       startedAt: startedAt.toISOString(), scheduledAt: trigger === "scheduled" ? snapshot.nextRunAt : startedAt.toISOString(),
       trigger, taskName: task.name ?? task.message.slice(0, 120), message: task.message, workspaceCwd,
     });
+    const beginExecution = async () => {
+      if (executionStarted) return;
+      executionStarted = true;
+      await this.deps.store.appendRun(record());
+      this.phase(task, runId, "cron_started", startedAt.toISOString());
+      try { this.deps.onTurnEvent?.(sessionKey, "cron", { type: "agent_status", event: "cron_input", runId,
+        detail: { message: task.message, projectKey: task.projectKey, taskId: task.taskId, trigger, scheduledAt: snapshot.nextRunAt } }); }
+      catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
+    };
     try {
+      if ((await this.deps.gateway.getActiveTurnSnapshot?.({ sessionKey, includeEvents: false }))?.active) return;
       const current = await this.deps.store.updateTask(snapshot.taskId, (value) => {
         if (value.status === "running" || (trigger === "scheduled" && (value.status !== "scheduled" || value.enabled === false))
           || (value.revision ?? 0) !== (snapshot.revision ?? 0)
@@ -97,17 +109,10 @@ export class CronFire {
       notified = true;
       if (!claimed || !current) return;
       task = current;
-      await this.deps.store.appendRun(record());
-      this.phase(task, runId, "cron_started", startedAt.toISOString());
 
       if (active.stopRequested) throw new Error("Cron run was stopped before execution.");
       workspaceCwd = await this.deps.prepareRun?.(task, runId, sessionKey) ?? workspaceCwd;
-      try {
-        this.deps.onTurnEvent?.(sessionKey, "cron", { type: "agent_status", event: "cron_input", runId,
-          detail: { message: task.message, taskId: task.taskId, trigger, scheduledAt: snapshot.nextRunAt } });
-      } catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
       if (workspaceCwd !== (task.workspaceCwd ?? task.projectKey)) {
-        await this.deps.store.appendRun(record());
         await this.deps.store.updateTask(task.taskId, current => current.lastRunId === runId
           ? { ...current, lastRun: record(), revision: (current.revision ?? 0) + 1 } : current);
       }
@@ -119,6 +124,14 @@ export class CronFire {
         canPrompt: false, allowPlanModeTools: false, runId, timeoutMs: this.deps.runTimeoutMs,
         ...(task.modelSelection ? { modelOverride: { mode: "model", ...task.modelSelection } } : {}),
       })) {
+        // A user can win admission between the status read and the task claim.
+        // Keep the original occurrence pending; no execution or failure happened.
+        if (!executionStarted && event.type === "agent_status" && event.event === "session_busy") continue;
+        if (!executionStarted && event.type === "error" && ["session_busy", "replace_turn_pending"].includes(event.code ?? "")) {
+          deferred = true;
+          break;
+        }
+        await beginExecution();
         await this.deps.store.appendRunEvent(runId, event);
         try { this.deps.onTurnEvent?.(sessionKey, "cron", event); }
         catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
@@ -142,22 +155,37 @@ export class CronFire {
       outcome = "failed";
       error = { code: "cron_run_failed", message: caught instanceof Error ? caught.message : String(caught) };
     } finally {
-      if (!notified) options.onClaim?.(false);
-      if (claimed) {
-        if (active.stopRequested) outcome = "stopped";
-        const finishedAt = this.deps.now();
-        let terminal: CronRunRecord = { ...record(), finishedAt: finishedAt.toISOString(), outcome,
-          output: output.trim().slice(-100_000), artifacts, error, deliveryStatus: "pending" };
-        // Persist execution before delivery; an unavailable channel must not erase a result.
-        await this.deps.store.appendRun(terminal).catch((caught) => this.warn("cron run terminal record write failed", caught, task.taskId, runId));
-        this.phase(task, runId, outcome === "completed" ? "cron_completed" : "cron_failed", finishedAt.toISOString(), error);
-        terminal = await this.deliverResult(task, terminal);
-        await this.deps.store.appendRun(terminal).catch((caught) => this.warn("cron delivery record write failed", caught, task.taskId, runId));
-        await this.finishTask(task, snapshot, terminal, trigger).catch((caught) => this.warn("cron task post-run update failed", caught, task.taskId, runId));
-        await this.deps.releaseRun?.(task, sessionKey).catch((caught) => this.warn("cron session cleanup failed", caught, task.taskId, runId));
+      try {
+        if (claimed && deferred) {
+          await this.deps.store.updateTask(task.taskId, current => current.lastRunId !== runId ? current : {
+            ...current, status: current.enabled === false ? "paused" : snapshot.status,
+            lastRunId: snapshot.lastRunId, lastRun: snapshot.lastRun,
+            revision: (current.revision ?? 0) + 1, updatedAt: this.deps.now().toISOString(),
+          });
+        } else if (claimed) {
+          await beginExecution();
+          if (active.stopRequested) outcome = "stopped";
+          const finishedAt = this.deps.now();
+          let terminal: CronRunRecord = { ...record(), finishedAt: finishedAt.toISOString(), outcome,
+            output: output.trim().slice(-100_000), artifacts, error, deliveryStatus: "pending" };
+          // Persist execution before delivery; an unavailable channel must not erase a result.
+          await this.deps.store.appendRun(terminal).catch((caught) => this.warn("cron run terminal record write failed", caught, task.taskId, runId));
+          this.phase(task, runId, outcome === "completed" ? "cron_completed" : "cron_failed", finishedAt.toISOString(), error);
+          terminal = await this.deliverResult(task, terminal);
+          await this.deps.store.appendRun(terminal).catch((caught) => this.warn("cron delivery record write failed", caught, task.taskId, runId));
+          await this.finishTask(task, snapshot, terminal, trigger).catch((caught) => this.warn("cron task post-run update failed", caught, task.taskId, runId));
+          await this.deps.releaseRun?.(task, sessionKey).catch((caught) => this.warn("cron session cleanup failed", caught, task.taskId, runId));
+          // The stream has drained and Gateway admission is released. The Web
+          // bridge can now dispatch ordinary queued replies in this same session.
+          try { this.deps.onTurnEvent?.(sessionKey, "cron", { type: "agent_status", event: "cron_settled", runId,
+            detail: { finishReason: outcome === "completed" ? "completed" : outcome === "stopped" || outcome === "aborted" ? "aborted" : "error" } }); }
+          catch (caught) { this.warn("cron queue settlement delivery failed", caught, task.taskId, runId); }
+        }
+      } finally {
+        if (!notified) options.onClaim?.(false);
+        this.deps.unregisterActiveRun(runId);
+        if (executionStarted) this.deps.onFinished?.();
       }
-      this.deps.unregisterActiveRun(runId);
-      this.deps.onFinished?.();
     }
   }
 

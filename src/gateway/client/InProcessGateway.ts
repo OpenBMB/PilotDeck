@@ -544,7 +544,7 @@ export class InProcessGateway implements Gateway {
       purpose: "conversation",
     }, async () => {
       try {
-        if (input.workspaceCwd && this.options.setSessionCwd) this.options.setSessionCwd(input.sessionKey, input.workspaceCwd);
+        if (!input.sessionKey.startsWith("cron:") && input.workspaceCwd && this.options.setSessionCwd) this.options.setSessionCwd(input.sessionKey, input.workspaceCwd);
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
           timeoutHandle = setTimeout(() => {
             timedOut = true;
@@ -577,6 +577,22 @@ export class InProcessGateway implements Gateway {
         }
         markTiming("configMs");
         if (cancelled) return;
+        if (input.sessionKey.startsWith("cron:") && this.options.cron?.prepareConversation) {
+          const { task, workspaceCwd } = await this.options.cron.prepareConversation(input);
+          const background = input.channelKey === "cron";
+          input = { ...input, projectKey: task.projectKey, workspaceCwd,
+            canPrompt: background ? false : input.canPrompt ?? true,
+            ...(background ? { mode: task.mode ?? "default", allowPlanModeTools: false } : {}),
+            syntheticMessages: [...(input.syntheticMessages ?? []), { purpose: "scheduled_task_context", text: [
+              `This conversation belongs to scheduled task ${task.taskId} in project ${task.projectKey}.`,
+              `Latest saved task instructions:\n${task.message}`,
+              background ? "This is a scheduled/manual task execution. Perform the saved task."
+                : "This is a user conversation about the task. Answer the latest user request; do not execute the saved task unless asked. Chatting does not change its schedule.",
+              "For explicit lasting guidance (e.g. 'from now on' or 'every future run'), use cron_get and then cron_update for this task, merging the guidance with its existing instructions. Preserve its name, schedule, timezone, permissions and workspace unless the user asks to change them. Only confirm that requirements were saved after updated=true; report a failed save honestly. Temporary corrections stay in this conversation.",
+            ].join("\n\n") }],
+          };
+          this.options.setSessionCwd?.(input.sessionKey, workspaceCwd);
+        }
         const session = await this.router.getOrCreate({
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
@@ -816,6 +832,10 @@ export class InProcessGateway implements Gateway {
     const activeRunId = this.router.activeTurnRunId(input.sessionKey);
     if (!activeRunId) return { accepted: false, reason: "no_active_turn" };
     if (activeRunId !== input.runId) return { accepted: false, reason: "turn_mismatch" };
+    if (input.sessionKey.startsWith("cron:") && this.options.cron?.prepareConversation) {
+      const { task } = await this.options.cron.prepareConversation(input);
+      input = { ...input, projectKey: task.projectKey };
+    }
 
     const uploaded = input.uploadedAttachments?.length
       ? await this.resolveUploadedAttachments(input)

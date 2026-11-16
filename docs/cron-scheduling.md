@@ -13,8 +13,10 @@ the runtime and interrupts active runs; their records remain available.
 
 New tasks default to the existing restricted permission rules, not Full Access.
 `mode: plan` allows read-only work; `bypassPermissions` is an explicit Full Access
-choice. Execution sets `canPrompt: false`; requests for approval or input become
-visible blocked results. A task's project identity and execution directory are
+choice. Scheduled/manual executions set `canPrompt: false`; requests for approval
+or input become visible blocked results. User-initiated chat turns use ordinary
+interactive permissions without changing the task's unattended permission mode.
+A task's project identity and execution directory are
 separate. General uses its configuration-home identity and managed workspace,
 never the configuration directory as its working directory.
 
@@ -54,11 +56,11 @@ with project and conversation navigation. Task rows use the same theme, selectio
 heading and compact-entry primitives. Compact entries expose actions through
 right-click or Shift+F10; list options retain search and filters in a portaled
 popover. Its title-bar plus button opens the task editor. Selecting a
-task that has never started shows a fixed waiting view with its next run time;
-instructions remain in the editor. The conversation pipeline is mounted when
-execution starts and retained for recurring tasks between runs. A started
-task shows its dedicated conversation through the existing `MessagesPane`,
-`useChatSessionState`, `useChatRealtimeHandlers` and `useSessionStore` pipeline.
+task with no messages shows a fixed waiting view with its next run time and the
+shared composer. `CronTaskConversation` reuses `ChatInterface`, including its
+attachments, input queue, mid-turn steering and existing message/store pipeline.
+Chatting before or between executions does not create an execution record or
+advance the schedule. The same conversation is retained for recurring runs.
 Thinking, tools, file previews, history pagination and reading position use the
 same implementation as ordinary chat. File previews resolve the task’s trusted
 execution workspace through a task identity; General and isolated
@@ -107,6 +109,14 @@ conversation history and earlier per-run files are preserved. The shared history
 reader projects retained owned per-run transcripts into the task flow without
 copying them into the continuing model context.
 
+The Gateway resolves task ownership and its trusted workspace for every task
+turn; a browser-supplied directory cannot replace that workspace. Current task
+instructions and identity are supplied as hidden reference context. Explicit
+lasting guidance is merged into the saved instructions using `cron_get` and
+`cron_update`; acknowledgement requires a successful update. Temporary guidance
+remains in history. Task conversations use the normal project instructions,
+memory retrieval/capture (when enabled), and context compaction mechanisms.
+
 Git tasks can select `workspaceMode: worktree`. A task's worktree starts at
 committed HEAD and is reused by subsequent runs, preserving task changes while
 excluding the user's dirty checkout. The scheduler never stages or commits the
@@ -115,7 +125,13 @@ can be stored per task.
 
 Manual execution creates a Run under the existing task ID and preserves its
 schedule. Admission prevents overlapping executions of that task and enforces
-the shared concurrency limit. Each run records the instruction snapshot,
+the shared concurrency limit. A user turn occupying the task conversation defers
+a due occurrence without recording a failed run, including an admission race.
+Queued replies resume after background execution releases Gateway admission;
+applied steering messages are removed from the queue exactly once. Instruction
+and title updates are allowed during execution and affect subsequent runs; the
+active run retains its original instruction snapshot. Schedule, workspace, model
+and permission edits still require the run to stop. Each run records the instruction snapshot,
 trigger source, intended and actual times, execution conversation, output, file
 artifacts, outcome and result delivery status.
 

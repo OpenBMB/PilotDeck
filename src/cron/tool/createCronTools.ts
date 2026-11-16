@@ -42,7 +42,7 @@ export function createCronTools(runtime: CronToolRuntime): PilotDeckToolDefiniti
       if (!task) return output({ updated: false, reason: "not_found" });
       const schedule = input.schedule ?? (input.timezone && "timezone" in task.schedule
         ? { ...task.schedule, timezone: input.timezone } : task.schedule);
-      const update = { ...input, projectKey: task.projectKey!, message: input.message ?? task.message,
+      const update = { ...input, name: input.name ?? task.name, projectKey: task.projectKey!, message: input.message ?? task.message,
         schedule, timezone: input.timezone ?? task.timezone };
       // Relative edit inputs are normalized by the same creation rule before applying the revision guard.
       return output(await runtime.updateTask(update as CronUpdateInput));

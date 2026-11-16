@@ -215,14 +215,14 @@ test("description-only edits preserve the committed occurrence and stale edits c
 
 test("legacy conversation inputs create an owned task session without touching the active source chat", async () => {
   const f = await fixture();
-  let checked = false;
-  f.gateway.getActiveTurnSnapshot = async ({ sessionKey }) => { checked = true; return { sessionKey, active: true, events: [] }; };
+  const checked: string[] = [];
+  f.gateway.getActiveTurnSnapshot = async ({ sessionKey }) => { checked.push(sessionKey); return { sessionKey, active: sessionKey === "web:source", events: [] }; };
   try {
     const { task } = await f.create({ executionMode: "conversation", sessionKey: "web:source", channelKey: "web", mode: "plan" });
     assert.equal(task.executionMode, "persistent"); assert.equal(task.targetSessionKey, undefined);
     assert.equal(task.originSessionKey, "web:source"); assert.match(task.sessionKey, /^cron:/);
     await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
-    assert.equal(checked, false); assert.equal(f.inputs[0].sessionKey, task.sessionKey);
+    assert.ok(checked.length > 0 && checked.every(key => key === task.sessionKey)); assert.equal(f.inputs[0].sessionKey, task.sessionKey);
     assert.equal(f.inputs[0].channelKey, "cron"); assert.equal(f.inputs[0].mode, "plan");
     assert.equal(f.closed.includes("web:source"), false);
   } finally { await f.close(); }
@@ -357,5 +357,72 @@ test("stale model names cannot overwrite newer instructions or recreate deleted 
     assert.equal(await f.store.getTask(task.taskId), undefined);
     await f.create({ name: 'Agent-supplied title' });
     assert.equal(requests.length, 2);
+  } finally { await f.close(); }
+});
+
+test('a busy conversation defers its occurrence without creating a failed run, including admission races', async () => {
+  let active = true, raced = false;
+  const f = await fixture({ submit: async function* () {
+    if (raced) { yield { type: 'error', code: 'session_busy', message: 'Another turn won admission', recoverable: true }; return; }
+    yield { type: 'assistant_text_delta', text: 'Accepted scheduled run' };
+  } });
+  f.gateway.getActiveTurnSnapshot = async input => ({ active, sessionKey: input.sessionKey, events: [] });
+  try {
+    const task = (await f.create()).task;
+    f.setNow('2026-06-01T09:00:00Z');
+    await f.runtime.runTickOnce(); await f.idle();
+    assert.equal((await f.runtime.runTaskNow({ taskId: task.taskId })).reason, 'already_running');
+    assert.equal(f.inputs.length, 0);
+    assert.equal((await f.store.listRuns(10)).length, 0);
+    assert.equal((await f.store.getTask(task.taskId))?.nextRunAt, task.nextRunAt);
+    active = false; raced = true;
+    await f.runtime.runTickOnce(); await f.idle();
+    assert.equal((await f.store.getTask(task.taskId))?.status, 'scheduled');
+    assert.equal((await f.store.getTask(task.taskId))?.nextRunAt, task.nextRunAt);
+    assert.equal((await f.store.listRuns(10)).length, 0);
+    raced = false;
+    await f.runtime.runTickOnce(); await f.idle();
+    assert.equal((await f.store.listRuns(10)).length, 1);
+    assert.equal((await f.store.getTask(task.taskId))?.nextRunAt, '2026-06-02T09:00:00.000Z');
+  } finally { await f.close(); }
+});
+
+test('lasting instruction updates during execution preserve its snapshot and feed the following occurrence', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const f = await fixture({ submit: async function* () { yield { type: 'assistant_text_delta', text: 'Working' }; await gate; } });
+  try {
+    const original = (await f.create()).task;
+    await f.runtime.runTaskNow({ taskId: original.taskId });
+    const running = (await f.store.getTask(original.taskId))!;
+    const result = await f.runtime.updateTask({ taskId: running.taskId, projectKey: f.project,
+      expectedRevision: running.revision!, schedule: running.schedule, timezone: running.timezone,
+      message: 'Generate a report. Always verify primary sources.' });
+    assert.equal(result.updated, true);
+    const reschedule = await f.runtime.updateTask({ taskId: running.taskId, projectKey: f.project,
+      expectedRevision: result.updated ? result.task.revision! : 0, message: 'Changed', schedule: { type: 'cron', expression: '0 10 * * *', timezone: 'UTC' } });
+    assert.deepEqual(reschedule, { updated: false, reason: 'running' });
+    release(); await f.idle();
+    assert.equal((await f.store.listRuns(1))[0].message, original.message);
+    assert.equal((await f.store.getTask(original.taskId))?.nextRunAt, original.nextRunAt);
+    f.setNow('2026-06-01T09:00:00Z');
+    await f.runtime.runTickOnce(); await f.idle();
+    assert.equal(f.inputs.at(-1)?.message, 'Generate a report. Always verify primary sources.');
+  } finally { release(); await f.close(); }
+});
+
+test('Agent instruction updates preserve an omitted task name instead of regenerating it', async () => {
+  let titles = 0;
+  const f = await fixture({ title: async () => { titles++; return 'Unexpected replacement title'; } });
+  try {
+    const { task } = await f.create();
+    const tool = f.runtime.getTools().find(tool => tool.name === 'cron_update')!;
+    await tool.execute({ taskId: task.taskId, expectedRevision: task.revision, message: 'Report using primary sources.' },
+      { cwd: f.project, projectKey: f.project, sessionId: task.sessionKey } as PilotDeckToolRuntimeContext);
+    const saved = (await f.store.getTask(task.taskId))!;
+    assert.equal(saved.message, 'Report using primary sources.');
+    assert.equal(saved.name, task.name);
+    assert.equal(saved.nextRunAt, task.nextRunAt);
+    assert.equal(titles, 0);
   } finally { await f.close(); }
 });

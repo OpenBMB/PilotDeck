@@ -259,6 +259,8 @@ export interface Question {
 }
 
 export interface ChatInterfaceProps {
+  sessionScope?: 'chat' | 'task';
+  emptyState?: React.ReactNode;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   ws: WebSocket | null;
