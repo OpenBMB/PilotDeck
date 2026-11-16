@@ -469,7 +469,9 @@ function prunePackageSpecificFiles() {
 }
 
 function rewriteUiServerSourceImports(serverRoot) {
-  const extensions = new Set([".js"]);
+  // .mjs/.cjs sources import "../../src/..." too; tsc output lives in dist/src,
+  // and the staged runtime deletes its top-level src tree.
+  const extensions = new Set([".js", ".mjs", ".cjs"]);
 
   function visit(path) {
     const stat = statSync(path);
