@@ -1,6 +1,6 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../../types/app';
 import { ADD_WORKSPACE_FILE_MENTION_EVENT } from '../../../utils/workspaceFileMention';
 import { useFileMentions } from './useFileMentions';
@@ -26,6 +26,11 @@ const project = {
 const textareaRef = { current: null } as RefObject<HTMLTextAreaElement>;
 
 describe('useFileMentions conversation scope', () => {
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     getFilesMock.mockReset();
     authenticatedFetchMock.mockReset();
@@ -87,6 +92,7 @@ describe('useFileMentions conversation scope', () => {
   });
 
   it('does not open or query project files when mentions are disabled', async () => {
+    vi.useFakeTimers();
     const setInput = vi.fn();
     const { result } = renderHook(() => useFileMentions({
       selectedProject: project,
@@ -99,7 +105,8 @@ describe('useFileMentions conversation scope', () => {
 
     act(() => result.current.setCursorPosition(1));
 
-    await waitFor(() => expect(result.current.showFileDropdown).toBe(false));
+    await act(async () => { await vi.advanceTimersByTimeAsync(150); });
+    expect(result.current.showFileDropdown).toBe(false);
     expect(authenticatedFetchMock).not.toHaveBeenCalled();
   });
 
