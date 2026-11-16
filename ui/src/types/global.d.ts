@@ -20,8 +20,9 @@ declare global {
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
       platform?: string;
-      setTaskReminders?: (value: { scope: string; language: string; reminders: SystemNotification[]; soundId?: string; error?: string }) => Promise<void>;
-      onTaskReminderDismiss?: (callback: (id: string) => void) => () => void;
+      reconcileSystemNotifications?: (value: { scope: string; ids: string[] }) => Promise<void>;
+      dismissSystemNotification?: (value: { scope: string; id: string }) => Promise<void>;
+      onSystemNotificationDismiss?: (callback: (value: { scope: string; id: string }) => void) => () => void;
       getUninstallStatus?: () => Promise<{ supported: boolean }>;
       uninstall?: () => Promise<{ canceled: boolean }>;
       getRuntimeStatus?: () => { phase: string; message: string; progress?: number; startedAt?: number; phaseStartedAt?: number; logPath?: string; error?: string } | null;

@@ -9,7 +9,7 @@ const source = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8')
 // worker and retain structured-cloned storage when replacing its JS context.
 function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, visible: false }) {
   const handlers = {};
-  const client = { postMessage(message, ports) {
+  const client = { url: 'https://pilotdeck.example.test/', focus: async () => {}, postMessage(message, ports) {
     if (message.type === 'notification:context') ports[0].postMessage({ viewed: surfaces.visible });
     else surfaces.forwarded.push(message);
   } };
@@ -46,11 +46,13 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
       return request;
     } },
     self: {
+      location: { origin: 'https://pilotdeck.example.test' },
       addEventListener: (name, handler) => { handlers[name] = handler; },
       clients: { matchAll: async () => [client] },
       navigator: { setAppBadge: async count => { surfaces.badge = count; }, clearAppBadge: async () => { surfaces.badge = 0; } },
       registration: {
         showNotification: async (title, options) => {
+          if (surfaces.fail) throw new Error('Synthetic notification rejection');
           const item = { title, ...options, closed: false };
           item.close = vi.fn(() => { item.closed = true; });
           surfaces.shown.push(item);
@@ -72,6 +74,8 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
   };
   return {
     surfaces, database, message,
+    click: notification => dispatch('notificationclick', { notification }),
+    dismiss: notification => dispatch('notificationclose', { notification }),
     preferences: (scope = '1') => message('notification:preferences', { scope, preferences: { enabled: true } }),
     push: event => dispatch('push', { data: { json: () => ({ ...buildSystemNotification(event), event }) } }),
     read: (records, scope = '1') => message('notification:read', { scope, records }),
@@ -202,4 +206,28 @@ it('enriches an ID-only watermark when a current page supplies its timestamp', a
   await w.read([record(event('r2', 2))]);
   await w.push(event('r1', 1));
   expect(w.surfaces.shown).toHaveLength(0);
+});
+
+it('does not consume denied or failed reminder delivery and keeps receipts beyond normal chat cache eviction', async () => {
+  let w = worker(); await w.preferences();
+  const payload = buildTaskReminderNotification({ id: 'b'.repeat(64), title: 'Meeting', kind: 'due', taskId: 'task', sessionKey: 'cron:task' }, {}, 'en', '1');
+  await w.message('notification:preferences', { scope: '1', preferences: { enabled: false } });
+  expect(await w.message('notification:show', payload)).toBe(false);
+  await w.preferences(); w.surfaces.fail = true;
+  expect(await w.message('notification:show', payload)).toBe(false);
+  w.surfaces.fail = false; expect(await w.message('notification:show', payload)).toBe(true);
+  w.database.value.seen = []; w = w.restart();
+  expect(await w.message('notification:show', payload)).toBe(true); expect(w.surfaces.shown).toHaveLength(1);
+});
+it('routes system activation to the task without acknowledging, and forwards explicit user dismissal separately', async () => {
+  const w = worker(); await w.preferences();
+  const payload = buildTaskReminderNotification({ id: 'c'.repeat(64), title: 'Meeting', kind: 'due', taskId: 'task-a', sessionKey: 'cron:task-a' }, {}, 'en', '1');
+  await w.message('notification:show', payload); const notification = w.surfaces.shown[0];
+  await w.click(notification);
+  expect(notification.close).not.toHaveBeenCalled();
+  expect(w.surfaces.forwarded.at(-1)).toMatchObject({ type: 'notification:navigate', kind: 'reminder', taskId: 'task-a', urlPath: '/cron?taskId=task-a' });
+  expect(w.surfaces.forwarded.some(item => item.type === 'notification:task-dismissed')).toBe(false);
+  await w.dismiss(notification);
+  expect(w.surfaces.forwarded.at(-1)).toEqual({ type: 'notification:task-dismissed', scope: '1', id: payload.id });
+  await w.restart().message('notification:show', payload); expect(w.surfaces.shown).toHaveLength(1);
 });

@@ -159,18 +159,32 @@ Successful due-mode runs do not create a second result reminder; failures remain
 visible according to the notification policy. The naming classifier selects due delivery for simple user reminders and result
 delivery for agent work; Agent creation and the editor can explicitly override it.
 
-Web shows persistent cards; desktop uses a separate non-modal, always-on-top
-window with the existing notification preferences, sound throttle and appearance.
-Viewing a task, focusing the application and reading its transcript never dismiss
-reminders. Only explicit close acknowledges a reminder for the authenticated user.
-Failed close requests retain it. Ordinary chat notifications keep their existing
-focus/read behavior. System delivery follows notification preferences; Web cards
-remain available even when browser system notifications are disabled.
+All clients use the existing system-notification transport and preferences.
+There are no custom reminder windows or page cards. Web uses the Notifications
+API/Service Worker with `requireInteraction`; Electron uses native notifications,
+Windows reminder Toasts, and a non-expiring timeout where supported. macOS alert
+style and Linux notification-server policy remain user/system controlled. Due
+reminders show a short action message instead of the task's execution instructions.
 
-Pending reminders survive runtime and client restarts. Initial connection and
-reconnect read a snapshot; `cron-reminder-changed` events merge live changes with
-in-flight snapshots. There is no periodic reminder query. Each occurrence has a
-stable unique ID; later occurrences cannot replace earlier unacknowledged alerts.
+Viewing a task does not acknowledge its reminder. The OS may hide a notification
+when activated or after its own timeout; hiding is not business acknowledgement.
+Only supported explicit user-dismissal events acknowledge the authenticated
+user's reminder. Unknown close reasons, focus/read events and programmatic closes
+do not. Ordinary chat notification, badge and read behavior are unchanged.
+
+Initial connection, reconnect, permission/preference changes and focus recover
+pending snapshots; there is no periodic reminder query. Per-client durable OS
+delivery receipts prevent replay after refresh/restart, including notifications
+already dismissed by the user. Failed or denied delivery stays retryable. Receipt
+recovery is quiet and never reruns the model. Electron stores delivery and explicit-dismissal identities
+and navigation metadata in its user-data directory. It reads macOS Notification
+Center history once before live notification delivery, rebinds retained records,
+and restores missing records only when the server still reports them pending.
+The snapshot also closes system notifications already acknowledged elsewhere. Windows activation routes only recognized stored
+reminder IDs. Browser worker receipts are independent of ordinary chat unread
+state and survive worker replacement. Each occurrence has a stable unique ID;
+later occurrences cannot replace earlier notifications from that task. System
+retention and available close/activation callbacks determine platform limits.
 Local scheduling still requires the runtime and computer to remain running.
 
 ## Storage and interfaces

@@ -1,4 +1,4 @@
-import TaskReminderNotifications from '../cron/view/TaskReminderNotifications';
+import { useTaskReminders } from '../cron/useTaskReminders';
 import { useDesktopCommands } from '../desktop/useDesktopCommands';
 import { useAuth } from '../auth/context/AuthContext';
 import { SessionViewReadyContext, useSessionIndicators } from './useSessionIndicators';
@@ -77,6 +77,7 @@ export default function AppShell() {
 function AppShellContent() {
   const globalSearch = useGlobalSearch();
   useRejectExternalFileDropOutsideTargets();
+  useTaskReminders();
   const navigate = useNavigate();
   const [skillConversationRequest, setSkillConversationRequest] =
     useState<SkillConversationRequest | null>(null);
@@ -764,7 +765,6 @@ function AppShellContent() {
     <SessionViewReadyContext.Provider value={setReadySessionId}>
     <div className="app-root fixed inset-0 flex flex-col font-sans text-neutral-900 dark:text-neutral-100">
       <ConnectionBanner />
-      <TaskReminderNotifications />
       {isSettingsRoute ? (
         <SettingsComponent
           onClose={onCloseSettings}

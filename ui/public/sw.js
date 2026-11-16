@@ -210,31 +210,57 @@ async function showNotificationOnce(payload, forwardToClients = false) {
 
 async function showTaskReminderOnce(payload, forwardToClients) {
   const data = payload.data;
+  if (!data?.scope || !/^[a-f0-9]{64}$/.test(data.reminderId || '') || !data.taskId) return false;
   const key = JSON.stringify([data.scope, 'task-reminder', data.reminderId]);
-  let accepted = false, show = false, silent = payload.silent === true;
+  let duplicate = false, show = false, silent = payload.silent === true;
   await notificationState(state => {
-    if (state.scope && data.scope !== state.scope || state.seen.includes(key)) return;
-    state.seen.push(key);
-    accepted = true;
+    if (state.scope && data.scope !== state.scope) return;
+    state.taskReceipts ||= {};
+    // Retain receipts separately from the bounded ordinary-chat event cache.
+    duplicate = Boolean(state.taskReceipts[key]) || state.seen.includes(key);
+    if (duplicate) { state.taskReceipts[key] = true; return state; }
     const preferences = state.preferences || payload.preferences || {};
     show = preferences.enabled !== false;
     silent = silent || preferences.sound === false || Date.now() - state.lastSound < 2000;
-    if (show && !silent) state.lastSound = Date.now();
     if (preferences.preview === false) payload.body = payload.body.split('\n')[0];
     return state;
   });
-  if (accepted && forwardToClients && payload.taskReminder) {
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const client of clients) client.postMessage({ type: 'cron-reminder-changed', id: data.reminderId,
-      reminder: payload.taskReminder, scope: data.scope });
-  }
+  if (duplicate) return true;
   if (!show) return false;
+  // A denied permission or failed show must not consume the recovery receipt.
   await self.registration.showNotification(payload.title || 'PilotDeck', {
     body: payload.body, icon: '/logo-256.png', badge: '/logo-128.png', data,
     tag: `${data.scope}:task-reminder:${data.reminderId}`, requireInteraction: true, silent,
   });
+  await notificationState(state => {
+    state.taskReceipts ||= {}; state.taskReceipts[key] = true;
+    if (!silent) state.lastSound = Date.now();
+    return state;
+  });
+  if (forwardToClients && payload.taskReminder) {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) client.postMessage({ type: 'cron-reminder-changed', id: data.reminderId,
+      reminder: payload.taskReminder, scope: data.scope });
+  }
   return true;
 }
+
+// This event denotes user dismissal. Programmatic close and task navigation
+// do not acknowledge a scheduled reminder or change conversation unread state.
+self.addEventListener('notificationclose', event => {
+  const data = event.notification.data;
+  if (data?.kind !== 'reminder') return;
+  event.waitUntil(serializeNotifications(async () => {
+    await notificationState(state => {
+      state.taskReceipts ||= {};
+      state.taskReceipts[JSON.stringify([data.scope, 'task-reminder', data.reminderId])] = true;
+      return state;
+    });
+    for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
+      client.postMessage({ type: 'notification:task-dismissed', scope: data.scope, id: data.reminderId });
+    }
+  }));
+});
 
 self.addEventListener('message', event => {
   const { type, value } = event.data || {};
@@ -242,11 +268,19 @@ self.addEventListener('message', event => {
   event.waitUntil(serializeNotifications(async () => {
     let result;
     if (type === 'notification:show') result = await showNotificationOnce(value);
+    else if (type === 'notification:task-reconcile') {
+      if (!value?.scope || !Array.isArray(value.ids)) return;
+      const pending = new Set(value.ids);
+      for (const notification of await self.registration.getNotifications()) {
+        if (notification.data?.kind === 'reminder' && notification.data.scope === value.scope && !pending.has(notification.data.reminderId)) notification.close();
+      }
+      result = true;
+    }
     else if (type === 'notification:task-dismiss') {
       await notificationState(state => {
         if (state.scope && state.scope !== value.scope) return;
         const key = JSON.stringify([value.scope, 'task-reminder', value.id]);
-        if (!state.seen.includes(key)) state.seen.push(key);
+        state.taskReceipts ||= {}; state.taskReceipts[key] = true;
         return state;
       });
       for (const notification of await self.registration.getNotifications()) {
@@ -308,7 +342,7 @@ self.addEventListener('push', event => {
 
 // Notification click event
 self.addEventListener('notificationclick', event => {
-  event.notification.close();
+  if (event.notification.data?.kind !== 'reminder') event.notification.close();
 
   const sessionId = event.notification.data?.sessionId;
   const provider = event.notification.data?.provider || null;

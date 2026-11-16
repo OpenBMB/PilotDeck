@@ -1,116 +1,117 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/context/AuthContext';
 import { useWebSocket } from '../../contexts/WebSocketContext';
 import { authenticatedFetch } from '../../utils/api';
-import { useNotificationPreferences, getNotificationPreferences } from '../../hooks/useNotificationPreferences';
+import { useNotificationPreferences } from '../../hooks/useNotificationPreferences';
 import { buildTaskReminderNotification, type ScheduledTaskReminder } from '../../../shared/notifications';
 import { notificationWorkerMessage, showSystemNotification } from '../../lib/systemNotifications';
 
-/** Durable reminders deliberately never enter the session unread/notification hook. */
+/** Delivery-only consumer: task reminders use the existing OS notification channel. */
 export function useTaskReminders() {
   const { user } = useAuth();
-  const scope = String(user?.id ?? 'local');
-  const [deliveryScope, setDeliveryScope] = useState(scope);
-  const serverScope = useRef<string | null>(user?.id == null ? null : scope);
+  const account = String(user?.id ?? 'local');
   const { subscribe, isConnected } = useWebSocket();
   const { i18n } = useTranslation();
-  const { preferences } = useNotificationPreferences();
-  const [boundScope, setBoundScope] = useState(scope);
-  const [reminders, setReminders] = useState<ScheduledTaskReminder[]>([]);
-  const [error, setError] = useState(false);
-  const [closing, setClosing] = useState<Set<string>>(new Set());
-  const changes = useRef(new Map<string, ScheduledTaskReminder | null>());
-  const requestId = useRef(0);
-  const language = useRef(i18n.language); language.current = i18n.language;
-  const sounded = useRef(new Set<string>());
-  const [soundId, setSoundId] = useState<string | undefined>();
-  const [nativePresented, setNativePresented] = useState(false);
-  const currentScope = useRef(scope); currentScope.current = scope;
-  const upsert = useCallback((id: string, reminder: ScheduledTaskReminder | null) => {
-    changes.current.set(id, reminder);
-    setReminders(items => [...items.filter(item => item.id !== id), ...(reminder ? [reminder] : [])]
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-  }, []);
-
-  const bindDeliveryScope = useCallback((value: string) => {
-    if (serverScope.current !== value) {
-      serverScope.current = value; setDeliveryScope(value);
-      try { sounded.current = new Set(JSON.parse(localStorage.getItem(`pilotdeck-task-reminders-notified:${value}`) || '[]')); } catch { sounded.current.clear(); }
-    }
-  }, []);
-
-  const reload = useCallback(async () => {
-    const id = ++requestId.current;
-    changes.current.clear();
-    try {
-      const response = await authenticatedFetch('/api/always-on/cron-reminders', { suppressServerErrorToast: true });
-      if (!response.ok) throw new Error('Reminder synchronization failed');
-      const snapshot = await response.json();
-      if (id !== requestId.current || currentScope.current !== scope) return;
-      if (typeof snapshot.scope !== 'string' || (user?.id != null && snapshot.scope !== scope)) throw new Error('Invalid reminder scope');
-      bindDeliveryScope(snapshot.scope);
-      const merged = new Map<string, ScheduledTaskReminder>((snapshot.reminders || []).map((item: ScheduledTaskReminder) => [item.id, item]));
-      for (const [key, item] of changes.current) { if (item) merged.set(key, item); else merged.delete(key); }
-      setReminders([...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-      setError(false);
-    } catch { if (id === requestId.current) setError(true); }
-  }, [scope, user?.id, bindDeliveryScope]);
-
+  const { preferences, status } = useNotificationPreferences();
   useEffect(() => {
-    serverScope.current = user?.id == null ? null : scope; setDeliveryScope(scope);
-    setBoundScope(scope); setNativePresented(false); setReminders([]); setError(false); changes.current.clear(); sounded.current.clear(); setSoundId(undefined);
-    try { sounded.current = new Set(JSON.parse(localStorage.getItem(`pilotdeck-task-reminders-notified:${scope}`) || '[]')); } catch {}
+    let active = true, request = 0;
+    let scope: string | null = user?.id == null ? null : account;
+    let delivered = new Set<string>(), dismissals = new Set<string>();
+    const inFlight = new Map<string, Promise<void>>();
+    const changes = new Map<string, ScheduledTaskReminder | null>();
+    const key = () => `pilotdeck-task-system-notifications-v1:${scope}`;
+    const read = () => {
+      delivered = new Set(); dismissals = new Set();
+      try { const saved = JSON.parse(localStorage.getItem(key()) || '{}'); delivered = new Set(saved.delivered || []); dismissals = new Set(saved.dismissals || []); } catch {}
+    };
+    const save = () => {
+      try { localStorage.setItem(key(), JSON.stringify({ delivered: [...delivered], dismissals: [...dismissals] })); } catch {}
+    };
+    if (scope) read();
+    const bind = (value: string) => {
+      if (user?.id != null && value !== account) return false;
+      if (scope !== value) { scope = value; read(); }
+      return true;
+    };
+    const closeSystem = (id: string) => {
+      if (!scope) return;
+      void window.pilotdeckDesktop?.dismissSystemNotification?.({ scope, id }).catch(() => {});
+      void notificationWorkerMessage('notification:task-dismiss', { scope, id });
+    };
+    const acknowledge = async (value: { scope: string; id: string }) => {
+      if (!active || value.scope !== scope || !/^[a-f0-9]{64}$/.test(value.id)) return;
+      delivered.add(value.id); dismissals.add(value.id); save();
+      try {
+        const response = await authenticatedFetch(`/api/always-on/cron-reminders/${value.id}/dismiss`, { method: 'POST', suppressServerErrorToast: true });
+        if (!response.ok && response.status !== 404) throw new Error('Reminder acknowledgement failed');
+        if (active) { dismissals.delete(value.id); changes.set(value.id, null); save(); closeSystem(value.id); }
+      } catch (error) { console.warn('Scheduled reminder acknowledgement deferred:', error); }
+    };
+    const deliver = (reminder: ScheduledTaskReminder, recovery: boolean) => {
+      if (!active || !scope || !preferences.enabled || (!window.pilotdeckDesktop && delivered.has(reminder.id)) || changes.get(reminder.id) === null) return Promise.resolve();
+      if (inFlight.has(reminder.id)) return inFlight.get(reminder.id)!;
+      const expectedScope = scope;
+      const work = (async () => {
+        try {
+          await window.pilotdeckDesktop?.setNotificationScope?.(expectedScope);
+          if (!active || scope !== expectedScope || changes.get(reminder.id) === null) return;
+          const payload = buildTaskReminderNotification(reminder, preferences, i18n.language, expectedScope);
+          if (recovery) payload.silent = true;
+          const shown = await showSystemNotification(payload);
+          if (!active || scope !== expectedScope) return;
+          // Permission denial/failed delivery stays retryable. OS-accepted records
+          // remain delivered even if the OS later times out or the user closes them.
+          if (shown) { delivered.add(reminder.id); save(); }
+          if (changes.get(reminder.id) === null) closeSystem(reminder.id);
+        } catch (error) { console.warn('Scheduled notification delivery failed:', error); }
+      })().finally(() => inFlight.delete(reminder.id));
+      inFlight.set(reminder.id, work);
+      return work;
+    };
+    const reload = async () => {
+      const id = ++request;
+      changes.clear();
+      try {
+        const response = await authenticatedFetch('/api/always-on/cron-reminders', { suppressServerErrorToast: true });
+        if (!response.ok) throw new Error('Reminder synchronization failed');
+        const snapshot = await response.json();
+        if (!active || id !== request || typeof snapshot.scope !== 'string' || !bind(snapshot.scope)) return;
+        for (const pending of [...dismissals]) await acknowledge({ scope: snapshot.scope, id: pending });
+        const merged = new Map<string, ScheduledTaskReminder>((snapshot.reminders || []).map((item: ScheduledTaskReminder) => [item.id, item]));
+        for (const [key, item] of changes) { if (item) merged.set(key, item); else merged.delete(key); }
+        const identities = { scope: snapshot.scope, ids: [...merged.keys()] };
+        await window.pilotdeckDesktop?.setNotificationScope?.(snapshot.scope);
+        await window.pilotdeckDesktop?.reconcileSystemNotifications?.(identities);
+        await notificationWorkerMessage('notification:task-reconcile', identities);
+        // Recover only notifications this client never successfully handed to the OS.
+        for (const item of merged.values()) await deliver(item, true);
+      } catch (error) { if (active) console.warn('Scheduled reminders will retry on reconnect:', error); }
+    };
     const receive = (message: any) => {
-      if (message?.type === 'session-activity-snapshot' && typeof message.scope === 'string' && user?.id == null) bindDeliveryScope(message.scope);
-      const effectiveScope = serverScope.current;
-      if (message?.type !== 'cron-reminder-changed' || !effectiveScope || message.scope !== effectiveScope || typeof message.id !== 'string') return;
-      if (message.dismissedScope === effectiveScope) { upsert(message.id, null); void notificationWorkerMessage('notification:task-dismiss', { scope: effectiveScope, id: message.id }); return; }
-      if (!message.reminder) return;
-      upsert(message.id, message.reminder);
-      if (sounded.current.has(message.id)) return;
-      sounded.current.add(message.id);
-      try { localStorage.setItem(`pilotdeck-task-reminders-notified:${effectiveScope}`, JSON.stringify([...sounded.current].slice(-4096))); } catch {}
-      setSoundId(message.id);
-      const prefs = getNotificationPreferences();
-      if (!window.pilotdeckDesktop && prefs.enabled) {
-        void showSystemNotification(buildTaskReminderNotification(message.reminder, prefs, language.current, effectiveScope)).catch(() => {});
-      }
+      if (!active) return;
+      if (message?.type === 'session-activity-snapshot' && typeof message.scope === 'string') bind(message.scope);
+      if (message?.type !== 'cron-reminder-changed' || message.scope !== scope || typeof message.id !== 'string') return;
+      if (message.dismissedScope === scope) {
+        changes.set(message.id, null); delivered.add(message.id); dismissals.delete(message.id); save(); closeSystem(message.id);
+      } else if (message.reminder) { changes.set(message.id, message.reminder); void deliver(message.reminder, false); }
     };
     const unsubscribe = subscribe(receive);
-    const worker = (event: MessageEvent) => receive(event.data);
+    const worker = (event: MessageEvent) => {
+      if (event.data?.type === 'notification:task-dismissed') void acknowledge(event.data);
+      else receive(event.data);
+    };
+    const unsubscribeDismiss = window.pilotdeckDesktop?.onSystemNotificationDismiss?.(value => { void acknowledge(value); });
+    const focused = () => { if (document.visibilityState === 'visible') void reload(); };
     navigator.serviceWorker?.addEventListener('message', worker);
-    return () => { ++requestId.current; unsubscribe(); navigator.serviceWorker?.removeEventListener('message', worker); };
-  }, [scope, user?.id, subscribe, upsert, bindDeliveryScope]);
-
-  useEffect(() => { if (isConnected) void reload(); }, [isConnected, reload]);
-
-  const dismiss = useCallback(async (id: string) => {
-    const requestedScope = scope;
-    setClosing(current => new Set(current).add(id));
-    try {
-      const response = await authenticatedFetch(`/api/always-on/cron-reminders/${encodeURIComponent(id)}/dismiss`, {
-        method: 'POST', suppressServerErrorToast: true,
-      });
-      if (!response.ok) throw new Error('Reminder dismissal failed');
-      if (currentScope.current !== requestedScope) return;
-      upsert(id, null); setError(false);
-      void notificationWorkerMessage('notification:task-dismiss', { scope: serverScope.current || scope, id });
-    } catch { if (currentScope.current === requestedScope) setError(true); }
-    finally { setClosing(current => { const next = new Set(current); next.delete(id); return next; }); }
-  }, [scope, upsert]);
-
-  useEffect(() => window.pilotdeckDesktop?.onTaskReminderDismiss?.(id => { void dismiss(id); }), [dismiss]);
-  useEffect(() => {
-    const desktop = window.pilotdeckDesktop;
-    if (!desktop?.setTaskReminders) { setNativePresented(false); return; }
-    let active = true;
-    void desktop.setTaskReminders({ scope: deliveryScope, language: i18n.language,
-      reminders: preferences.enabled && boundScope === scope ? reminders.map(item => buildTaskReminderNotification(item, preferences, i18n.language, deliveryScope)) : [],
-      soundId: preferences.sound ? soundId : undefined,
-      error: error ? i18n.language.startsWith('zh') ? '提醒暂时无法同步或关闭，请重试。' : 'Reminders could not sync or close. Please retry.' : undefined,
-    }).then(() => { if (active) setNativePresented(preferences.enabled); }).catch(() => { if (active) setNativePresented(false); });
-    return () => { active = false; };
-  }, [scope, deliveryScope, boundScope, reminders, preferences, i18n.language, soundId, error]);
-  return { reminders: boundScope === scope ? reminders : [], closing, preview: preferences.preview, error: boundScope === scope && error, reload, dismiss, nativePresented };
+    navigator.serviceWorker?.addEventListener('controllerchange', focused);
+    window.addEventListener('focus', focused);
+    if (isConnected) void reload();
+    return () => {
+      active = false; ++request; unsubscribe(); unsubscribeDismiss?.();
+      navigator.serviceWorker?.removeEventListener('message', worker);
+      navigator.serviceWorker?.removeEventListener('controllerchange', focused);
+      window.removeEventListener('focus', focused);
+    };
+  }, [account, user?.id, subscribe, isConnected, preferences.enabled, preferences.sound, preferences.preview, status.permission, i18n.language]);
 }

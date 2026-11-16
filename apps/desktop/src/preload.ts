@@ -20,11 +20,12 @@ type RuntimeStatus = {
 
 contextBridge.exposeInMainWorld("pilotdeckDesktop", {
   platform: process.platform,
-  setTaskReminders: (value: unknown) => ipcRenderer.invoke('pilotdeck:task-reminders', value),
-  onTaskReminderDismiss: (callback: (id: string) => void) => {
-    const listener = (_event: IpcRendererEvent, id: string) => callback(id);
-    ipcRenderer.on('pilotdeck:task-reminder-dismiss', listener);
-    return () => ipcRenderer.off('pilotdeck:task-reminder-dismiss', listener);
+  reconcileSystemNotifications: (value: { scope: string; ids: string[] }) => ipcRenderer.invoke('pilotdeck:notification-reconcile', value),
+  dismissSystemNotification: (value: { scope: string; id: string }) => ipcRenderer.invoke('pilotdeck:notification-dismiss', value),
+  onSystemNotificationDismiss: (callback: (value: { scope: string; id: string }) => void) => {
+    const listener = (_event: IpcRendererEvent, value: { scope: string; id: string }) => callback(value);
+    ipcRenderer.on('pilotdeck:notification-dismissed', listener);
+    return () => ipcRenderer.off('pilotdeck:notification-dismissed', listener);
   },
   getUninstallStatus: () => ipcRenderer.invoke('pilotdeck:uninstall-status') as Promise<{ supported: boolean }>,
   uninstall: () => ipcRenderer.invoke('pilotdeck:uninstall') as Promise<{ canceled: boolean }>,
