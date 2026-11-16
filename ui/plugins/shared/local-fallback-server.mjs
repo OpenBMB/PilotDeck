@@ -526,11 +526,14 @@ export async function handleHostCapabilitiesCall(req, res) {
  * `(req, res, userId)`.
  */
 export function startLocalFallbackServer(routes) {
+  // Copy into a Map so the lookup can never read inherited object members
+  // (a request path such as "constructor" must not resolve to a handler).
+  const handlers = new Map(Object.entries(routes));
   const server = http.createServer((req, res) => {
     const path = (req.url || '').split('?')[0];
-    const handler = routes[`${req.method} ${path}`];
+    const handler = handlers.get(`${req.method} ${path}`);
     const userId = req.headers['x-pilotdeck-user-id'] || '1';
-    if (handler) {
+    if (typeof handler === 'function') {
       Promise.resolve(handler(req, res, userId)).catch((err) => {
         json(res, 500, { error: { code: 'PLUGIN_FALLBACK_ERROR', message: String(err?.message || err) } });
       });
