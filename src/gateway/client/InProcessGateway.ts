@@ -589,6 +589,7 @@ export class InProcessGateway implements Gateway {
               background ? "This is a scheduled/manual task execution. Perform the saved task."
                 : "This is a user conversation about the task. Answer the latest user request; do not execute the saved task unless asked. Chatting does not change its schedule.",
               "For explicit lasting guidance (e.g. 'from now on' or 'every future run'), use cron_get and then cron_update for this task, merging the guidance with its existing instructions. Preserve its name, schedule, timezone, permissions and workspace unless the user asks to change them. Only confirm that requirements were saved after updated=true; report a failed save honestly. Temporary corrections stay in this conversation.",
+              "A successful cron_update saves task instructions, not project memory. Project memory capture and indexing follow the configured asynchronous memory pipeline. Do not claim that a rule has already been stored in durable project memory unless available memory tooling confirms it. Otherwise distinguish saved task requirements from project memory awaiting extraction.",
             ].join("\n\n") }],
           };
           this.options.setSessionCwd?.(input.sessionKey, workspaceCwd);

@@ -116,6 +116,12 @@ lasting guidance is merged into the saved instructions using `cron_get` and
 `cron_update`; acknowledgement requires a successful update. Temporary guidance
 remains in history. Task conversations use the normal project instructions,
 memory retrieval/capture (when enabled), and context compaction mechanisms.
+Saving task instructions does not confirm a project-memory write. Memory capture
+and extraction follow the configured indexing interval; cross-session memory is
+available after indexing succeeds. Agent acknowledgements must distinguish a
+confirmed task update from memory awaiting extraction.
+Web memory settings honor `memory.schedule` with the same precedence as Gateway
+configuration, and editing those settings updates the effective nested values.
 
 Git tasks can select `workspaceMode: worktree`. A task's worktree starts at
 committed HEAD and is reused by subsequent runs, preserving task changes while

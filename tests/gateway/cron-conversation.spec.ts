@@ -60,6 +60,7 @@ telemetry: { enabled: false }
     assert.ok(requests[0].tools?.some(tool => tool.name === 'ask_user_question'));
     assert.ok(JSON.stringify(requests[0].messages).includes(task.taskId));
     assert.ok(JSON.stringify(requests[0].messages).includes('Produce a concise report'));
+    assert.ok(JSON.stringify(requests[0].messages).includes('A successful cron_update saves task instructions, not project memory.'));
     assert.ok(!JSON.stringify(requests[0]).includes('/untrusted-directory'));
     const run = await cron.runTaskNow({ taskId: task.taskId });
     assert.equal(run.started, true);

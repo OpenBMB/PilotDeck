@@ -162,6 +162,7 @@ export function buildDefaultPilotDeckConfig() {
 export function normalizePilotDeckConfig(input) {
   const source = isRecord(input) ? input : {};
   const normalized = deepMerge(buildDefaultPilotDeckConfig(), source);
+  if (isRecord(normalized.memory)) Object.assign(normalized.memory, resolveMemoryScheduleConfig(source.memory));
   if (isRecord(normalized.webui?.runtime)) {
     normalized.webui.runtime.logRetentionDays = normalizeLogRetentionDays(normalized.webui.runtime.logRetentionDays);
   }
@@ -204,6 +205,16 @@ export function normalizePilotDeckConfig(input) {
   delete normalized.webui.officePreview.spreadsheetMode;
 
   return normalized;
+}
+
+// Match the Gateway's nested schedule precedence, including partial schedules.
+// Flat fields remain the Web settings projection and legacy config format.
+export function resolveMemoryScheduleConfig(memory = {}) {
+  const defaults = buildDefaultPilotDeckConfig().memory;
+  const keys = ['reasoningMode', 'autoIndexIntervalMinutes', 'autoDreamIntervalMinutes'];
+  const nested = isRecord(memory?.schedule) && keys.some(key => memory.schedule[key] !== undefined);
+  const source = nested ? memory.schedule : memory;
+  return Object.fromEntries(keys.map(key => [key, source?.[key] ?? defaults[key]]));
 }
 
 // Strip surrounding whitespace from provider apiKey + url before they
