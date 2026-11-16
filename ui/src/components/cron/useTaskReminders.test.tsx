@@ -5,7 +5,7 @@ import { useTaskReminders } from './useTaskReminders';
 
 const mock = vi.hoisted(() => ({ user: { id: 1 } as { id?: number }, listeners: new Set<(message: any) => void>(), pending: [] as any[],
   subscribe: (listener: any) => { mock.listeners.add(listener); return () => mock.listeners.delete(listener); },
-  fetch: vi.fn(), show: vi.fn(async (_payload: any) => true), worker: vi.fn(async () => undefined), close: undefined as undefined | ((value: any) => void), failClose: false,
+  fetch: vi.fn(), show: vi.fn(async (_payload: any) => true), worker: vi.fn(async (_type: string, _value?: unknown): Promise<unknown> => undefined), close: undefined as undefined | ((value: any) => void), failClose: false,
   preferences: { enabled: true, sound: true, badge: true, preview: true } }));
 vi.mock('../auth/context/AuthContext', () => ({ useAuth: () => ({ user: mock.user }) }));
 vi.mock('../../contexts/WebSocketContext', () => ({ useWebSocket: () => ({ isConnected: true, subscribe: mock.subscribe }) }));
@@ -30,7 +30,24 @@ function setup(pending = [reminder]) {
 }
 const emit = (message: any) => act(() => { for (const listener of mock.listeners) listener(message); });
 const focus = () => act(() => window.dispatchEvent(new Event('focus')));
-afterEach(() => { cleanup(); vi.useRealTimers(); mock.listeners.clear(); mock.fetch.mockReset(); mock.show.mockReset(); mock.worker.mockClear(); localStorage.clear(); window.pilotdeckDesktop = undefined; });
+afterEach(() => { cleanup(); vi.useRealTimers(); mock.listeners.clear(); mock.fetch.mockReset(); mock.show.mockReset(); mock.worker.mockReset(); localStorage.clear(); window.pilotdeckDesktop = undefined; });
+
+it('replays worker dismissals after the last page closed and retains them through a failed server acknowledgement', async () => {
+  const dismissal = { scope: '1', id: reminder.id };
+  let outbox = [dismissal];
+  mock.worker.mockImplementation(async (type: string) => {
+    if (type === 'notification:task-pending-dismissals') return outbox;
+    if (type === 'notification:task-acknowledged') outbox = [];
+  });
+  setup(); mock.failClose = true;
+  await waitFor(() => expect(mock.fetch.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1));
+  expect(outbox).toEqual([dismissal]);
+  expect(mock.show).not.toHaveBeenCalled();
+  mock.failClose = false; focus();
+  await waitFor(() => expect(outbox).toEqual([]));
+  expect(mock.fetch.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(2);
+  expect(mock.show).not.toHaveBeenCalled();
+});
 
 it('uses system delivery without cards, task-read acknowledgement or periodic queries; restart does not repeat delivered alerts', async () => {
   const view = setup();

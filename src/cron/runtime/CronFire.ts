@@ -4,6 +4,7 @@ import type { CronTaskStore } from "../storage/CronTaskStore.js";
 import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION } from "./CronSchedule.js";
 import { taskReminder } from "../storage/CronReminderStore.js";
 import type { CronReminder } from "../protocol/types.js";
+import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 
 export type CronActiveRun = {
   runId: string;
@@ -89,12 +90,12 @@ export class CronFire {
       startedAt: startedAt.toISOString(), scheduledAt: trigger === "scheduled" ? snapshot.nextRunAt : startedAt.toISOString(),
       trigger, taskName: task.name ?? task.message.slice(0, 120), message: task.message, workspaceCwd,
     });
-    const beginExecution = async () => {
+    const beginExecution = async (showInput = true) => {
       if (executionStarted) return;
       executionStarted = true;
       await this.deps.store.appendRun(record());
       this.phase(task, runId, "cron_started", startedAt.toISOString());
-      try { this.deps.onTurnEvent?.(sessionKey, "cron", { type: "agent_status", event: "cron_input", runId,
+      try { if (showInput) this.deps.onTurnEvent?.(sessionKey, "cron", { type: "agent_status", event: "cron_input", runId,
         detail: { message: task.message, projectKey: task.projectKey, taskId: task.taskId, trigger, scheduledAt: snapshot.nextRunAt } }); }
       catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
     };
@@ -119,12 +120,12 @@ export class CronFire {
         await this.deps.store.updateTask(task.taskId, current => current.lastRunId === runId
           ? { ...current, lastRun: record(), revision: (current.revision ?? 0) + 1 } : current);
       }
-      const message = task.notificationPolicy === "findings"
-        ? `${task.message}\n\nIf there are no new findings or actions to report, reply with exactly [NO_UPDATE].` : task.message;
       for await (const event of this.deps.gateway.submitTurn({
         sessionKey, channelKey: "cron",
-        projectKey: task.projectKey, workspaceCwd, message, mode: task.mode ?? "default",
+        projectKey: task.projectKey, workspaceCwd, message: task.message, mode: task.mode ?? "default",
         canPrompt: false, allowPlanModeTools: false, runId, timeoutMs: this.deps.runTimeoutMs,
+        ...(task.notificationPolicy === "findings" ? { syntheticMessages: [{ purpose: "scheduled_task_result_policy",
+          text: "If there are no new findings or actions to report, reply with exactly [NO_UPDATE]." }] } : {}),
         ...(task.modelSelection ? { modelOverride: { mode: "model", ...task.modelSelection } } : {}),
       })) {
         // A user can win admission between the status read and the task claim.
@@ -166,7 +167,21 @@ export class CronFire {
             revision: (current.revision ?? 0) + 1, updatedAt: this.deps.now().toISOString(),
           });
         } else if (claimed) {
-          await beginExecution();
+          const preparationFailed = !executionStarted && error && !active.stopRequested;
+          await beginExecution(!preparationFailed);
+          if (preparationFailed) {
+            // No agent turn owns this failure. Record it through the shared
+            // transcript status contract so reopening retains the same error.
+            await this.deps.gateway.recordAgentStatusMessage?.({ sessionKey, projectKey: task.projectKey, turnId: runId,
+              status: { event: "gateway_submit_failed", kind: "error", text: error!.message,
+                detail: createVisibleErrorStatusDetail({ message: error!.message, code: error!.code,
+                  userHint: "Review the task workspace and settings, then retry.", scope: "turn", source: "gateway" }) },
+            }).catch(caught => this.warn("cron preparation error persistence failed", caught, task.taskId, runId));
+            const event: GatewayEvent = { type: "error", runId, code: error!.code, message: error!.message, recoverable: true };
+            await this.deps.store.appendRunEvent(runId, event);
+            try { this.deps.onTurnEvent?.(sessionKey, "cron", event); }
+            catch (caught) { this.warn("cron preparation error delivery failed", caught, task.taskId, runId); }
+          }
           if (active.stopRequested) outcome = "stopped";
           const finishedAt = this.deps.now();
           let terminal: CronRunRecord = { ...record(), finishedAt: finishedAt.toISOString(), outcome,

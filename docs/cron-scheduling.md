@@ -74,6 +74,13 @@ received during the request and ignore older task revisions. There is no catalog
 result or active-status polling in task views. The selected task remains watched
 when switching views; cached sessions are reused when revisited. Missing history,
 older pages and reconnect recovery use the shared message endpoints.
+Task history caches confirm the observed run identity and reconnect epoch. A
+changed run repairs only that conversation on selection; unchanged task visits
+reuse the confirmed cache. Workspace changes recreate the cached execution
+session at the next admitted turn while preserving its transcript and context.
+Preparation failures use the shared persisted error-message contract even when
+no model turn starts. Notification result policy is synthetic model context,
+separate from the task input displayed and reconciled in history.
 
 Task and ordinary-chat event consumers have separate session scopes. Task frames
 cannot consume ordinary session-status replies or trigger project-list refreshes.
@@ -176,7 +183,10 @@ Initial connection, reconnect, permission/preference changes and focus recover
 pending snapshots; there is no periodic reminder query. Per-client durable OS
 delivery receipts prevent replay after refresh/restart, including notifications
 already dismissed by the user. Failed or denied delivery stays retryable. Receipt
-recovery is quiet and never reruns the model. Electron stores delivery and explicit-dismissal identities
+and pending-dismissal records are separate in the worker: closing the last page
+does not lose a later OS dismissal. Pages replay its account-scoped outbox after
+reconnect and remove entries only after the server confirms acknowledgement.
+Receipt recovery is quiet and never reruns the model. Electron stores delivery and explicit-dismissal identities
 and navigation metadata in its user-data directory. It reads macOS Notification
 Center history once before live notification delivery, rebinds retained records,
 and restores missing records only when the server still reports them pending.

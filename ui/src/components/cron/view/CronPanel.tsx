@@ -31,6 +31,7 @@ export default function CronPanel({ isSidebarCollapsed, onOpenSidebar, projects:
   const [fallbackProjects, setFallbackProjects] = useState<Project[]>([]);
   const projects = shellProjects || fallbackProjects;
   const [jobs, setJobs] = useState<CronJobOverview[]>([]);
+  const [historyEpoch, setHistoryEpoch] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(params.get('taskId'));
   const [editor, setEditor] = useState<{ job: CronJobOverview | null } | null>(null);
   const [query, setQuery] = useState('');
@@ -65,7 +66,7 @@ export default function CronPanel({ isSidebarCollapsed, onOpenSidebar, projects:
         if (!job) snapshot.delete(id);
         else if ((snapshot.get(id)?.revision ?? -1) <= (job.revision ?? 0)) snapshot.set(id, job);
       }
-      setJobs(newestFirst([...snapshot.values()])); setError(null);
+      setJobs(newestFirst([...snapshot.values()])); setHistoryEpoch(value => value + 1); setError(null);
     } catch (caught) {
       if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught));
     } finally { if (request.current === controller) { request.current = null; setLoading(false); } }
@@ -119,7 +120,7 @@ export default function CronPanel({ isSidebarCollapsed, onOpenSidebar, projects:
         {selected && <div className="workspace-actions ml-4 h-9 shrink-0"><CronTaskActions key={selected.id} job={selected} onEdit={edit} onRefresh={noRefresh} onError={setError} onDeleted={deleted} /></div>}
       </header>
       {error && <div role="alert" className="cron-workspace-error">{error}<button type="button" className="cron-text-button ml-3" onClick={() => void load()}>{t('actions.refresh', { defaultValue: 'Retry' })}</button></div>}
-      {selected ? <CronTaskDetails job={selected} projects={projects} />
+      {selected ? <CronTaskDetails job={selected} projects={projects} historyEpoch={historyEpoch} />
         : <div className="cron-workspace-empty"><span className="cron-empty-icon"><CalendarClock size={30} strokeWidth={1.35} /></span>
           <h2>{t('cron.workspace.emptyTitle')}</h2>
           <p>{t('cron.workspace.emptyHint')}</p>

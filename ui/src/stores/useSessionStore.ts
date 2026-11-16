@@ -218,6 +218,8 @@ export interface SessionSlot {
   _lastRealtimeRef: NormalizedMessage[];
   status: SessionStatus;
   fetchedAt: number;
+  /** Owner-provided version confirmed by the last task-history read. */
+  historyRevision?: string;
   lastError: string | null;
   total: number;
   hasMore: boolean;
@@ -382,7 +384,8 @@ function isUnconfirmedUserMessage(message: NormalizedMessage): boolean {
   return message.kind === 'text'
     && message.role === 'user'
     && !message.isSteer
-    && (message.id.startsWith('local_') || Boolean(message.queueItemId));
+    && (message.id.startsWith('local_') || Boolean(message.queueItemId)
+      || (message.sessionId?.startsWith('cron:') && message.id === `cron-input:${getMessageTurnId(message)}`));
 }
 
 function captureOptimisticUserServerTail(

@@ -260,6 +260,7 @@ export interface Question {
 
 export interface ChatInterfaceProps {
   sessionScope?: 'chat' | 'task';
+  historyRevision?: string;
   emptyState?: React.ReactNode;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;

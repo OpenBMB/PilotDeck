@@ -664,6 +664,19 @@ describe('CronPanel', () => {
     });
   });
 
+  it.each(['completed', 'failed', 'missed'] as const)('edits instructions of a %s one-time task without rescheduling it', async status => {
+    const runAt = '2026-01-01T09:00:00.500Z';
+    setup([makeJob({ id: 'ended', prompt: 'Ended task', status, enabled: false, cron: '',
+      schedule: { type: 'once', runAt }, timezone: 'UTC', recurring: false, revision: 4 })]);
+    await findText('Ended task');
+    fireEvent.click(taskAction('Edit'));
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Corrected instructions' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(apiMock.cronUpdate).toHaveBeenCalledWith('ended', expect.objectContaining({
+      message: 'Corrected instructions', schedule: { type: 'once', runAt }, expectedRevision: 4,
+    })));
+  });
+
   it('edits a one-time task and keeps the original task id', async () => {
     const runAt = '2099-01-01T02:30:00.000Z';
     setup([makeJob({

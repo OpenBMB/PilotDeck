@@ -50,6 +50,7 @@ interface UseChatSessionStateArgs {
   sendMessage: (message: unknown) => void;
   autoScrollToBottom?: boolean;
   eventDriven?: boolean;
+  historyRevision?: string;
   externalMessageUpdate?: number;
   externalMessageUpdateTarget?: SessionMessagesUpdateTarget | null;
   processingSessions?: Set<string>;
@@ -278,6 +279,7 @@ export function useChatSessionState({
   pendingViewSessionRef,
   sessionStore,
   eventDriven = false,
+  historyRevision,
 }: UseChatSessionStateArgs) {
   const [isLoading, setIsLoadingState] = useState(false);
   const [sessionRuntimeState, setSessionRuntimeState] = useState<SessionRuntimeState>(() => (
@@ -557,6 +559,7 @@ export function useChatSessionState({
     }, JSON.stringify(extraOptions));
     if (!isCurrent()) return { status: 'stale' };
     if (result.status === 'success') {
+      if (kind !== 'older' && historyRevision !== undefined) result.slot.historyRevision = historyRevision;
       setHasMoreMessages(result.slot.hasMore);
       setTotalMessages(result.slot.total);
       setAllMessagesLoaded(!result.slot.hasMore);
@@ -568,7 +571,7 @@ export function useChatSessionState({
       else setHistoryLoadError(true);
     }
     return result;
-  }, [requestScope, sessionStore]);
+  }, [requestScope, sessionStore, historyRevision]);
 
   const refreshSessionMessages = useCallback((options?: { afterRestore?: boolean }) => (
     requestHistory('refresh', options)
@@ -917,6 +920,20 @@ export function useChatSessionState({
     setTokenBudget,
     eventDriven,
   ]);
+
+  // Catalog/reconnect revisions repair missed background messages without
+  // replacing the cached view or querying it on every navigation.
+  const requestedHistoryRevision = useRef<string | null>(null);
+  useEffect(() => {
+    if (!eventDriven || historyRevision === undefined || !requestScope || isLoadingSessionMessages) return;
+    const cached = sessionStore.getSessionSlot(requestScope.sessionId);
+    if (!cached?.fetchedAt || cached.historyRevision === historyRevision) return;
+    const key = JSON.stringify([requestScope.key, historyRevision]);
+    if (requestedHistoryRevision.current === key) return;
+    requestedHistoryRevision.current = key;
+    void refreshSessionMessages();
+    return () => { if (requestedHistoryRevision.current === key) requestedHistoryRevision.current = null; };
+  }, [eventDriven, historyRevision, requestScope, isLoadingSessionMessages, sessionStore, refreshSessionMessages]);
 
   // A revision belongs to the view that received it, even while streaming.
   const consumedExternalRevision = useRef(externalMessageUpdate ?? 0);

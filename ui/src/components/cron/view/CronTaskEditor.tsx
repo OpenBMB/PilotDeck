@@ -487,7 +487,10 @@ export default function CronTaskEditor({
       if (!runAt) {
         return t('cron.create.validation.runAtInvalid', { defaultValue: 'Run time does not exist in the selected timezone.' });
       }
-      if (Date.parse(runAt) <= Date.now()) {
+      const preservesPlan = editingJob?.schedule?.type === 'once'
+        && Date.parse(editingJob.schedule.runAt) === Date.parse(runAt)
+        && (editingJob.timezone?.trim() || getBrowserTimezone()) === timezone.trim();
+      if (Date.parse(runAt) <= Date.now() && !preservesPlan) {
         return t('cron.create.validation.runAtFuture', { defaultValue: 'Run time must be in the future.' });
       }
     } else {
@@ -660,7 +663,7 @@ export default function CronTaskEditor({
                 type="date"
                 aria-label={t("cron.create.fields.date")}
                 value={onceDraft.scheduleDate}
-                min={formatDateInTimezone(
+                min={editingJob?.schedule?.type === 'once' ? undefined : formatDateInTimezone(
                   new Date(),
                   isValidTimezone(timezone.trim()) ? timezone.trim() : getBrowserTimezone(),
                 )}

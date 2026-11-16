@@ -254,6 +254,8 @@ self.addEventListener('notificationclose', event => {
     await notificationState(state => {
       state.taskReceipts ||= {};
       state.taskReceipts[JSON.stringify([data.scope, 'task-reminder', data.reminderId])] = true;
+      state.taskDismissals ||= {};
+      state.taskDismissals[JSON.stringify([data.scope, data.reminderId])] = { scope: data.scope, id: data.reminderId };
       return state;
     });
     for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
@@ -268,6 +270,13 @@ self.addEventListener('message', event => {
   event.waitUntil(serializeNotifications(async () => {
     let result;
     if (type === 'notification:show') result = await showNotificationOnce(value);
+    else if (type === 'notification:task-pending-dismissals') {
+      result = await notificationState(state => Object.values(state.taskDismissals || {}).filter(item => item.scope === value.scope));
+    }
+    else if (type === 'notification:task-acknowledged') {
+      await notificationState(state => { delete state.taskDismissals?.[JSON.stringify([value.scope, value.id])]; return state; });
+      result = true;
+    }
     else if (type === 'notification:task-reconcile') {
       if (!value?.scope || !Array.isArray(value.ids)) return;
       const pending = new Set(value.ids);

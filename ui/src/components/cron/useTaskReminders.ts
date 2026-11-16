@@ -45,6 +45,9 @@ export function useTaskReminders() {
       try {
         const response = await authenticatedFetch(`/api/always-on/cron-reminders/${value.id}/dismiss`, { method: 'POST', suppressServerErrorToast: true });
         if (!response.ok && response.status !== 404) throw new Error('Reminder acknowledgement failed');
+        // Clear the worker outbox only after server acknowledgement. It may
+        // outlive every page, this effect, and the worker's own JS instance.
+        await notificationWorkerMessage('notification:task-acknowledged', value);
         if (active) { dismissals.delete(value.id); changes.set(value.id, null); save(); closeSystem(value.id); }
       } catch (error) { console.warn('Scheduled reminder acknowledgement deferred:', error); }
     };
@@ -77,6 +80,12 @@ export function useTaskReminders() {
         if (!response.ok) throw new Error('Reminder synchronization failed');
         const snapshot = await response.json();
         if (!active || id !== request || typeof snapshot.scope !== 'string' || !bind(snapshot.scope)) return;
+        const outbox = await notificationWorkerMessage('notification:task-pending-dismissals', { scope: snapshot.scope });
+        if (!active || id !== request) return;
+        if (Array.isArray(outbox)) for (const item of outbox) {
+          if (item.scope === scope && /^[a-f0-9]{64}$/.test(item.id)) { delivered.add(item.id); dismissals.add(item.id); }
+        }
+        save();
         for (const pending of [...dismissals]) await acknowledge({ scope: snapshot.scope, id: pending });
         const merged = new Map<string, ScheduledTaskReminder>((snapshot.reminders || []).map((item: ScheduledTaskReminder) => [item.id, item]));
         for (const [key, item] of changes) { if (item) merged.set(key, item); else merged.delete(key); }

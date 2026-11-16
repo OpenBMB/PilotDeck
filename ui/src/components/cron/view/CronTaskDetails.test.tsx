@@ -10,7 +10,7 @@ import CronTaskDetails from './CronTaskDetails';
 const conversation = vi.hoisted(() => vi.fn());
 vi.mock('./CronTaskConversation', () => ({ default: (props: { job: CronJobOverview; emptyState?: import('react').ReactNode }) => {
   conversation(props);
-  return <section data-testid="shared-task-chat">{props.job.lastRun || props.job.status === 'running' ? <div data-testid="task-transcript">Saved task messages</div> : props.emptyState}<textarea aria-label="Task reply" /></section>;
+  return <section data-testid="shared-task-chat">{props.job.lastRun || props.job.status === 'running' ? <div data-testid="task-transcript">Saved task messages</div> : null}{props.emptyState}<textarea aria-label="Task reply" /></section>;
 } }));
 
 const i18n = await createTestI18n();
@@ -25,6 +25,13 @@ const view = (job: CronJobOverview) => <I18nextProvider i18n={i18n}><CronTaskDet
 afterEach(() => { cleanup(); conversation.mockClear(); });
 
 describe('task waiting view', () => {
+  it('provides the stored failure as the shared empty-conversation fallback for legacy failed runs', () => {
+    render(view({ ...pending, status: 'failed', statusDetail: 'Workspace is unavailable',
+      lastRun: { runId: 'prepare-failed', taskId: pending.id, sessionKey: 'cron:pending-task',
+        startedAt: pending.createdAt, finishedAt: pending.createdAt, outcome: 'failed',
+        error: { code: 'cron_run_failed', message: 'fatal: not a git repository' } } }));
+    expect(screen.getByRole('alert').textContent).toBe('fatal: not a git repository');
+  });
   it('shows a fixed waiting page with the shared reply composer and without displaying long instructions', () => {
     const { container } = render(view(pending));
     expect(screen.getByRole('heading', { name: 'Waiting for the first run' })).toBeTruthy();

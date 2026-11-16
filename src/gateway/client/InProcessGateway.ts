@@ -599,6 +599,7 @@ export class InProcessGateway implements Gateway {
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
           channelKey: input.channelKey,
+          ...(input.sessionKey.startsWith("cron:") ? { workspaceCwd: input.workspaceCwd } : {}),
         }, runId);
         runningSession = session;
         markTiming("sessionMs");

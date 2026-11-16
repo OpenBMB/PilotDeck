@@ -48,7 +48,7 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
     self: {
       location: { origin: 'https://pilotdeck.example.test' },
       addEventListener: (name, handler) => { handlers[name] = handler; },
-      clients: { matchAll: async () => [client] },
+      clients: { matchAll: async () => surfaces.noClients ? [] : [client] },
       navigator: { setAppBadge: async count => { surfaces.badge = count; }, clearAppBadge: async () => { surfaces.badge = 0; } },
       registration: {
         showNotification: async (title, options) => {
@@ -230,4 +230,21 @@ it('routes system activation to the task without acknowledging, and forwards exp
   await w.dismiss(notification);
   expect(w.surfaces.forwarded.at(-1)).toEqual({ type: 'notification:task-dismissed', scope: '1', id: payload.id });
   await w.restart().message('notification:show', payload); expect(w.surfaces.shown).toHaveLength(1);
+});
+
+it('retains offline dismissals across worker restart until the page confirms server acknowledgement', async () => {
+  let w = worker(); await w.preferences();
+  const payload = buildTaskReminderNotification({ id: 'd'.repeat(64), title: 'Meeting', kind: 'due', taskId: 'task', sessionKey: 'cron:task' }, {}, 'en', '1');
+  await w.message('notification:show', payload);
+  w.surfaces.noClients = true;
+  await w.dismiss(w.surfaces.shown[0]);
+  w = w.restart();
+  const dismissal = { scope: '1', id: payload.id };
+  expect(await w.message('notification:task-pending-dismissals', { scope: '1' })).toEqual([dismissal]);
+  expect(await w.message('notification:task-pending-dismissals', { scope: '2' })).toEqual([]);
+  expect(await w.message('notification:show', payload)).toBe(true);
+  expect(w.surfaces.shown).toHaveLength(1);
+  await w.message('notification:task-acknowledged', dismissal);
+  w = w.restart();
+  expect(await w.message('notification:task-pending-dismissals', { scope: '1' })).toEqual([]);
 });

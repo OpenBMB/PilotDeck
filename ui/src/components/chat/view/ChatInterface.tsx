@@ -61,6 +61,7 @@ const EDIT_RECONCILIATION_HINT = [
 // lives in chat/hooks; this module owns how that state is presented.
 function ChatInterface({
   sessionScope = 'chat',
+  historyRevision,
   emptyState,
   selectedProject: selectedProjectFromShell,
   selectedSession,
@@ -220,6 +221,7 @@ function ChatInterface({
     pauseScrollFollowing,
   } = useChatSessionState({
     eventDriven: sessionScope === 'task',
+    historyRevision,
     selectedProject,
     selectedSession,
     ws,

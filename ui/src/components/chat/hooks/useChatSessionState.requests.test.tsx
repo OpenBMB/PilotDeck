@@ -28,7 +28,7 @@ const deferred = () => {
   return { promise, resolve };
 };
 const urls = (part: string) => vi.mocked(authenticatedFetch).mock.calls.map(([url]) => String(url)).filter(url => url.includes(part));
-type Props = { processingSessions?: Set<string>; eventDriven?: boolean; project: Project | null; session: ProjectSession | null; externalMessageUpdate?: number;
+type Props = { historyRevision?: string; processingSessions?: Set<string>; eventDriven?: boolean; project: Project | null; session: ProjectSession | null; externalMessageUpdate?: number;
   externalMessageUpdateTarget?: { projectName: string; sessionId: string; relativeTranscriptPath?: string } | null };
 const initial: Props = { project, session: sessionA, externalMessageUpdate: 0 };
 function mount(strict = false, initialProps = initial) {
@@ -47,6 +47,39 @@ beforeEach(() => {
   vi.mocked(authenticatedFetch).mockImplementation(async url => String(url).includes('/token-usage') ? json({ used: 20 }) : history());
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+
+it('repairs an inactive task cache after its run changed and reuses unchanged task history', async () => {
+  let content = 'Old result';
+  vi.mocked(authenticatedFetch).mockImplementation(async url => String(url).includes('/token-usage') ? json({ used: 20 })
+    : json({ messages: [{ id: content, kind: 'text', role: 'assistant', content, timestamp: '2026-01-01', provider: 'pilotdeck' }], total: 1, hasMore: false }));
+  const props = { ...initial, eventDriven: true, historyRevision: 'run-1:completed' };
+  const { result, rerender } = mount(false, props);
+  await waitFor(() => expect(result.current.view.chatMessages[0]?.content).toBe('Old result'));
+  rerender({ ...props, session: sessionB });
+  await waitFor(() => expect(result.current.view.isLoadingSessionMessages).toBe(false));
+  content = 'New background result';
+  rerender({ ...props, historyRevision: 'run-2:completed' });
+  await waitFor(() => expect(result.current.view.chatMessages[0]?.content).toBe(content));
+  expect(urls('/session-a/messages')).toHaveLength(2);
+  rerender({ ...props, session: sessionB });
+  await act(async () => {});
+  rerender({ ...props, historyRevision: 'run-2:completed' });
+  await act(async () => {});
+  expect(urls('/session-a/messages')).toHaveLength(2);
+});
+
+it('repairs a task on reconnect while retaining the cached messages until recovery finishes', async () => {
+  const props = { ...initial, eventDriven: true, historyRevision: 'connection-1' };
+  const { result, rerender } = mount(false, props);
+  await waitFor(() => expect(result.current.view.isLoadingSessionMessages).toBe(false));
+  const pending = deferred();
+  vi.mocked(authenticatedFetch).mockImplementation(async url => String(url).includes('/messages') ? pending.promise : json({ used: 20 }));
+  rerender({ ...props, historyRevision: 'connection-2' });
+  await waitFor(() => expect(urls('/session-a/messages')).toHaveLength(2));
+  expect(result.current.view.isLoadingSessionMessages).toBe(false);
+  await act(async () => { pending.resolve(history()); await pending.promise; });
+  expect(result.current.store.getSessionSlot(sessionA.id)?.historyRevision).toBe('connection-2');
+});
 
 it('keeps B budget when an older A response finishes after selection changed', async () => {
   const old = deferred();

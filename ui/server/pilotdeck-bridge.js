@@ -1180,7 +1180,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
             ];
         case 'agent_status': {
             if (event.event === 'cron_input' && typeof event.detail?.message === 'string') {
-                return [createNormalizedMessage({ ...base, id: `cron-input:${event.runId}`, kind: 'text', role: 'user',
+                return [createNormalizedMessage({ ...base, id: `cron-input:${event.runId}`, turnId: event.runId, kind: 'text', role: 'user',
                     content: event.detail.message, isFinal: true })];
             }
             if (event.event === 'cron_result' && typeof event.detail?.message === 'string' && typeof event.detail?.runId === 'string') {

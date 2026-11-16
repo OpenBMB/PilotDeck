@@ -9,7 +9,7 @@ import EditorSidebar from '../../code-editor/view/EditorSidebar';
 import ChatInterface from '../../chat/view/ChatInterface';
 
 /** Scheduling adds ownership and controls; messages use the ordinary chat pipeline. */
-export default function CronTaskConversation({ job, projects, emptyState }: { job: CronJobOverview; projects: Project[]; emptyState?: ReactNode }) {
+export default function CronTaskConversation({ job, projects, emptyState, historyEpoch = 0 }: { job: CronJobOverview; projects: Project[]; emptyState?: ReactNode; historyEpoch?: number }) {
   const { ws, sendMessage, subscribe } = useWebSocket();
   const { isMobile } = useDeviceSettings({ trackPWA: false });
   const { preferences } = useUiPreferences();
@@ -24,6 +24,7 @@ export default function CronTaskConversation({ job, projects, emptyState }: { jo
       <div className="pd-chat-canvas flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white dark:bg-neutral-950">
         <ChatInterface selectedProject={project} selectedSession={session} projects={projects}
           ws={ws} sendMessage={sendMessage} subscribe={subscribe} sessionScope="task" emptyState={emptyState}
+          historyRevision={JSON.stringify([historyEpoch, job.lastRun?.runId, job.lastRun?.finishedAt, job.lastRun?.outcome, job.lastFiredAt])}
           autoScrollToBottom={preferences.autoScrollToBottom} sendByCtrlEnter={preferences.sendByCtrlEnter}
           autoExpandTools={preferences.autoExpandTools} showThinking={preferences.showThinking} inlineThinking={preferences.inlineThinking}
           onFileOpen={(path, diff) => editor.handleFileOpen(path, diff)} />
