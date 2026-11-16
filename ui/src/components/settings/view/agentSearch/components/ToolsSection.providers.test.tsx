@@ -43,6 +43,29 @@ it.each(["en", "zh-CN"])("shows readable provider/engine labels in %s and tests 
   expect(change.mock.calls[1][0].tools.webSearch.providers.serpapi).toEqual({ apiKey: "********", searchEngine: "yahoo" });
 });
 
+it.each([
+  ["en", "Open Parallel documentation"],
+  ["zh-CN", "打开 Parallel 文档"],
+])("shows the fixed Parallel destination and links to its installation guide in %s", async (lng, docsLabel) => {
+  const i18n = createInstance();
+  await i18n.init({
+    lng,
+    resources: { en: { settings: en }, "zh-CN": { settings: zh } },
+    defaultNS: "settings",
+  });
+  const config = { tools: { webSearch: {
+    enabled: true,
+    provider: "parallel" as const,
+    endpoint: "https://example.com/ignored",
+  } } };
+  render(<Provider i18n={i18n}><ToolsSection config={config} onChange={vi.fn()} /></Provider>);
+
+  expect(screen.getByRole("link", { name: docsLabel }).getAttribute("href"))
+    .toBe("https://docs.parallel.ai/integrations/mcp/installation");
+  expect(screen.getByText("https://mcp.parallel.ai/mcp").closest("a")).toBeNull();
+  expect(screen.queryByText(config.tools.webSearch.endpoint)).toBeNull();
+});
+
 it("keeps separately edited keys after switching, toggling and remounting", async () => {
   const i18n = createInstance();
   await i18n.init({ lng: "en", resources: { en: { settings: en } }, defaultNS: "settings" });

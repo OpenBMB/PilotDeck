@@ -17,7 +17,7 @@ for the same provider, endpoint and authentication settings.
 | Bocha Web Search | `BOCHA_API_KEY` | [Provider-maintained API reference](https://github.com/Bocha-Labs/bocha-skills/tree/main/bocha-web-search) |
 | Exa | `EXA_API_KEY` | [Search](https://exa.ai/docs/reference/search) |
 | SerpAPI | `SERPAPI_API_KEY` | [Search API](https://serpapi.com/search-api) |
-| Parallel | None | [Parallel MCP](https://parallel.ai/mcp) |
+| Parallel | None | [Parallel MCP installation](https://docs.parallel.ai/integrations/mcp/installation) |
 | Custom | `CUSTOM_WEB_SEARCH_API_KEY` | Your endpoint's documentation |
 
 Select **Parallel** to use web search without an API key. PilotDeck sends search

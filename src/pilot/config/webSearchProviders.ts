@@ -26,7 +26,7 @@ export const WEB_SEARCH_DOCS: Record<Exclude<WebSearchProvider, "custom">, strin
   bocha: "https://github.com/Bocha-Labs/bocha-skills/tree/main/bocha-web-search",
   exa: "https://exa.ai/docs/reference/search",
   serpapi: "https://serpapi.com/search-api",
-  parallel: "https://parallel.ai/mcp",
+  parallel: "https://docs.parallel.ai/integrations/mcp/installation",
 };
 export function isWebSearchProvider(value: unknown): value is WebSearchProvider {
   return WEB_SEARCH_PROVIDERS.includes(value as WebSearchProvider);

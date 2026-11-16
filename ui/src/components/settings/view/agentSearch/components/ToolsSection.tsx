@@ -3,7 +3,7 @@ import CustomSearchEditor from './CustomSearchEditor';
 import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
-import { WEB_SEARCH_PROVIDERS, WEB_SEARCH_DOCS, SERPAPI_ENGINES, isSerpApiEngine } from "../../../../../../../src/pilot/config/webSearchProviders.js";
+import { WEB_SEARCH_PROVIDERS, WEB_SEARCH_DOCS, WEB_SEARCH_ENDPOINTS, SERPAPI_ENGINES, isSerpApiEngine } from "../../../../../../../src/pilot/config/webSearchProviders.js";
 import { resolveWebSearchConfig, updateWebSearchProviderConfig } from "../../../../../../../src/pilot/config/webSearchConfig.js";
 import Tooltip from "../../../../../shared/view/ui/Tooltip";
 import { GeneralSettingsIcon } from "../../../shared/view/GeneralSettingsPrimitives";
@@ -508,9 +508,9 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
                   <GeneralSettingsIcon icon={CircleHelp} />
                 </a>
               </Tooltip>}
-              <p>{t(provider === "parallel"
-                ? "pilotDeckConfig.panels.tools.provider.parallelDescription"
-                : "pilotDeckConfig.panels.tools.provider.description")}</p>
+              <p>{provider === "parallel"
+                ? <>{t("pilotDeckConfig.panels.tools.provider.parallelDescription")}<br /><code>{WEB_SEARCH_ENDPOINTS.parallel}</code></>
+                : t("pilotDeckConfig.panels.tools.provider.description")}</p>
             </div>
             <div className="search-control-area">
               <div className="search-select-wrap">
