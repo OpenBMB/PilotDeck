@@ -10,6 +10,8 @@ Media-reference preparation bounds filesystem reads to four at a time by default
 
 [User request classification](protocol/userRequest.ts) distinguishes task-bearing input from injected context and tool results for routing and compaction. Provider wire validation still operates on the complete request, including synthetic context.
 
+Interrupted text continuations rebuild explicit cache indices from the new message sequence while preserving system/tool cache policy. Requests without cache opt-in remain unmarked; repeated continuations replace their partial-text suffix without changing the original request.
+
 Tests: [tests/model](../../tests/model). See the [test guide](../../docs/testing.md) for runner selection.
 
 Reference: [reasoning settings](../../docs/reasoning-settings.md).

@@ -8,6 +8,8 @@ Entry points: [index.ts](index.ts), [AgentLoop.ts](loop/AgentLoop.ts).
 
 Within one loop iteration, runtimes supporting staged preparation resolve each history candidate once for budgeting and dispatch. Compaction candidates and later iterations get fresh inputs. Route projections reuse those inputs while updating model identity and cache policy; changed routes are budgeted even when their context limits match. Legacy context runtimes and subclasses overriding `prepareForModel` retain their existing preparation calls. Cancellation propagates through preparation and routing before model dispatch.
 
+Todo guidance is captured once per request attempt and appended as synthetic `todo_reminder` context after media preparation and before the plan-mode reminder. Its text and trigger policy are unchanged; changing Todo progress does not rewrite system instructions or persisted history. Stable application prompt addenda retain their system-prompt behavior.
+
 Tool execution events are drained before results or failures leave the loop. Rejections retain their original reason, including falsy values, so every requested tool call receives a paired result during recovery.
 
 The optional `refreshToolCatalog` dependency updates the owning registry before request preparation. Subagents pass their own registry and tool allowlist; refresh cannot expand their permission surface or mutate a parent's active tool batch. A failed refresh retains the previous complete contracts, and cancellation prevents model dispatch.

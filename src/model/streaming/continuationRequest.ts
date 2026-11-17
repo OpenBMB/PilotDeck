@@ -1,4 +1,5 @@
 import type { CanonicalModelRequest } from "../protocol/canonical.js";
+import { buildCachePlan, selectRecentMessageBreakpoints } from "../../context/cache/CachePlan.js";
 
 export const LITELLM_CONTINUATION_INSTRUCTION =
   "You are a helpful assistant. You are given a message and you need to respond to it. " +
@@ -9,24 +10,27 @@ export function buildLiteLLMContinuationRequest<T extends CanonicalModelRequest>
   original: T,
   partialText: string,
 ): T {
+  const messages: CanonicalModelRequest["messages"] = [
+    ...stripLiteLLMContinuationMessages(original.messages),
+    { role: "assistant", content: [{ type: "text", text: partialText }] },
+    { role: "user", content: [{ type: "text", text: LITELLM_CONTINUATION_INSTRUCTION }] },
+  ];
+  const cachePlan = original.cachePlan
+    ? buildCachePlan({ ...original, messages, tools: original.tools ?? [], enabled: true }, original.cachePlan.generation)
+    : undefined;
+  if (cachePlan && original.cachePlan) {
+    cachePlan.system = original.cachePlan.system;
+    cachePlan.tools = original.cachePlan.tools;
+    if (original.cachePlan.messages.length === 0) cachePlan.messages = [];
+  }
   return {
     ...original,
-    messages: [
-      ...stripLiteLLMContinuationMessages(original.messages),
-      {
-        role: "assistant" as const,
-        content: [{ type: "text" as const, text: partialText }],
-      },
-      {
-        role: "user" as const,
-        content: [{ type: "text" as const, text: LITELLM_CONTINUATION_INSTRUCTION }],
-      },
-    ],
-    // Continuation changes the message sequence. Any previous provider-boundary
-    // cache indices would point at the wrong messages, so the next request must
-    // rebuild or omit the cache plan rather than reuse stale markers.
-    cacheBreakpoints: undefined,
-    cachePlan: undefined,
+    messages,
+    // Recompute indices for each continuation while preserving the caller's
+    // cache opt-in. Providers without explicit cache metadata remain unchanged.
+    cacheBreakpoints: cachePlan?.messages ?? (original.cacheBreakpoints === undefined ? undefined
+      : original.cacheBreakpoints.length === 0 ? [] : selectRecentMessageBreakpoints(messages)),
+    cachePlan,
   };
 }
 

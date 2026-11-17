@@ -13,13 +13,25 @@ export type CachePlanInput = {
 
 export const RECENT_MESSAGE_BREAKPOINT_COUNT = 3;
 
-/** Select the final non-system messages for the Anthropic recent-message layout. */
+// These attachments are reconstructed at each request tail. Date notices and
+// other durable synthetic messages keep their history positions and are anchors.
+const REQUEST_ONLY_PURPOSES = new Set(["memory_context", "session_artifact_status", "todo_reminder", "plan_mode_reminder"]);
+
+/** Select recent messages, reserving a cache write before request-only tails. */
 export function selectRecentMessageBreakpoints(messages: CanonicalMessage[]): number[] {
-  return messages
+  const recent = messages
     .map((message, index) => ({ message, index }))
     .filter(({ message }) => (message as { role: string }).role !== "system")
     .slice(-RECENT_MESSAGE_BREAKPOINT_COUNT)
     .map(({ index }) => index);
+  let historyEnd = messages.length - 1;
+  while (historyEnd >= 0 && messages[historyEnd].metadata?.synthetic === true
+    && REQUEST_ONLY_PURPOSES.has(String(messages[historyEnd].metadata?.purpose))) historyEnd--;
+  if (historyEnd === messages.length - 1) return recent;
+  while (historyEnd >= 0 && ((messages[historyEnd] as { role: string }).role === "system"
+    || !messages[historyEnd].content.some(block => block.type !== "thinking"))) historyEnd--;
+  if (historyEnd < 0 || recent.includes(historyEnd)) return recent;
+  return [historyEnd, ...recent.slice(-(RECENT_MESSAGE_BREAKPOINT_COUNT - 1))];
 }
 
 /** Stable, non-cryptographic serialization for cache-plan identity. */

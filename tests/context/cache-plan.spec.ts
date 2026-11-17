@@ -68,6 +68,28 @@ test("disabled cache plans are omitted", () => {
   }, 1), undefined);
 });
 
+test("recent breakpoints reserve the history end before three or more request-only attachments", () => {
+  const history = Array.from({ length: 7 }, (_, i) => textMessage(i % 2 ? "assistant" : "user", `history-${i}`));
+  for (const purposes of [
+    ["session_artifact_status", "memory_context", "plan_mode_reminder"],
+    ["session_artifact_status", "memory_context", "todo_reminder", "plan_mode_reminder"],
+  ]) {
+    const messages = [...history, ...purposes.map(purpose => ({ ...textMessage("user", purpose), metadata: { synthetic: true, purpose } }))];
+    assert.deepEqual(selectRecentMessageBreakpoints(messages), [6, messages.length - 2, messages.length - 1]);
+  }
+});
+
+test("history anchors skip thinking-only messages and preserve durable synthetic notices", () => {
+  const messages: CanonicalMessage[] = [textMessage("user", "task"),
+    { ...textMessage("user", "date update"), metadata: { synthetic: true, purpose: "date_update" } },
+    { role: "assistant", content: [{ type: "thinking", text: "reasoning" }] },
+    ...["memory_context", "todo_reminder", "plan_mode_reminder"].map(purpose => ({
+      ...textMessage("user", purpose), metadata: { synthetic: true, purpose },
+    })),
+  ];
+  assert.deepEqual(selectRecentMessageBreakpoints(messages), [1, 4, 5]);
+});
+
 test("cache fingerprint changes for every stable cache input", () => {
   const base = {
     provider: "modelbest",

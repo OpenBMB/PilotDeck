@@ -250,8 +250,8 @@ export type CanonicalModelRequest = {
   /**
    * A4: indices into `messages` whose final content block should be marked
    * `cache_control: { type: "ephemeral", ttl: "5m" }` when lowered to
-   * Anthropic. Other providers ignore this. The default context layout marks
-   * the final three non-system messages for the `system + recent3` strategy.
+   * Anthropic. Other providers ignore this. The default context layout uses
+   * up to three recent messages, reserving an anchor before request-only tails.
    */
   cacheBreakpoints?: number[];
   /** Internal prompt-cache layout computed by the context runtime. */

@@ -12,6 +12,8 @@ Prompt assembly reads one fresh extension metadata snapshot, orders commands/ski
 
 `prepareForModelAttempt` is an optional staged interface: resolve external inputs, project a provider/model without new I/O, then commit the dispatched projection's date and final cache plan once. Discarded candidates do not mutate session state. Direct `prepareForModel` calls remain supported. Artifact and instruction preparation honor cancellation; legacy asynchronous callbacks may finish in the background but their results cannot start later preparation stages.
 
+Anthropic cache plans keep up to three recent message breakpoints and reserve a cacheable history anchor before trailing request-only memory, artifact, Todo and plan reminders. Durable synthetic context such as date notices remains part of that history. Providers without explicit cache plans retain their existing automatic-cache behavior.
+
 The context popover requests `includeModelContext=summary` on authenticated message history and receives only `contextBreakdown`. `includeModelContext=true` explicitly requests the full diagnostic snapshot. Normal history reads omit snapshot I/O. Local system/tool/message estimates describe the latest assembled request and can differ from the reported token budget.
 
 Snapshots atomically replace a private `<transcript>.context.json` sidecar. Readers validate transcript ownership and reject snapshots from an older accepted turn. Session deletion removes the sidecar. Forked sessions without a fresh snapshot show unavailable estimates until their next model request.
