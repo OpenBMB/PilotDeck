@@ -341,7 +341,7 @@ describe('module runtime route', () => {
     }
   });
 
-  it('returns 501 only when public SOP management is not configured', async () => {
+  it('serves the plugin local SOP store when public SOP management is not configured', async () => {
     const app = express();
     app.use(express.json());
     app.use('/api/modules', createModuleRuntimeRouter({
@@ -353,7 +353,9 @@ describe('module runtime route', () => {
       const response = await fetch(`http://127.0.0.1:${server.address().port}/api/modules/sop/management/call`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'list' }),
       });
-      expect(response.status).toBe(501);
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(Array.isArray(body.result?.data)).toBe(true);
     } finally {
       await new Promise(resolve => server.close(resolve));
     }

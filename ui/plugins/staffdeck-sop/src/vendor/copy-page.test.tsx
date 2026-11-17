@@ -161,10 +161,9 @@ describe('PilotDeck shared plaza pages', () => {
     vi.spyOn(staffDeckSopManagementClient, 'call').mockResolvedValue({ data: [], drafts: [] } as never);
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({ data: [], drafts: [] }), { status: 200 }));
     const nativeDefinitions = vi.spyOn(staffDeckSopClient, 'listDefinitions');
-    render(<MemoryRouter><PilotDeckSkillsPageProvider><SkillsPage currentUser={currentUser} /></PilotDeckSkillsPageProvider></MemoryRouter>);
+    // The SOP page opens the plaza import through its `?add=plaza` entry point.
+    render(<MemoryRouter initialEntries={['/sop?add=plaza']}><PilotDeckSkillsPageProvider><SkillsPage currentUser={currentUser} /></PilotDeckSkillsPageProvider></MemoryRouter>);
 
-    fireEvent.keyDown(await screen.findByRole('button', { name: /新增/ }), { key: 'Enter' });
-    fireEvent.click(await screen.findByText('从广场复制'));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(await within(dialog).findByText('Review'));
     fireEvent.click(within(dialog).getByRole('button', { name: /复制|确认/ }));

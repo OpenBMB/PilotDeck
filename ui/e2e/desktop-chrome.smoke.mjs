@@ -33,6 +33,22 @@ try {
     const url = new URL(route.request().url());
     let body = {};
     if (url.pathname === '/api/projects') body = projects;
+    else if (url.pathname === '/api/modules/runtime') body = {
+      // The shell only mounts a chat surface after the live projection confirms
+      // the generated assembly; without it every chat-owned control stays disabled.
+      projectBindings: false,
+      modules: {
+        agentLoop: { enabled: true, provider: 'pilotdeck' },
+        skills: { enabled: true, provider: 'pilotdeck' },
+        tools: { enabled: true, provider: 'pilotdeck' },
+        context: { enabled: true, provider: 'pilotdeck' },
+        modelProvider: { enabled: true, provider: 'pilotdeck' },
+        sop: { enabled: true, implementationId: 'portable-sop', contract: 'sop.lifecycle/v4', transport: 'sop-http-v4', hostAdapter: 'pilotdeck' },
+        knowledge: { enabled: true, implementationId: 'knowledge-core', contract: 'knowledge-core/v1', transport: 'rest-http-v1' },
+      },
+      gatewayCapabilities: [],
+      runtime: { gatewayState: 'ready', unavailableSlots: [] },
+    };
     else if (url.pathname.includes('onboarding-status')) body = { hasCompletedOnboarding: completedOnboarding };
     else if (url.pathname === '/api/settings/permissions') body = { success: true, permissions: { skipPermissions: false, allowedTools: [], deniedTools: [] } };
     else if (url.pathname.includes('/messages')) body = { messages: [], hasMore: false, total: 0 };

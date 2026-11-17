@@ -134,8 +134,12 @@ export function createStaffDeckCopyRouter({ loadConfig }) {
     try {
       const operation = requiredText(req.body?.operation);
       if (!OPERATIONS.has(operation)) {
-        // A plugin claiming this route may implement operations beyond the core set.
-        if (await delegateToPluginRoute(req, res)) return;
+        const binding = loadConfig(req)?.webui?.staffdeckCopy;
+        // Standalone deployment: a plugin claiming this route may implement
+        // operations beyond the core set. A formal binding stays fail-closed.
+        if (binding?.enabled !== true || binding.contract !== CONTRACT) {
+          if (await delegateToPluginRoute(req, res)) return;
+        }
         throw new CopyError(400, 'COPY_OPERATION_UNSUPPORTED', 'Unsupported StaffDeck copy operation.');
       }
       const binding = { ...bindingFor(loadConfig(req), req.user, operation),
@@ -181,8 +185,9 @@ export function createStaffDeckCopyRouter({ loadConfig }) {
       return res.json({ result });
     } catch (error) {
       // No StaffDeck backend configured → let an enabled plugin claiming this
-      // route (plugin.json serverRoutes) serve a local fallback instead.
-      if (error?.code === 'COPY_UNAVAILABLE' || error?.code === 'COPY_IDENTITY_UNAVAILABLE') {
+      // route (plugin.json serverRoutes) serve a local fallback instead. A
+      // partially configured binding stays fail-closed.
+      if (error?.code === 'COPY_UNAVAILABLE') {
         if (await delegateToPluginRoute(req, res)) return;
       }
       const status = Number.isInteger(error?.status) ? error.status : 502;
