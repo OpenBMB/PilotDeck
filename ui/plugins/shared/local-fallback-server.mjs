@@ -531,7 +531,8 @@ export function startLocalFallbackServer(routes) {
   const handlers = new Map(Object.entries(routes));
   const server = http.createServer((req, res) => {
     const path = (req.url || '').split('?')[0];
-    const handler = handlers.get(`${req.method} ${path}`);
+    const routeKey = `${req.method} ${path}`;
+    const handler = Map.prototype.get.call(handlers, routeKey);
     const userId = req.headers['x-pilotdeck-user-id'] || '1';
     if (typeof handler === 'function') {
       Promise.resolve(handler(req, res, userId)).catch((err) => {
