@@ -1,3 +1,5 @@
+import type { CronReminder, CronReminderListInput, CronReminderDismissInput } from "../../cron/protocol/types.js";
+import { readCronMessageHistory } from "../../cron/runtime/CronMessageHistory.js";
 import { ActiveTimeline } from "../stream/ActiveTimeline.js";
 import { FileInputProgress } from "../stream/FileInputProgress.js";
 import { withRequestContext } from "../../network/requestContext.js";
@@ -543,7 +545,7 @@ export class InProcessGateway implements Gateway {
       purpose: "conversation",
     }, async () => {
       try {
-        if (input.workspaceCwd && this.options.setSessionCwd) this.options.setSessionCwd(input.sessionKey, input.workspaceCwd);
+        if (!input.sessionKey.startsWith("cron:") && input.workspaceCwd && this.options.setSessionCwd) this.options.setSessionCwd(input.sessionKey, input.workspaceCwd);
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
           timeoutHandle = setTimeout(() => {
             timedOut = true;
@@ -576,10 +578,28 @@ export class InProcessGateway implements Gateway {
         }
         markTiming("configMs");
         if (cancelled) return;
+        if (input.sessionKey.startsWith("cron:") && this.options.cron?.prepareConversation) {
+          const { task, workspaceCwd } = await this.options.cron.prepareConversation(input);
+          const background = input.channelKey === "cron";
+          input = { ...input, projectKey: task.projectKey, workspaceCwd,
+            canPrompt: background ? false : input.canPrompt ?? true,
+            ...(background ? { mode: task.mode ?? "default", allowPlanModeTools: false } : {}),
+            syntheticMessages: [...(input.syntheticMessages ?? []), { purpose: "scheduled_task_context", text: [
+              `This conversation belongs to scheduled task ${task.taskId} in project ${task.projectKey}.`,
+              `Latest saved task instructions:\n${task.message}`,
+              background ? "This is a scheduled/manual task execution. Perform the saved task."
+                : "This is a user conversation about the task. Answer the latest user request; do not execute the saved task unless asked. Chatting does not change its schedule.",
+              "For explicit lasting guidance (e.g. 'from now on' or 'every future run'), use cron_get and then cron_update for this task, merging the guidance with its existing instructions. Preserve its name, schedule, timezone, permissions and workspace unless the user asks to change them. Only confirm that requirements were saved after updated=true; report a failed save honestly. Temporary corrections stay in this conversation.",
+              "A successful cron_update saves task instructions, not project memory. Project memory capture and indexing follow the configured asynchronous memory pipeline. Do not claim that a rule has already been stored in durable project memory unless available memory tooling confirms it. Otherwise distinguish saved task requirements from project memory awaiting extraction.",
+            ].join("\n\n") }],
+          };
+          this.options.setSessionCwd?.(input.sessionKey, workspaceCwd);
+        }
         const session = await this.router.getOrCreate({
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
           channelKey: input.channelKey,
+          ...(input.sessionKey.startsWith("cron:") ? { workspaceCwd: input.workspaceCwd } : {}),
         }, runId);
         runningSession = session;
         markTiming("sessionMs");
@@ -815,6 +835,10 @@ export class InProcessGateway implements Gateway {
     const activeRunId = this.router.activeTurnRunId(input.sessionKey);
     if (!activeRunId) return { accepted: false, reason: "no_active_turn" };
     if (activeRunId !== input.runId) return { accepted: false, reason: "turn_mismatch" };
+    if (input.sessionKey.startsWith("cron:") && this.options.cron?.prepareConversation) {
+      const { task } = await this.options.cron.prepareConversation(input);
+      input = { ...input, projectKey: task.projectKey };
+    }
 
     const uploaded = input.uploadedAttachments?.length
       ? await this.resolveUploadedAttachments(input)
@@ -1035,6 +1059,14 @@ export class InProcessGateway implements Gateway {
     };
   }
 
+  async cronReminderList(input: CronReminderListInput): Promise<{ reminders: CronReminder[] }> {
+    return await this.requireCron().listReminders?.(input) ?? { reminders: [] };
+  }
+
+  async cronReminderDismiss(input: CronReminderDismissInput): Promise<{ dismissed: boolean }> {
+    return await this.requireCron().dismissReminder?.(input) ?? { dismissed: false };
+  }
+
   async cronCreate(input: CronCreateInput): Promise<CronCreateResult> {
     return this.requireCron().createTask(input);
   }
@@ -1106,7 +1138,11 @@ export class InProcessGateway implements Gateway {
     // reread so a just-settled turn cannot disappear between history and live.
     for (let attempt = 0; attempt < 3; attempt++) {
       const epoch = this.activeTurnReplays.get(input.sessionKey);
-      const history = await this.options.readSessionMessages(input);
+      const taskId = input.sessionKey.startsWith("cron:") ? input.sessionKey.split(":")[1] : undefined;
+      const catalog = taskId && this.options.cron
+        ? await this.options.cron.listTasks({ taskId, projectKey: input.projectKey, includeHistory: true, limit: 200 }) : undefined;
+      const history = catalog ? await readCronMessageHistory(input, catalog, this.options.readSessionMessages)
+        : await this.options.readSessionMessages(input);
       if (epoch !== this.activeTurnReplays.get(input.sessionKey)) continue;
       const stream = await this.getActiveTurnSnapshot({ sessionKey: input.sessionKey });
       return { ...history, stream };

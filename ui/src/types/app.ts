@@ -119,9 +119,11 @@ export interface DiscoveryContextPlanItem {
   summary: string;
 }
 
-export type CronJobOverviewStatus = 'scheduled' | 'running' | 'completed' | 'failed';
+export type CronJobOverviewStatus = 'scheduled' | 'running' | 'paused' | 'completed' | 'failed' | 'missed';
 
 export type CronJobSchedule =
+  | { type: 'interval'; everySeconds: number; anchorAt: string }
+  | { type: 'monthly'; ordinal: 1 | 2 | 3 | 4 | -1; weekday: number; hour: number; minute: number; timezone: string }
   | {
       type: 'once';
       runAt: string;
@@ -134,6 +136,21 @@ export type CronJobSchedule =
 
 export interface CronJobOverview {
   id: string;
+  sessionKey?: string;
+  updatedAt?: string;
+  name?: string;
+  enabled?: boolean;
+  executionMode?: 'independent' | 'conversation' | 'persistent';
+  workspaceCwd?: string;
+  workspaceMode?: 'local' | 'worktree';
+  notificationPolicy?: 'all' | 'findings' | 'failures';
+  reminderTiming?: 'due' | 'result';
+  mode?: 'default' | 'plan' | 'bypassPermissions';
+  modelSelection?: { provider: string; model: string };
+  originSessionKey?: string;
+  targetSessionKey?: string;
+  statusDetail?: string;
+  lastRun?: CronRunOverview;
   projectKey: string | null;
   cron: string;
   schedule?: CronJobSchedule;
@@ -147,6 +164,14 @@ export interface CronJobOverview {
   status: CronJobOverviewStatus;
   lastFiredAt?: number;
 }
+
+export type CronRunOverview = {
+  runId: string; taskId: string; sessionKey: string; startedAt: string; finishedAt?: string;
+  scheduledAt?: string; trigger?: 'scheduled' | 'manual'; taskName?: string; message?: string; output?: string;
+  workspaceCwd?: string; outcome?: 'completed' | 'failed' | 'blocked' | 'stopped' | 'aborted';
+  artifacts?: Array<{ id: string; name: string; path: string; size: number; mimeType?: string }>;
+  error?: { code: string; message: string }; deliveryStatus?: 'pending' | 'sent' | 'failed' | 'skipped'; deliveryError?: string;
+};
 
 export interface CronJobsOverviewResponse {
   jobs: CronJobOverview[];
@@ -274,6 +299,8 @@ export interface Project {
   kind?: 'project' | 'general';
   workspaceCwd?: string;
   workspaceNotice?: { directory: string; originalDirectory: string } | null;
+  /** Filesystem-only route identity; conversation ownership remains name/fullPath. */
+  fileOperationsKey?: string;
   workspaceUnavailable?: boolean;
   capabilities?: {
     files?: boolean;

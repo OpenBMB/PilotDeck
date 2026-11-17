@@ -7,6 +7,7 @@ import {
 } from 'edgeclaw-memory-core';
 import {
   readPilotDeckConfigFile,
+  resolveMemoryScheduleConfig,
   updatePilotDeckConfig,
 } from '../services/pilotdeckConfig.js';
 import { reloadPilotDeckConfig } from '../services/pilotdeckConfigReloader.js';
@@ -62,7 +63,7 @@ function validateReasoningMode(value) {
 }
 
 function getGlobalMemorySettingsFromConfig(config) {
-  const memory = config?.memory ?? {};
+  const memory = resolveMemoryScheduleConfig(config?.memory);
   const reasoningMode = memory.reasoningMode === 'accuracy_first' ? 'accuracy_first' : 'answer_first';
   return {
     reasoningMode,
@@ -91,6 +92,9 @@ async function saveGlobalMemorySettings(partial = {}) {
       autoDreamIntervalMinutes: normalizeMemoryInterval(partial.autoDreamIntervalMinutes, current.autoDreamIntervalMinutes),
     };
     config.memory = { ...(config.memory ?? {}), ...next };
+    if (config.memory.schedule && typeof config.memory.schedule === 'object' && !Array.isArray(config.memory.schedule)) {
+      config.memory.schedule = { ...config.memory.schedule, ...resolveMemoryScheduleConfig(next) };
+    }
   }, {
     paths: [['memory']],
     onWriteCommitted: suppressNextWatchEvent,

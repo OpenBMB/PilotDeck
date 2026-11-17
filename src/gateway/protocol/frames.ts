@@ -37,6 +37,8 @@ export type WsGatewayMethod =
   | "session_model_clear"
   | "active_turn_snapshot"
   | "cron_create"
+  | "cron_reminder_list"
+  | "cron_reminder_dismiss"
   | "cron_list"
   | "cron_update"
   | "cron_delete"

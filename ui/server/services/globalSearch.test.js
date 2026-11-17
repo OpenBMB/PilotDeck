@@ -300,3 +300,16 @@ for (const homeName of ['.pilotdeck', 'state[private]']) {
     assert.equal(updated.counts.files, 0, 'ordinary files remain watched');
   });
 }
+
+
+test('excludes task-owned transcripts from ordinary title and message search', async () => {
+  const { search, chatDir } = await fixture();
+  for (const id of ['cron-owned', ...(process.platform === 'win32' ? [] : ['cron:owned', 'cron:owned:run'])]) {
+    const records = [entry('session_metadata', 0, { sessionId: id, metadata: { title: 'Scheduled secret needle' } }),
+      entry('assistant_message', 1, { sessionId: id, message: message('task-only-result-marker') })];
+    await writeFile(path.join(chatDir, id + '.jsonl'), records.map(item => JSON.stringify(item)).join('\n') + '\n');
+  }
+  assert.equal((await search({ query: 'Scheduled secret', kind: 'chats' })).counts.chats, 0);
+  assert.equal((await search({ query: 'task-only-result-marker', kind: 'chats' })).counts.chats, 0);
+  assert.equal((await search({ query: 'needle', kind: 'chats' })).counts.chats, 1);
+});

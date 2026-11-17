@@ -1,3 +1,4 @@
+import { useTaskReminders } from '../cron/useTaskReminders';
 import { useDesktopCommands } from '../desktop/useDesktopCommands';
 import { useAuth } from '../auth/context/AuthContext';
 import { SessionViewReadyContext, useSessionIndicators } from './useSessionIndicators';
@@ -38,6 +39,7 @@ import { getSettingsPathFromTab } from '../settings/navigation';
 import { ConnectionBanner } from '../ui/ConnectionBanner';
 import Sidebar from './Sidebar';
 import MainArea from './MainArea';
+import { CronSidebarProvider } from '../cron/CronSidebarContext';
 import GlobalSearchDialog from '../global-search/GlobalSearchDialog';
 import { GlobalSearchProvider, useGlobalSearch, type GlobalSearchResult } from '../global-search/GlobalSearchContext';
 import { useWorkspaceUpload } from '../file-tree/hooks/useWorkspaceUpload';
@@ -75,6 +77,7 @@ export default function AppShell() {
 function AppShellContent() {
   const globalSearch = useGlobalSearch();
   useRejectExternalFileDropOutsideTargets();
+  useTaskReminders();
   const navigate = useNavigate();
   const [skillConversationRequest, setSkillConversationRequest] =
     useState<SkillConversationRequest | null>(null);
@@ -99,8 +102,14 @@ function AppShellContent() {
   const isDedicatedRoute = dedicatedTab !== null || isSettingsRoute;
   const projectNameParam =
     matchProjectChat?.params.projectName ?? matchProject?.params.projectName ?? undefined;
-  const sessionId =
+  const requestedSessionId =
     matchProjectChat?.params.sessionId ?? matchLegacySession?.params.sessionId ?? undefined;
+  const sessionId = requestedSessionId?.startsWith('cron:') ? undefined : requestedSessionId;
+  useEffect(() => {
+    if (requestedSessionId?.startsWith('cron:')) {
+      navigate(`${SCHEDULED_TASKS_PATH}?taskId=${encodeURIComponent(requestedSessionId.split(':')[1])}`, { replace: true });
+    }
+  }, [requestedSessionId, navigate]);
   const { t } = useTranslation('common');
 
   const { isMobile } = useDeviceSettings({ trackPWA: false });
@@ -356,6 +365,11 @@ function AppShellContent() {
       // Provider hint from notifications is no longer stored; all sessions
       // go through the unified pilotdeck gateway.
 
+      if (message.kind === 'reminder' && typeof message.taskId === 'string') {
+        setSidebarOpen(false);
+        navigate(`/cron?taskId=${encodeURIComponent(message.taskId)}`);
+        return;
+      }
       setActiveTab('chat');
       setSidebarOpen(false);
       void refreshProjectsSilently();
@@ -408,6 +422,7 @@ function AppShellContent() {
     navigate(target);
   }, [navigate, selectedProject, selectedSession]);
   const onMenuClick = useCallback(() => setSidebarOpen(true), [setSidebarOpen]);
+  const onCronTaskSelected = useCallback(() => { if (isMobile) setSidebarOpen(false); }, [isMobile, setSidebarOpen]);
   const onCollapseSidebar = useCallback(() => {
     if (isMobile) {
       setSidebarOpen(false);
@@ -746,6 +761,7 @@ function AppShellContent() {
   );
 
   return (
+    <CronSidebarProvider onSelect={onCronTaskSelected}>
     <SessionViewReadyContext.Provider value={setReadySessionId}>
     <div className="app-root fixed inset-0 flex flex-col font-sans text-neutral-900 dark:text-neutral-100">
       <ConnectionBanner />
@@ -903,6 +919,7 @@ function AppShellContent() {
 	        : null}
 	    </div>
     </SessionViewReadyContext.Provider>
+    </CronSidebarProvider>
 	  );
 	}
 

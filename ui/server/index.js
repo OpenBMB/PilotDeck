@@ -6,7 +6,7 @@ import { createErrorDiagnostics, handleUnexpectedError } from './middleware/erro
 import { createWorkspaceFileUploadHandler, createWorkspaceUploadCheckHandler } from './services/workspaceFileUpload.js';
 import { createBackgroundSessionForwarder, createSessionActivityRegistry } from './session-activity.js';
 import { createSessionNotificationRegistry } from './session-notifications.js';
-import { notifySessionAttention } from './services/notification-orchestrator.js';
+import { notifySessionAttention, notifyTaskReminder } from './services/notification-orchestrator.js';
 import '../../scripts/check-node-runtime.mjs';
 // Install global fetch proxy (PILOTDECK_PROXY / HTTPS_PROXY) before any network calls
 import { installGlobalProxy } from './utils/proxy.js';
@@ -91,6 +91,8 @@ import {
     getPilotDeckGateway,
     isGatewayUnavailableError,
     registerAlwaysOnNotificationForwarding,
+    registerCronNotificationForwarding,
+    registerCronReminderForwarding,
     registerSessionInputNotificationForwarding,
     getSessionTokenBudget,
     getInputQueueStateViaGateway,
@@ -105,6 +107,7 @@ import sessionManager from './sessionManager.js';
 import { createComputerUseService } from './services/computerUse.js';
 import { createComputerUseRouter } from './routes/computer-use.js';
 import { configureTrustedProxy } from './utils/trustedProxy.js';
+import { createCronReminderRoutes } from './routes/cron-reminders.js';
 import gitRoutes from './routes/git.js';
 import checkpointRoutes from './routes/checkpoints.js';
 import authRoutes from './routes/auth.js';
@@ -123,6 +126,13 @@ import { createUsageRouter } from './routes/usage.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
 import { createCronUpdateHandler } from './routes/cron-jobs.js';
+import { cronTaskOverview } from './services/cronOverview.js';
+import { createCronWorkspaceResolver } from './services/cronWorkspace.js';
+import { projectFileIndex } from './services/projectFileIndex.js';
+import { ensureGeneralWorkspaceDirectory } from './utils/generalWorkspace.js';
+import { resolvePilotHome } from './utils/pilotPaths.js';
+import { normalizeSchedule } from '../../src/cron/runtime/CronRuntime.js';
+import { previewCronSchedule } from '../../src/cron/runtime/CronSchedule.js';
 import {
     OFFICE_PREVIEW_SERVICE_BUILTIN,
     OFFICE_PREVIEW_SERVICE_LIBREOFFICE,
@@ -167,7 +177,9 @@ import { createProjectFilesystemMiddleware } from './middleware/projectFilesyste
 // cursor-cli, openai-codex, gemini-cli) has been removed.
 const VALID_PROVIDERS = ['pilotdeck'];
 
-const requireRealProjectFilesystem = createProjectFilesystemMiddleware();
+const requireRealProjectFilesystem = createProjectFilesystemMiddleware({
+    resolveTaskWorkspace: createCronWorkspaceResolver({ getGateway: getPilotDeckGateway }),
+});
 
 // File-system watchers for the chat transcript root maintained by
 // PilotDeck. Provider-specific watchers (.pilotdeck) were dropped along with the four provider adapters.
@@ -218,13 +230,32 @@ function broadcastSessionActivity(frame, userId) {
     }
 }
 const sessionWatchRegistry = createSessionWatchRegistry();
-registerAlwaysOnNotificationForwarding(connectedClients, createBackgroundSessionForwarder({
-    // This installation is single-user (including authenticated OSS mode).
-    // Resolve its persisted owner, never the set of currently connected watchers.
+const forwardBackgroundFrame = createBackgroundSessionForwarder({
     getUserId: () => userDb.getFirstUser()?.id,
     broadcastActivity: broadcastSessionActivity,
     forwardToWatchers: broadcastToSessionWatchers,
-}));
+});
+registerAlwaysOnNotificationForwarding(connectedClients, (sessionId, frame) => {
+    if (sessionId.startsWith('cron:')) broadcastToSessionWatchers(sessionId, frame, userDb.getFirstUser()?.id);
+    else forwardBackgroundFrame(sessionId, frame);
+});
+registerCronReminderForwarding(change => {
+    for (const client of connectedClients) {
+        const scope = String(client.__pilotdeckUserId ?? 'local');
+        if (client.readyState === WebSocket.OPEN && (!change.dismissedScope || change.dismissedScope === scope)) {
+            client.send(JSON.stringify({ type: 'cron-reminder-changed', ...change, scope }));
+        }
+    }
+    if (change.reminder) notifyTaskReminder(userDb.getFirstUser()?.id, change.reminder);
+});
+registerCronNotificationForwarding(change => {
+    const userId = userDb.getFirstUser()?.id;
+    const frame = JSON.stringify({ type: 'cron-task-changed', taskId: change.taskId, projectKey: change.projectKey,
+        job: change.task ? cronTaskOverview(change.task) : null });
+    for (const client of connectedClients) {
+        if (client.readyState === WebSocket.OPEN && (client.__pilotdeckUserId ?? null) === userId) client.send(frame);
+    }
+});
 
 function normalizeSessionId(value) {
     if (typeof value !== 'string') return null;
@@ -733,6 +764,8 @@ app.get('/api/always-on/events', authenticateToken, async (req, res) => {
     }
 });
 
+app.use('/api/always-on/cron-reminders', authenticateToken, createCronReminderRoutes({ getGateway: getPilotDeckGateway }));
+
 app.get('/api/always-on/cron-jobs', authenticateToken, async (_req, res) => {
     try {
         const result = await getProjectCronJobsOverview();
@@ -772,12 +805,55 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
             schedule,
             timezone,
             channelKey: 'web',
+            name: req.body?.name,
+            workspaceCwd: projectKey === resolvePilotHome(process.env) ? await ensureGeneralWorkspaceDirectory(process.env) : req.body?.workspaceCwd,
+            sessionKey: req.body?.sessionKey,
+            notificationPolicy: req.body?.notificationPolicy,
+            reminderTiming: req.body?.reminderTiming,
+            mode: req.body?.mode,
+            workspaceMode: req.body?.workspaceMode,
+            modelSelection: req.body?.modelSelection,
         });
         res.json(result);
     } catch (error) {
         console.error('[always-on-cron-create] failed:', error);
-        res.status(500).json({ error: error?.message || 'cron create failed' });
+        const projectUnavailable = error?.code === 'cron_project_unavailable';
+        res.status(projectUnavailable || /^(Invalid Cron|Cron |One-time Cron)/i.test(error?.message || '') ? 400 : 500).json({
+            error: error?.message || 'cron create failed',
+            ...(projectUnavailable ? { code: 'cron_project_unavailable' } : {}),
+        });
     }
+});
+
+app.get('/api/always-on/cron-options', authenticateToken, async (req, res) => {
+    try {
+        const gateway = await getPilotDeckGateway();
+        const models = await gateway.modelCatalogList?.({ projectKey: req.query.projectKey });
+        res.json({ models: models?.items || [] });
+    } catch (error) { res.status(500).json({ error: error?.message || 'Failed to load task execution options.' }); }
+});
+
+app.post('/api/always-on/cron-preview', authenticateToken, async (req, res) => {
+    try {
+        const now = new Date();
+        const timezone = req.body?.timezone || 'UTC';
+        const schedule = normalizeSchedule(req.body, timezone, now);
+        const nextRuns = previewCronSchedule(schedule, now, timezone);
+        if (!nextRuns.length) return res.status(400).json({ error: 'The schedule has no future occurrence.' });
+        res.json({ schedule, timezone, nextRuns });
+    } catch (error) { res.status(400).json({ error: error?.message || 'Invalid schedule.' }); }
+});
+
+app.get('/api/always-on/cron-jobs/:taskId', authenticateToken, async (req, res) => {
+    try {
+        const gateway = await getPilotDeckGateway();
+        const result = await gateway.cronList({ taskId: req.params.taskId, projectKey: req.query.projectKey || undefined,
+            includeHistory: true, limit: 20, beforeRunId: req.query.beforeRunId || undefined });
+        const task = result.tasks[0];
+        if (!task) return res.status(404).json({ error: 'Scheduled task was not found.' });
+        res.json({ task, runs: result.recentRuns || [], nextBeforeRunId: result.nextBeforeRunId,
+            nextRuns: task.enabled !== false && task.status === 'scheduled' ? previewCronSchedule(task.schedule, new Date(), task.timezone) : [] });
+    } catch (error) { res.status(500).json({ error: error?.message || 'Failed to load scheduled task.' }); }
 });
 
 app.patch('/api/always-on/cron-jobs/:taskId', authenticateToken, createCronUpdateHandler({ getGateway: getPilotDeckGateway }));
@@ -788,6 +864,7 @@ app.post('/api/always-on/cron-jobs/:taskId/run-now', authenticateToken, requestL
         const result = await gateway.cronRunNow({
             taskId: req.params.taskId,
             projectKey: req.body?.projectKey || req.query?.projectKey || undefined,
+            retryDeliveryRunId: req.body?.retryDeliveryRunId,
         });
         res.json(result);
     } catch (error) {
@@ -1986,6 +2063,8 @@ app.put('/api/projects/:projectName/file', authenticateToken, requireRealProject
         }
     }
 });
+
+app.get('/api/projects/:projectName/files/index', authenticateToken, requireRealProjectFilesystem, projectFileIndex);
 
 app.get('/api/projects/:projectName/files', authenticateToken, requireRealProjectFilesystem, async (req, res) => {
     try {

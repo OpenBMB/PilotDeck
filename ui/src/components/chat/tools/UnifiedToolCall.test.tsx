@@ -14,6 +14,13 @@ afterEach(cleanup);
 const message: ChatMessage = { id: 'call', type: 'assistant', timestamp: '2026-09-15', isToolUse: true, toolName: 'bash', toolInput: { command: 'pnpm build', description: 'Build app' } };
 const view = (value: ChatMessage, running = false) => <I18nextProvider i18n={i18n}><UnifiedToolCall message={value} createDiff={calculateDiff} running={running} /></I18nextProvider>;
 
+it('renders the scheduled task card through the actual conversation tool surface', () => {
+  render(view({ ...message, toolName: 'cron_create', toolInput: { name: 'Daily report' },
+    toolResult: { content: JSON.stringify({ taskId: 'task-1', name: 'Daily report', timezone: 'UTC' }) } }));
+  fireEvent.click(screen.getByRole('button', { name: 'Used Daily report' }));
+  expect(screen.getByRole('link').getAttribute('href')).toBe('/cron?taskId=task-1');
+});
+
 it.each(['en', 'zh-CN'])('labels failed fetches as web failures instead of a generic pending tool (%s)', async language => {
   await i18n.changeLanguage(language);
   render(view({ ...message, toolName: 'web_fetch', toolInput: { url: 'https://example.com' }, toolResult: { content: 'HTTP 403', isError: true } }));

@@ -63,7 +63,7 @@ export function UnifiedToolCall({ message, createDiff, onFileOpen, selectedProje
     ? createDiff(oldContent, newContent) : [], [isEdit, name, oldContent, newContent, createDiff]);
   const hasDiff = isEdit && typeof newContent === 'string' && (name === 'Write' || typeof oldContent === 'string');
   const inputDetails = !isSkill && config.input.type === 'collapsible' && config.input.contentType !== 'diff';
-  const resultDetails = !config.result?.hidden && !config.result?.hideOnSuccess && config.result?.type === 'collapsible' && !['text', 'success-message', 'file-list'].includes(config.result.contentType || '');
+  const resultDetails = !config.result?.hidden && !config.result?.hideOnSuccess && (config.result?.type === 'card' || (config.result?.type === 'collapsible' && !['text', 'success-message', 'file-list'].includes(config.result.contentType || '')));
   const files = objectValue(result?.toolUseResult);
   const hasFileList = [files.files, files.filenames].some(value => Array.isArray(value) && value.length > 0);
   const footer = result && !externalError ? <>

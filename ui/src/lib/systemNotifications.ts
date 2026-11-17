@@ -21,9 +21,11 @@ export async function showSystemNotification(payload: SystemNotification) {
   const handled = await notificationWorkerMessage('notification:show', payload);
   if (handled !== undefined) return handled;
   const notification = new Notification(payload.title, { body: payload.body, silent: payload.silent,
-    tag: `${payload.data.scope}:${payload.data.sessionId}`, data: payload.data });
+    tag: payload.data.reminderId ? `${payload.data.scope}:reminder:${payload.data.reminderId}` : `${payload.data.scope}:${payload.data.sessionId}`,
+    requireInteraction: payload.persistent === true, data: payload.data });
   notification.onclick = () => {
-    notification.close(); window.focus();
+    if (payload.data.kind !== 'reminder') notification.close();
+    window.focus();
     window.dispatchEvent(new CustomEvent('pilotdeck:notification-navigate', { detail: payload.data }));
   };
   return true;

@@ -2,14 +2,14 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { expect, it, vi } from 'vitest';
-import { buildSystemNotification } from '../shared/notifications.js';
+import { buildSystemNotification, buildTaskReminderNotification } from '../shared/notifications.js';
 
 const source = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 // Only the IndexedDB request/transaction surface is faked. Execute the actual
 // worker and retain structured-cloned storage when replacing its JS context.
 function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, visible: false }) {
   const handlers = {};
-  const client = { postMessage(message, ports) {
+  const client = { url: 'https://pilotdeck.example.test/', focus: async () => {}, postMessage(message, ports) {
     if (message.type === 'notification:context') ports[0].postMessage({ viewed: surfaces.visible });
     else surfaces.forwarded.push(message);
   } };
@@ -46,11 +46,13 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
       return request;
     } },
     self: {
+      location: { origin: 'https://pilotdeck.example.test' },
       addEventListener: (name, handler) => { handlers[name] = handler; },
-      clients: { matchAll: async () => [client] },
+      clients: { matchAll: async () => surfaces.noClients ? [] : [client] },
       navigator: { setAppBadge: async count => { surfaces.badge = count; }, clearAppBadge: async () => { surfaces.badge = 0; } },
       registration: {
         showNotification: async (title, options) => {
+          if (surfaces.fail) throw new Error('Synthetic notification rejection');
           const item = { title, ...options, closed: false };
           item.close = vi.fn(() => { item.closed = true; });
           surfaces.shown.push(item);
@@ -72,6 +74,8 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
   };
   return {
     surfaces, database, message,
+    click: notification => dispatch('notificationclick', { notification }),
+    dismiss: notification => dispatch('notificationclose', { notification }),
     preferences: (scope = '1') => message('notification:preferences', { scope, preferences: { enabled: true } }),
     push: event => dispatch('push', { data: { json: () => ({ ...buildSystemNotification(event), event }) } }),
     read: (records, scope = '1') => message('notification:read', { scope, records }),
@@ -81,6 +85,24 @@ function worker(database = {}, surfaces = { shown: [], forwarded: [], badge: 0, 
 }
 const event = (id, minute, scope = '1') => ({ id, sessionId: 's1', scope, kind: 'completed', createdAt: `2026-10-27T03:0${minute}:00Z` });
 const record = event => ({ id: event.id, sessionId: event.sessionId, createdAt: event.createdAt });
+
+it('keeps scheduled reminders visible after viewing the conversation and deduplicates across worker restarts', async () => {
+  let w = worker(); await w.preferences(); w.surfaces.visible = true;
+  const reminder = { id: 'a'.repeat(64), title: 'Meeting', body: 'Meeting now', kind: 'due', taskId: 'task',
+    sessionKey: 'cron:task', createdAt: '2026-10-27T03:01:00Z' };
+  const payload = buildTaskReminderNotification(reminder, { enabled: true }, 'en', '1');
+  await w.message('notification:show', payload);
+  expect(w.surfaces.shown).toHaveLength(1);
+  expect(w.surfaces.shown[0].requireInteraction).toBe(true);
+  await w.read([{ sessionId: 'cron:task', id: reminder.id, createdAt: reminder.createdAt }]);
+  expect(w.surfaces.shown[0].closed).toBe(false);
+  w = w.restart(); await w.message('notification:show', payload);
+  expect(w.surfaces.shown).toHaveLength(1);
+  await w.message('notification:task-dismiss', { scope: '1', id: reminder.id });
+  expect(w.surfaces.shown[0].closed).toBe(true);
+  await w.restart().message('notification:show', payload);
+  expect(w.surfaces.shown).toHaveLength(1);
+});
 
 it('clears a legacy PWA badge while preserving pending conversation unread records', async () => {
   const surfaces = { shown: [], forwarded: [], badge: 25, visible: false };
@@ -184,4 +206,45 @@ it('enriches an ID-only watermark when a current page supplies its timestamp', a
   await w.read([record(event('r2', 2))]);
   await w.push(event('r1', 1));
   expect(w.surfaces.shown).toHaveLength(0);
+});
+
+it('does not consume denied or failed reminder delivery and keeps receipts beyond normal chat cache eviction', async () => {
+  let w = worker(); await w.preferences();
+  const payload = buildTaskReminderNotification({ id: 'b'.repeat(64), title: 'Meeting', kind: 'due', taskId: 'task', sessionKey: 'cron:task' }, {}, 'en', '1');
+  await w.message('notification:preferences', { scope: '1', preferences: { enabled: false } });
+  expect(await w.message('notification:show', payload)).toBe(false);
+  await w.preferences(); w.surfaces.fail = true;
+  expect(await w.message('notification:show', payload)).toBe(false);
+  w.surfaces.fail = false; expect(await w.message('notification:show', payload)).toBe(true);
+  w.database.value.seen = []; w = w.restart();
+  expect(await w.message('notification:show', payload)).toBe(true); expect(w.surfaces.shown).toHaveLength(1);
+});
+it('routes system activation to the task without acknowledging, and forwards explicit user dismissal separately', async () => {
+  const w = worker(); await w.preferences();
+  const payload = buildTaskReminderNotification({ id: 'c'.repeat(64), title: 'Meeting', kind: 'due', taskId: 'task-a', sessionKey: 'cron:task-a' }, {}, 'en', '1');
+  await w.message('notification:show', payload); const notification = w.surfaces.shown[0];
+  await w.click(notification);
+  expect(notification.close).not.toHaveBeenCalled();
+  expect(w.surfaces.forwarded.at(-1)).toMatchObject({ type: 'notification:navigate', kind: 'reminder', taskId: 'task-a', urlPath: '/cron?taskId=task-a' });
+  expect(w.surfaces.forwarded.some(item => item.type === 'notification:task-dismissed')).toBe(false);
+  await w.dismiss(notification);
+  expect(w.surfaces.forwarded.at(-1)).toEqual({ type: 'notification:task-dismissed', scope: '1', id: payload.id });
+  await w.restart().message('notification:show', payload); expect(w.surfaces.shown).toHaveLength(1);
+});
+
+it('retains offline dismissals across worker restart until the page confirms server acknowledgement', async () => {
+  let w = worker(); await w.preferences();
+  const payload = buildTaskReminderNotification({ id: 'd'.repeat(64), title: 'Meeting', kind: 'due', taskId: 'task', sessionKey: 'cron:task' }, {}, 'en', '1');
+  await w.message('notification:show', payload);
+  w.surfaces.noClients = true;
+  await w.dismiss(w.surfaces.shown[0]);
+  w = w.restart();
+  const dismissal = { scope: '1', id: payload.id };
+  expect(await w.message('notification:task-pending-dismissals', { scope: '1' })).toEqual([dismissal]);
+  expect(await w.message('notification:task-pending-dismissals', { scope: '2' })).toEqual([]);
+  expect(await w.message('notification:show', payload)).toBe(true);
+  expect(w.surfaces.shown).toHaveLength(1);
+  await w.message('notification:task-acknowledged', dismissal);
+  w = w.restart();
+  expect(await w.message('notification:task-pending-dismissals', { scope: '1' })).toEqual([]);
 });

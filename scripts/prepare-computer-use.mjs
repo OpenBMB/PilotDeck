@@ -78,6 +78,17 @@ const run = (command, args, options = {}) => {
   if (result.error || result.status !== 0) throw result.error || new Error(`${command} failed`);
 };
 
+export function extractDriverArchive(archive, directory, { platform = process.platform, env = process.env } = {}) {
+  if (platform !== 'win32') return run('tar', ['-xzf', archive, '-C', directory]);
+  // Windows PowerShell can inherit PowerShell 7's PSModulePath on CI. Avoid
+  // Expand-Archive's module-dependent overloads; this API works on .NET Framework
+  // too. A failed extraction must fail before inspecting or replacing the install.
+  run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    "$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:PILOTDECK_CUA_EXTRACT_ARCHIVE, $env:PILOTDECK_CUA_EXTRACT_DIRECTORY)"], {
+    env: { ...env, PILOTDECK_CUA_EXTRACT_ARCHIVE: archive, PILOTDECK_CUA_EXTRACT_DIRECTORY: directory },
+  });
+}
+
 // A native GUI host gives Web deployments the same direct-parent permission
 // contract as Electron, without using a user's separately installed Driver.
 async function stageMacApp(directory, productionHost) {
@@ -147,10 +158,7 @@ export async function prepareComputerUse({ destination = resolve(scripts, '../re
     }
     verifyDriverArchive(readFileSync(archive), asset);
     const extracted = join(temporary, 'extracted'); mkdirSync(extracted);
-    if (platform === 'win32') run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Expand-Archive -LiteralPath $env:PILOTDECK_CUA_EXTRACT_ARCHIVE -DestinationPath $env:PILOTDECK_CUA_EXTRACT_DIRECTORY -Force'], {
-      env: { ...env, PILOTDECK_CUA_EXTRACT_ARCHIVE: archive, PILOTDECK_CUA_EXTRACT_DIRECTORY: extracted },
-    });
-    else run('tar', ['-xzf', archive, '-C', extracted]);
+    extractDriverArchive(archive, extracted, { platform, env });
     const findBinary = directory => {
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
         const file = join(directory, entry.name);

@@ -47,6 +47,9 @@ export function canonicalMessagesToMemoryMessages(
   options: CanonicalMessagesToMemoryMessagesOptions = {},
 ): ContextMemoryMessage[] {
   return messages.flatMap((message, index) => {
+    // Runtime reference messages are not user feedback. In last_turn capture,
+    // retaining one after the real request would replace the user's guidance.
+    if (message.metadata?.synthetic) return [];
     if (options.includeForkCarryover === false && message.metadata?.forkCarryover) {
       return [];
     }

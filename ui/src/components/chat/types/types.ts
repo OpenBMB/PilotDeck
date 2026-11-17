@@ -259,6 +259,11 @@ export interface Question {
 }
 
 export interface ChatInterfaceProps {
+  /** Retained, hidden conversations must not consume global composer events. */
+  active?: boolean;
+  sessionScope?: 'chat' | 'task';
+  historyRevision?: string;
+  emptyState?: React.ReactNode;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
   ws: WebSocket | null;

@@ -12,6 +12,7 @@ export function toolCallSummary(message: ChatMessage, running: boolean, t: TFunc
   const file = displayText(input.file_path || input.path || input.image_path || input.file || input.filepath);
   const isEdit = ['Edit', 'Write', 'ApplyPatch'].includes(name);
   const target = name === 'Bash' ? displayText(input.description || input.command)
+    : name === 'CronCreate' || name === 'CronUpdate' ? displayText(input.name || input.taskId || input.message)
     : name === 'read_skill' ? displayText(input.skillName || input.skill_name || input.name)
     : isEdit || name === 'Read' || kind === 'image' ? file.split('/').pop() || file
     : displayText(input.query || input.pattern || input.url || input.description || input.command || input.prompt || message.toolName);

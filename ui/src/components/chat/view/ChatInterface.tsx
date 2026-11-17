@@ -60,6 +60,10 @@ const EDIT_RECONCILIATION_HINT = [
 // Active chat surface. Shared session, streaming, composer and permission logic
 // lives in chat/hooks; this module owns how that state is presented.
 function ChatInterface({
+  active = true,
+  sessionScope = 'chat',
+  historyRevision,
+  emptyState,
   selectedProject: selectedProjectFromShell,
   selectedSession,
   ws,
@@ -217,6 +221,8 @@ function ChatInterface({
     scheduleScrollToBottom,
     pauseScrollFollowing,
   } = useChatSessionState({
+    eventDriven: sessionScope === 'task',
+    historyRevision,
     selectedProject,
     selectedSession,
     ws,
@@ -331,6 +337,7 @@ function ChatInterface({
     handleGrantSessionToolPermission,
     handleInputFocusChange,
   } = useChatComposerState({
+    active,
     selectedProject,
     selectedSession,
     currentSessionId,
@@ -415,6 +422,7 @@ function ChatInterface({
   ]);
 
   useChatRealtimeHandlers({
+    sessionScope,
     provider: 'pilotdeck',
     selectedProject,
     selectedSession,
@@ -900,8 +908,9 @@ function ChatInterface({
     <div className="pd-chat-canvas grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden bg-white dark:bg-neutral-950">
       <ErrorBoundary showDetails resetKeys={[selectedSession?.id, selectedProject?.name]}>
         <MessagesPane
+          emptyState={emptyState}
           scrollContainerRef={scrollContainerRef}
-          showReturnToLatest={canReturnToLatest}
+          showReturnToLatest={chatMessages.length > 0 && canReturnToLatest}
           onResumeScroll={scrollToBottom}
           onPauseScroll={pauseScrollFollowing}
           isLoadingSessionMessages={isLoadingSessionMessages}
@@ -939,8 +948,8 @@ function ChatInterface({
           runMode={runMode}
           planModeActive={effectivePermissionMode === 'plan'}
           sessionStore={sessionStore}
-          onFork={sessionIsReadOnly ? undefined : handleFork}
-          onRegenerate={sessionIsReadOnly ? undefined : handleRegenerate}
+          onFork={sessionIsReadOnly || sessionScope === 'task' ? undefined : handleFork}
+          onRegenerate={sessionIsReadOnly || sessionScope === 'task' ? undefined : handleRegenerate}
           forkDisabled={isForkPending}
         />
       </ErrorBoundary>

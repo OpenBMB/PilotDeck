@@ -36,7 +36,7 @@ import {
     createCollisionResistantProjectId,
     sanitizeSessionIdForPath,
 } from './utils/pilotPaths.js';
-import { mapCronRunOutcome } from '../../src/cron/protocol/types.js';
+import { cronTaskOverview } from './services/cronOverview.js';
 import sessionManager from './sessionManager.js';
 import { applyCustomSessionNames } from './database/db.js';
 import { ensureGeneralWorkspaceDirectory, generalWorkspaceNotice } from './utils/generalWorkspace.js';
@@ -634,37 +634,11 @@ async function getProjectCronJobsOverview(projectName) {
                 }
             }
         }
-        const jobs = (result.tasks || []).map((task) => {
-            const latestRun = runsByTaskId.get(task.taskId) || null;
-            const isCron = task.schedule?.type === 'cron';
-            return {
-                id: task.taskId,
-                projectKey: task.projectKey || null,
-                cron: isCron ? task.schedule.expression : '',
-                schedule: task.schedule,
-                timezone: task.timezone || task.schedule?.timezone || null,
-                revision: Number.isSafeInteger(task.revision) && task.revision >= 0 ? task.revision : 0,
-                prompt: task.message || '',
-                createdAt: task.createdAt,
-                nextRunAt: task.nextRunAt,
-                recurring: isCron,
-                permanent: isCron,
-                manualOnly: false,
-                status: task.status === 'running' ? 'running' : 'scheduled',
-                lastFiredAt: latestRun?.startedAt ? new Date(latestRun.startedAt).getTime() : undefined,
-                latestRun: latestRun ? {
-                    status: mapCronRunOutcome(latestRun.outcome, latestRun.finishedAt),
-                    runId: latestRun.runId,
-                    startedAt: latestRun.startedAt,
-                    taskId: latestRun.taskId,
-                    sessionId: latestRun.sessionKey,
-                } : null,
-            };
-        });
+        const jobs = (result.tasks || []).map(task => cronTaskOverview(task, task.lastRun || runsByTaskId.get(task.taskId) || null));
         return { jobs };
     } catch (error) {
-        console.warn('[projects] cronList via gateway failed, returning empty:', error?.message);
-        return { jobs: [] };
+        console.warn('[projects] cronList via gateway failed:', error?.message);
+        throw error;
     }
 }
 

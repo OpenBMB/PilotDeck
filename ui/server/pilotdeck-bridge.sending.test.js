@@ -9,7 +9,7 @@ const mock = await vi.hoisted(async () => {
     return { gateway: null, home, previousHome };
 });
 vi.mock('./services/gatewayConnectionCache.js', () => ({ createGatewayConnectionCache: () => ({ get: async () => mock.gateway, invalidate: () => {} }) }));
-import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage, runChatViaGateway } from './pilotdeck-bridge.js';
+import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage, runChatViaGateway, createAlwaysOnTurnEventForwarder, steerQueuedInputViaGateway } from './pilotdeck-bridge.js';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -252,4 +252,50 @@ it.each(['general', 'PilotDeck'])('uses the new cwd for existing and new General
         expect(path.dirname(root)).toBe(path.resolve(os.tmpdir()));
         await rm(root, { recursive: true, force: true });
     }
+});
+
+it('applies task guidance exactly once and dispatches queued replies after a background run has released admission', async () => {
+    let active = true;
+    const calls = [], frames = [];
+    mock.gateway = {
+        getActiveTurnSnapshot: async () => ({ active, runId: active ? 'scheduled-run' : undefined, events: [] }),
+        steerTurn: vi.fn(async () => ({ accepted: true })),
+        async *submitTurn(input) {
+            calls.push(input);
+            yield { type: 'input_accepted', runId: input.runId };
+            yield { type: 'turn_completed', runId: input.runId, finishReason: 'completed', usage: {} };
+        },
+    };
+    const sid = 'cron:dialog-guidance';
+    const forward = createAlwaysOnTurnEventForwarder((_session, frame) => frames.push(frame));
+    const emit = event => forward('always-on:turn-event', { sessionKey: sid, channelKey: 'cron', event: { runId: 'scheduled-run', ...event } });
+    emit({ type: 'agent_status', event: 'cron_input', detail: { projectKey: '/tmp/sending-project', message: 'Scheduled work' } });
+    await enqueueInputViaGateway(sid, item('guidance'), { send: frame => frames.push(frame) });
+    expect((await steerQueuedInputViaGateway(sid, 'guidance', { send: frame => frames.push(frame) })).ok).toBe(true);
+    expect(mock.gateway.steerTurn).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: sid, runId: 'scheduled-run' }));
+    emit({ type: 'steer_applied', itemId: 'guidance', text: 'Use verified sources' });
+    expect((await getInputQueueStateViaGateway(sid)).items).toEqual([]);
+    await enqueueInputViaGateway(sid, item('followup'), { send: frame => frames.push(frame) });
+    emit({ type: 'turn_completed', finishReason: 'completed', usage: {} });
+    expect(calls).toHaveLength(0);
+    active = false;
+    emit({ type: 'agent_status', event: 'cron_settled', detail: { finishReason: 'completed' } });
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({ sessionKey: sid, runId: 'followup' });
+    expect((await getInputQueueStateViaGateway(sid)).items).toEqual([]);
+    expect(frames.filter(frame => frame.role === 'user' && frame.queueItemId === 'guidance')).toHaveLength(1);
+});
+
+it('retains unapplied task guidance in a paused queue when background execution fails', async () => {
+    mock.gateway = { getActiveTurnSnapshot: async () => ({ active: false, events: [] }), submitTurn: vi.fn() };
+    const sid = 'cron:failed-guidance';
+    const forward = createAlwaysOnTurnEventForwarder(() => {});
+    const emit = event => forward('always-on:turn-event', { sessionKey: sid, channelKey: 'cron', event: { runId: 'failed-run', ...event } });
+    emit({ type: 'agent_status', event: 'cron_input', detail: { projectKey: '/tmp/sending-project', message: 'Scheduled work' } });
+    await enqueueInputViaGateway(sid, item('retained-guidance'), { send() {} });
+    emit({ type: 'agent_status', event: 'cron_settled', detail: { finishReason: 'error' } });
+    const queue = await getInputQueueStateViaGateway(sid);
+    expect(queue).toMatchObject({ paused: true, pauseReason: 'previous_turn_failed' });
+    expect(queue.items.map(item => item.id)).toEqual(['retained-guidance']);
+    expect(mock.gateway.submitTurn).not.toHaveBeenCalled();
 });

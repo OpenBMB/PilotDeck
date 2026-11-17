@@ -49,6 +49,8 @@ interface UseChatSessionStateArgs {
   ws: WebSocket | null;
   sendMessage: (message: unknown) => void;
   autoScrollToBottom?: boolean;
+  eventDriven?: boolean;
+  historyRevision?: string;
   externalMessageUpdate?: number;
   externalMessageUpdateTarget?: SessionMessagesUpdateTarget | null;
   processingSessions?: Set<string>;
@@ -276,6 +278,8 @@ export function useChatSessionState({
   resetStreamingState,
   pendingViewSessionRef,
   sessionStore,
+  eventDriven = false,
+  historyRevision,
 }: UseChatSessionStateArgs) {
   const [isLoading, setIsLoadingState] = useState(false);
   const [sessionRuntimeState, setSessionRuntimeState] = useState<SessionRuntimeState>(() => (
@@ -555,6 +559,7 @@ export function useChatSessionState({
     }, JSON.stringify(extraOptions));
     if (!isCurrent()) return { status: 'stale' };
     if (result.status === 'success') {
+      if (kind !== 'older' && historyRevision !== undefined) result.slot.historyRevision = historyRevision;
       setHasMoreMessages(result.slot.hasMore);
       setTotalMessages(result.slot.total);
       setAllMessagesLoaded(!result.slot.hasMore);
@@ -566,7 +571,7 @@ export function useChatSessionState({
       else setHistoryLoadError(true);
     }
     return result;
-  }, [requestScope, sessionStore]);
+  }, [requestScope, sessionStore, historyRevision]);
 
   const refreshSessionMessages = useCallback((options?: { afterRestore?: boolean }) => (
     requestHistory('refresh', options)
@@ -821,6 +826,26 @@ export function useChatSessionState({
       setIsAborting(false);
     }
 
+    // Event-driven task views retain the same session cache across navigation.
+    const cached = sessionStore.getSessionSlot(selectedSession.id);
+    if (eventDriven && cached?.fetchedAt) {
+      lastLoadedSessionKeyRef.current = sessionKey;
+      setCurrentSessionId(selectedSession.id);
+      setHasMoreMessages(cached.hasMore);
+      setTotalMessages(cached.total);
+      setAllMessagesLoaded(!cached.hasMore);
+      allMessagesLoadedRef.current = !cached.hasMore;
+      setIsLoadingSessionMessages(false);
+      historyReadyScrollKeyRef.current = activeScrollKeyRef.current;
+      setHistoryReadyScrollKey(activeScrollKeyRef.current);
+      if (ws && !sessionIsReadOnly) {
+        const request = buildSessionStatusRequestIfIdle({ sessionId: selectedSession.id, provider,
+          expectedActiveRunId: activeRunIdRef.current, includeActiveTurnMessages: true });
+        if (request) sendMessage(request);
+      }
+      return;
+    }
+
     // Reset pagination/scroll state
     setHasMoreMessages(false);
     setTotalMessages(0);
@@ -893,7 +918,22 @@ export function useChatSessionState({
     requestScope,
     requestHistory,
     setTokenBudget,
+    eventDriven,
   ]);
+
+  // Catalog/reconnect revisions repair missed background messages without
+  // replacing the cached view or querying it on every navigation.
+  const requestedHistoryRevision = useRef<string | null>(null);
+  useEffect(() => {
+    if (!eventDriven || historyRevision === undefined || !requestScope || isLoadingSessionMessages) return;
+    const cached = sessionStore.getSessionSlot(requestScope.sessionId);
+    if (!cached?.fetchedAt || cached.historyRevision === historyRevision) return;
+    const key = JSON.stringify([requestScope.key, historyRevision]);
+    if (requestedHistoryRevision.current === key) return;
+    requestedHistoryRevision.current = key;
+    void refreshSessionMessages();
+    return () => { if (requestedHistoryRevision.current === key) requestedHistoryRevision.current = null; };
+  }, [eventDriven, historyRevision, requestScope, isLoadingSessionMessages, sessionStore, refreshSessionMessages]);
 
   // A revision belongs to the view that received it, even while streaming.
   const consumedExternalRevision = useRef(externalMessageUpdate ?? 0);
@@ -1077,11 +1117,16 @@ export function useChatSessionState({
     if (sessionIsReadOnly) return;
     if (!activeViewSessionId || !processingSessions) return;
     const shouldBeProcessing = processingSessions.has(activeViewSessionId);
+    // Task catalog lifecycle events are authoritative. A completed frame can
+    // precede the catalog's terminal commit; do not resurrect it from the old
+    // running snapshot when isLoading changes.
+    if (eventDriven) return;
     if (shouldBeProcessing && !isLoading) {
       setIsLoading(true);
       setCanAbortSession(true);
     }
   }, [
+    eventDriven,
     currentSessionId,
     isLoading,
     pendingViewSessionRef,
@@ -1092,12 +1137,25 @@ export function useChatSessionState({
   ]);
 
   useEffect(() => {
+    if (!eventDriven || !selectedSession?.id || !processingSessions) return;
+    const running = processingSessions.has(selectedSession.id);
+    setIsLoading(running);
+    setCanAbortSession(running);
+    if (!running) {
+      setSessionRuntimeState('inactive');
+      setActiveRunId(null);
+      setClaudeStatus(null);
+      setPilotDeckStatus(null);
+    }
+  }, [eventDriven, selectedSession?.id, processingSessions, setIsLoading]);
+
+  useEffect(() => {
     const pendingSessionId = pendingViewSessionRef.current?.sessionId ?? null;
     const activeViewSessionId =
       selectedSession?.id || (pendingSessionId === currentSessionId ? currentSessionId : null);
     if (sessionIsReadOnly) return;
     if (!activeViewSessionId || !processingSessions) return;
-    if (!processingSessions.has(activeViewSessionId)) return;
+    if (eventDriven || !processingSessions.has(activeViewSessionId)) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     const requestStatus = () => {
@@ -1121,6 +1179,7 @@ export function useChatSessionState({
     sendMessage,
     sessionIsReadOnly,
     ws,
+    eventDriven,
   ]);
 
   const loadEarlierMessages = useCallback(() => {

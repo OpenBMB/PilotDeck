@@ -194,6 +194,8 @@ function mapWebMessageToNormalized(message, sessionId) {
     ...(message.blockId ? { blockId: message.blockId } : {}),
     ...(message.turnTiming ? { turnTiming: message.turnTiming } : {}),
     ...(message.timeline ? { timeline: message.timeline, isFinal: true } : {}),
+    ...(message.queueItemId ? { queueItemId: message.queueItemId } : {}),
+    ...(message.isSteer ? { isSteer: true } : {}),
     sessionId,
     timestamp: message.createdAt,
     provider: message.provider || 'pilotdeck',

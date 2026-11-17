@@ -4,9 +4,9 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { getPilotProjectChatDir } from "../../pilot/paths.js";
 import { sanitizeSessionIdForPath } from "../storage/ProjectSessionStorage.js";
+import { isInternalSession } from "../storage/SessionCatalog.js";
 import { readSessionInfo, type SessionInfo } from "../storage/SessionList.js";
 
-const ALWAYS_ON_AUXILIARY_PATTERN = /^always-on-(discovery|workspace|report)[:\-]/;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const SNIPPET_RADIUS = 60;
@@ -383,10 +383,6 @@ function buildSnippet(text: string, matcher: Matcher): string {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < normalized.length ? "..." : "";
   return `${prefix}${normalized.slice(start, end)}${suffix}`;
-}
-
-function isInternalSession(sessionId: string): boolean {
-  return ALWAYS_ON_AUXILIARY_PATTERN.test(sessionId);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

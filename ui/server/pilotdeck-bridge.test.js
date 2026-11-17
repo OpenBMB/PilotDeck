@@ -33,6 +33,17 @@ import {
     uiFilesToAttachments,
 } from './pilotdeck-bridge.js';
 
+it('forwards scheduled results as visible messages with the same identity as durable history', () => {
+    const event = { type: 'agent_status', event: 'cron_result', detail: { runId: 'run-1', message: 'Daily report\n\nReady' } };
+    const forward = vi.fn();
+    createAlwaysOnTurnEventForwarder(forward)('always-on:turn-event', { sessionKey: 'web:source', channelKey: 'web', event });
+    expect(forward).toHaveBeenCalledWith('web:source', expect.objectContaining({
+        id: 'cron-result:run-1', kind: 'text', role: 'assistant', content: 'Daily report\n\nReady', isFinal: true,
+        turnId: 'cron-result:run-1',
+    }));
+    expect(gatewayEventToFrames(event, 'web:source', 'pilotdeck')[0].id).toBe('cron-result:run-1');
+});
+
 it.each(['completed', 'aborted_streaming', 'aborted_tools', 'model_error'])('preserves execution timing through the real %s Gateway projection', reason => {
     const result = { type: reason === 'completed' ? 'success' : reason.startsWith('aborted') ? 'aborted' : 'error',
         sessionId: 's', turnId: 'r', stopReason: reason, usage: {}, permissionDenials: [], turns: 1,
@@ -916,6 +927,16 @@ describe('gatewayEventToFrames agent status errors', () => {
             code: 'gateway_unavailable',
             userHint: 'Start or restart the PilotDeck gateway, then retry this message.',
         });
+    });
+});
+
+describe('scheduled task input frames', () => {
+    it('uses ordinary user messages with the task run identity', () => {
+        const frames = gatewayEventToFrames({ type: 'agent_status', event: 'cron_input', runId: 'task-run-1',
+            detail: { message: 'Scheduled instructions', taskId: 'task-1' } }, 'cron:task-1', 'pilotdeck');
+        expect(frames).toHaveLength(1);
+        expect(frames[0]).toMatchObject({ kind: 'text', role: 'user', content: 'Scheduled instructions',
+            sessionId: 'cron:task-1', runId: 'task-run-1' });
     });
 });
 

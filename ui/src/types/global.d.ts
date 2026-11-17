@@ -20,6 +20,9 @@ declare global {
     switchProject?: (projectName: string) => boolean;
     pilotdeckDesktop?: {
       platform?: string;
+      reconcileSystemNotifications?: (value: { scope: string; ids: string[] }) => Promise<void>;
+      dismissSystemNotification?: (value: { scope: string; id: string }) => Promise<void>;
+      onSystemNotificationDismiss?: (callback: (value: { scope: string; id: string }) => void) => () => void;
       getUninstallStatus?: () => Promise<{ supported: boolean }>;
       uninstall?: () => Promise<{ canceled: boolean }>;
       getRuntimeStatus?: () => { phase: string; message: string; progress?: number; startedAt?: number; phaseStartedAt?: number; logPath?: string; error?: string } | null;

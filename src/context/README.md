@@ -16,4 +16,6 @@ The context popover requests `includeModelContext=summary` on authenticated mess
 
 Snapshots atomically replace a private `<transcript>.context.json` sidecar. Readers validate transcript ownership and reject snapshots from an older accepted turn. Session deletion removes the sidecar. Forked sessions without a fresh snapshot show unavailable estimates until their next model request.
 
+Memory capture excludes synthetic runtime references, including task instructions and recalled memory, before selecting the latest user turn. Real task replies and mid-turn guidance remain eligible for the normal indexing pipeline.
+
 Tests: [tests/context](../../tests/context). See the [test guide](../../docs/testing.md) for runner selection.

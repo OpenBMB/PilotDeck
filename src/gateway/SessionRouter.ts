@@ -7,6 +7,8 @@ export type GatewaySessionContext = {
   sessionKey: string;
   projectKey?: string;
   channelKey: string;
+  /** Trusted execution directory, when the caller owns a movable workspace. */
+  workspaceCwd?: string;
 };
 
 export type GatewaySessionFactory = (context: GatewaySessionContext) => AgentSession | Promise<AgentSession>;
@@ -94,6 +96,9 @@ export class SessionRouter {
       if (sessionClosed()) throw new Error("Session was closed while initializing.");
       const cached = this.sessions.get(context.sessionKey);
       if (cached) {
+        if (context.workspaceCwd && context.workspaceCwd !== cached.context.workspaceCwd) {
+          cached.dirtyReason = "workspace_changed";
+        }
         cached.context = mergeSessionContext(cached.context, context);
         // A history/resume request must not recreate the session underneath a live
         // turn. Only the turn that reserved this slot may refresh its runtime.
@@ -386,5 +391,6 @@ function mergeSessionContext(
     sessionKey: next.sessionKey,
     channelKey: next.channelKey || current.channelKey,
     projectKey: current.projectKey ?? next.projectKey,
+    workspaceCwd: next.workspaceCwd ?? current.workspaceCwd,
   };
 }

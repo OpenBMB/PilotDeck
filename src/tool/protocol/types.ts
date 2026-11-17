@@ -243,6 +243,8 @@ export type PilotDeckPlanTodoStateHandle = {
 
 export type PilotDeckToolRuntimeContext = {
   sessionId: string;
+  /** Stable project identity, distinct from an overridden working directory. */
+  projectKey?: string;
   turnId: string;
   cwd: string;
   abortSignal?: AbortSignal;

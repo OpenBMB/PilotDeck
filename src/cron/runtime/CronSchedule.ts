@@ -1,7 +1,8 @@
-import type { CronCreateSchedule } from "../protocol/types.js";
+import type { CronCreateSchedule } from "../protocol/schedules.js";
 import { isValidCronTimezone } from "../CronTimezone.js";
 
 export const CRON_SCHEDULE_COMPUTATION_VERSION = 3;
+export function isValidCronExpression(expression: string): boolean { return Boolean(parseCronExpression(expression)); }
 
 /** Whether the expression uses the day-field OR rule introduced in version 3. */
 export function cronDayFieldsUseOr(expression: string): boolean {
@@ -30,7 +31,51 @@ export function computeNextRunAt(
     const delayMs = delayToMilliseconds(schedule.amount, schedule.unit);
     return delayMs === undefined ? undefined : new Date(after.getTime() + delayMs);
   }
+  if (schedule.type === "interval") {
+    if (!Number.isSafeInteger(schedule.everySeconds) || schedule.everySeconds < 60) return undefined;
+    const anchor = schedule.anchorAt ? Date.parse(schedule.anchorAt) : after.getTime();
+    if (!Number.isFinite(anchor)) return undefined;
+    const interval = schedule.everySeconds * 1_000;
+    return new Date(anchor + Math.max(1, Math.floor((after.getTime() - anchor) / interval) + 1) * interval);
+  }
+  if (schedule.type === "monthly") {
+    if (![1, 2, 3, 4, -1].includes(schedule.ordinal)
+      || !Number.isInteger(schedule.weekday) || schedule.weekday < 0 || schedule.weekday > 6
+      || !Number.isInteger(schedule.hour) || schedule.hour < 0 || schedule.hour > 23
+      || !Number.isInteger(schedule.minute) || schedule.minute < 0 || schedule.minute > 59
+      || !isValidCronTimezone(schedule.timezone)) return undefined;
+    const formatter = createCronDateFormatter(schedule.timezone);
+    let candidate = new Date(Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS);
+    for (let index = 0; index < 63 * 24 * 60; index += 1) {
+      const parts = readCronDateParts(candidate, formatter);
+      if (parts && parts.hour === schedule.hour && parts.minute === schedule.minute
+        && parts.dayOfWeek === schedule.weekday) {
+        const year = Number(new Intl.DateTimeFormat("en", { timeZone: schedule.timezone, year: "numeric" }).format(candidate));
+        const lastDay = new Date(Date.UTC(year, parts.month, 0)).getUTCDate();
+        if (schedule.ordinal === -1 ? parts.dayOfMonth + 7 > lastDay
+          : Math.floor((parts.dayOfMonth - 1) / 7) + 1 === schedule.ordinal) return candidate;
+      }
+      candidate = new Date(candidate.getTime() + MINUTE_MS);
+    }
+    return undefined;
+  }
   return computeNextCronRunAt(schedule.expression, after, schedule.timezone ?? fallbackTimezone);
+}
+
+/** Preview uses the same evaluator as execution; no task or session is created. */
+export function previewCronSchedule(schedule: CronCreateSchedule, after: Date, timezone = "UTC", count = 3): string[] {
+  const result: string[] = [];
+  let cursor = after;
+  const normalized = schedule.type === "interval" && !schedule.anchorAt
+    ? { ...schedule, anchorAt: after.toISOString() } : schedule;
+  for (let index = 0; index < Math.min(10, count); index += 1) {
+    const next = computeNextRunAt(normalized, cursor, timezone);
+    if (!next || next.getTime() <= cursor.getTime()) break;
+    result.push(next.toISOString());
+    if (normalized.type === "once" || normalized.type === "delay") break;
+    cursor = next;
+  }
+  return result;
 }
 
 export function delayToMilliseconds(
@@ -139,10 +184,11 @@ function parseField(field: string, min: number, max: number): Set<number> | unde
   const output = new Set<number>();
   for (const part of field.split(",")) {
     const trimmed = part.trim();
-    if (!trimmed) return undefined;
+    if (!/^(?:\*|\d+(?:-\d+)?)(?:\/\d+)?$/.test(trimmed)) return undefined;
     const stepParts = trimmed.split("/");
     if (stepParts.length > 2) return undefined;
     const base = stepParts[0];
+    if (stepParts.length === 2 && base !== "*" && !base.includes("-")) return undefined;
     const step = stepParts[1] === undefined ? 1 : Number.parseInt(stepParts[1], 10);
     if (!Number.isInteger(step) || step <= 0) return undefined;
 

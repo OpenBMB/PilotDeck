@@ -1,6 +1,7 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import type { Dirent } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import { homedir } from "node:os";
 import type { SessionConfigOverrides } from "../../always-on/runtime/SessionConfigOverrides.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
@@ -20,17 +21,18 @@ import type {
   CronStopInput,
   CronStopResult,
   CronTask,
+  CronTaskChange,
   CronUpdateInput,
   CronUpdateResult,
 } from "../protocol/types.js";
 import { resolveCronPaths } from "../storage/CronPaths.js";
-import { createCronCreateTool } from "../tool/CronCreateTool.js";
-import { createCronDeleteTool } from "../tool/CronDeleteTool.js";
-import { createCronListTool } from "../tool/CronListTool.js";
-import { createCronStopTool } from "../tool/CronStopTool.js";
+import { createCronTools } from "../tool/createCronTools.js";
 import { migrateCronStores } from "../storage/CronStoreMigration.js";
-import { CronRuntime, type CronRuntimeLogger } from "./CronRuntime.js";
+import { CronRuntime, type CronRuntimeLogger, type CreateCronRuntimeOptions } from "./CronRuntime.js";
 import type { CronTurnEventHandler } from "./CronFire.js";
+import { CronReminderStore } from "../storage/CronReminderStore.js";
+import type { CronReminder, CronReminderListInput, CronReminderDismissInput } from "../protocol/types.js";
+import { createRegisteredWebProjectResolver } from "../../web/server/listProjects.js";
 
 export type CreateCronManagerOptions = {
   config: CronConfig;
@@ -42,6 +44,9 @@ export type CreateCronManagerOptions = {
   telemetry?: TelemetryClient;
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
+  onTaskChange?: (change: CronTaskChange) => void;
+  onReminderChange?: (change: { id: string; reminder?: CronReminder; dismissedScope?: string }) => void;
+  generateTaskTitle?: CreateCronRuntimeOptions["generateTaskTitle"];
 };
 
 export class CronManager {
@@ -53,16 +58,16 @@ export class CronManager {
   private readonly tools: PilotDeckToolDefinition[];
   private gateway?: Gateway;
   private started = false;
+  private readonly reminders: CronReminderStore;
+  private readonly resolveRegisteredProject: ReturnType<typeof createRegisteredWebProjectResolver>;
+  private readonly emittedReminders = new Set<string>();
 
   constructor(private readonly options: CreateCronManagerOptions) {
     this.config = options.config;
     this.pilotHome = resolve(options.pilotHome);
-    this.tools = [
-      createCronCreateTool(this),
-      createCronListTool(this),
-      createCronDeleteTool(this),
-      createCronStopTool(this),
-    ];
+    this.resolveRegisteredProject = createRegisteredWebProjectResolver({ pilotHome: this.pilotHome });
+    this.tools = createCronTools(this);
+    this.reminders = new CronReminderStore(resolve(this.pilotHome, "cron", "reminders.json"));
   }
 
   getTools(): PilotDeckToolDefinition[] {
@@ -91,7 +96,8 @@ export class CronManager {
     this.started = true;
     const projectKeys = await discoverCronProjectKeys(this.pilotHome, this.options.logger);
     for (const projectKey of projectKeys) {
-      await this.ensureRuntime(projectKey);
+      try { await this.ensureRuntime(projectKey); }
+      catch (error) { this.options.logger?.warn("cron project could not start; its store was preserved", { projectKey, error: String(error) }); }
     }
     this.options.logger?.info("cron manager started", { projectCount: this.runtimes.size });
   }
@@ -107,12 +113,41 @@ export class CronManager {
   }
 
   async createTask(input: CronCreateInput): Promise<CronCreateResult> {
-    const projectKey = requireProjectKey(input.projectKey);
+    if (!this.config.enabled) throw new Error("Cron is disabled. Enable it in pilotdeck.yaml to create tasks.");
+    const projectKey = input.projectKey === "general" ? this.pilotHome : requireProjectKey(input.projectKey);
+    // Check before creating a runtime, project marker, or durable task. Agent
+    // tools and Gateway/Web requests share this creation boundary.
+    if (projectKey !== this.pilotHome && !await this.resolveRegisteredProject(projectKey)) {
+      throw Object.assign(new Error("Cron project is not registered or its directory is unavailable. Select an existing project and try again."), {
+        code: "cron_project_unavailable",
+      });
+    }
+    let workspaceCwd = input.workspaceCwd;
+    if (projectKey === this.pilotHome && !workspaceCwd) {
+      const configured = process.env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY?.trim();
+      if (configured) workspaceCwd = configured.startsWith("~/") ? resolve(homedir(), configured.slice(2)) : configured;
+      else {
+        try {
+          const state = JSON.parse(await readFile(resolve(this.pilotHome, "general-workspace.json"), "utf-8"));
+          if (state.version === 1 && typeof state.directory === "string") workspaceCwd = state.directory;
+        } catch (error) {
+          throw new Error("Cron General workspace is unavailable. Open General in the Web UI to prepare it.", { cause: error });
+        }
+      }
+    }
+    if (projectKey === this.pilotHome) {
+      if (!workspaceCwd || !isAbsolute(workspaceCwd)) throw new Error("Cron General workspace is unavailable.");
+      const [home, workspace] = await Promise.all([realpath(this.pilotHome), realpath(workspaceCwd)]);
+      const outside = (root: string, path: string) => { const rel = relative(root, path); return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel); };
+      if (!outside(home, workspace) || !outside(workspace, home)) throw new Error("Cron General workspace must be separate from the configuration directory.");
+      workspaceCwd = workspace;
+    }
     const runtime = await this.ensureRuntime(projectKey);
-    return runtime.createTask({ ...input, projectKey });
+    return runtime.createTask({ ...input, projectKey, workspaceCwd });
   }
 
   async listTasks(input: CronListInput = {}): Promise<CronListResult> {
+    if (input.projectKey === "general") input = { ...input, projectKey: this.pilotHome };
     if (input.projectKey) {
       const runtime = await this.ensureRuntime(input.projectKey);
       return runtime.listTasks(input);
@@ -131,14 +166,44 @@ export class CronManager {
       result.recentRuns = runs
         .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
         .slice(0, input.limit ?? 50);
+      if (input.taskId && runs.length >= (input.limit ?? 50)) result.nextBeforeRunId = result.recentRuns.at(-1)?.runId;
     }
     return result;
   }
 
   async updateTask(input: CronUpdateInput): Promise<CronUpdateResult> {
+    if (input.projectKey === "general") input = { ...input, projectKey: this.pilotHome };
     const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
     if (!runtime) return { updated: false, reason: "not_found" };
     return runtime.updateTask(input);
+  }
+
+  async listReminders(input: CronReminderListInput): Promise<{ reminders: CronReminder[] }> {
+    validateReminderScope(input.scope);
+    return { reminders: await this.reminders.list(input.scope) };
+  }
+
+  async dismissReminder(input: CronReminderDismissInput): Promise<{ dismissed: boolean }> {
+    validateReminderScope(input.scope);
+    if (typeof input.id !== "string" || !/^[a-f0-9]{64}$/.test(input.id)) throw new Error("Invalid reminder ID.");
+    const dismissed = await this.reminders.dismiss(input.scope, input.id, (this.options.now?.() ?? new Date()).toISOString());
+    if (dismissed) this.options.onReminderChange?.({ id: input.id, dismissedScope: input.scope });
+    return { dismissed };
+  }
+
+  private async recordReminder(reminder: CronReminder): Promise<void> {
+    if (this.emittedReminders.has(reminder.id)) return;
+    const created = await this.reminders.put(reminder);
+    this.emittedReminders.add(reminder.id);
+    if (created) this.options.onReminderChange?.({ id: reminder.id, reminder });
+  }
+
+  async prepareConversation(input: { sessionKey: string; projectKey?: string }): Promise<{ task: CronTask; workspaceCwd: string }> {
+    const task = (await this.listTasks()).tasks.find(task => task.sessionKey === input.sessionKey);
+    if (!task || (input.projectKey && resolve(input.projectKey) !== resolve(task.projectKey!))) {
+      throw new Error("Scheduled task conversation does not belong to this project.");
+    }
+    return (await this.ensureRuntime(task.projectKey!)).prepareConversation(task.taskId);
   }
 
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
@@ -173,7 +238,7 @@ export class CronManager {
   }
 
   private async ensureRuntime(projectKeyInput: string): Promise<CronRuntime> {
-    const projectKey = resolve(projectKeyInput);
+    const projectKey = projectKeyInput === "general" ? this.pilotHome : resolve(projectKeyInput);
     const existing = this.runtimes.get(projectKey);
     if (existing) {
       await this.starting.get(projectKey);
@@ -191,7 +256,11 @@ export class CronManager {
       telemetry: this.options.telemetry,
       onResultDelivery: this.options.onResultDelivery,
       onTurnEvent: this.options.onTurnEvent,
+      onTaskChange: this.options.onTaskChange,
+      onReminder: reminder => this.recordReminder(reminder),
+      generateTaskTitle: this.options.generateTaskTitle,
       activeRunCount: () => this.activeRunCount(),
+      onRunFinished: () => { for (const loaded of this.runtimes.values()) loaded.poke(); },
       skipToolCreation: true,
     });
     if (this.gateway) runtime.bindGateway(this.gateway);
@@ -265,6 +334,10 @@ function requireProjectKey(projectKey: string | undefined): string {
     throw new Error("Cron task creation requires a projectKey.");
   }
   return resolve(projectKey);
+}
+
+function validateReminderScope(scope: string): void {
+  if (typeof scope !== "string" || !scope || scope.length > 128) throw new Error("Invalid reminder scope.");
 }
 
 async function discoverCronProjectKeys(

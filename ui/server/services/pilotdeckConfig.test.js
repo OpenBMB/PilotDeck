@@ -14,10 +14,12 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fileSymlinkOrSkip } from '../test-support/symlink.js';
 import { parse as parseYaml } from 'yaml';
+import { parseMemoryConfig } from '../../../src/pilot/config/parseMemoryConfig.js';
 import {
     applyConfigToProcessEnv,
     buildDefaultPilotDeckConfig,
     buildMemoryLlmOptions,
+    buildMemoryDefaults,
     buildRuntimeEnv,
     configRevision,
     normalizePilotDeckConfig,
@@ -33,6 +35,25 @@ import {
 } from './pilotdeckConfig.js';
 
 const tempDirs = [];
+
+it('keeps Web memory defaults aligned with nested Gateway schedule configuration', () => {
+    const config = { memory: { enabled: true, autoIndexIntervalMinutes: 45,
+        schedule: { reasoningMode: 'accuracy_first', autoIndexIntervalMinutes: 1, autoDreamIntervalMinutes: 0 } } };
+    const expected = { reasoningMode: 'accuracy_first', autoIndexIntervalMinutes: 1, autoDreamIntervalMinutes: 0 };
+    expect(normalizePilotDeckConfig(config).memory).toMatchObject(expected);
+    expect(buildMemoryDefaults(config).defaultIndexingSettings).toEqual(expected);
+    // A partial nested schedule replaces legacy flat fields, as in parseMemoryConfig.
+    expect(buildMemoryDefaults({ memory: { autoIndexIntervalMinutes: 45, schedule: { reasoningMode: 'accuracy_first' } } }).defaultIndexingSettings)
+        .toEqual({ reasoningMode: 'accuracy_first', autoIndexIntervalMinutes: 30, autoDreamIntervalMinutes: 60 });
+    expect(buildMemoryDefaults({ memory: { autoIndexIntervalMinutes: 45, schedule: {} } }).defaultIndexingSettings.autoIndexIntervalMinutes).toBe(45);
+    for (const memory of [config.memory, { autoIndexIntervalMinutes: 45, schedule: { reasoningMode: 'accuracy_first' } },
+        { autoIndexIntervalMinutes: 45, schedule: {} }, { autoIndexIntervalMinutes: 45 }]) {
+        const parsed = parseMemoryConfig(memory, [], '/tmp/synthetic-memory');
+        expect(buildMemoryDefaults({ memory }).defaultIndexingSettings).toEqual({
+            reasoningMode: 'answer_first', autoIndexIntervalMinutes: 30, autoDreamIntervalMinutes: 60, ...parsed.schedule,
+        });
+    }
+});
 
 it('keeps search template references editable without exposing literal secrets or unrelated credentials', () => {
     const result = maskSecrets({ apiKey: '{{apiKey}}', tools: { webSearch: { providers: { custom: {

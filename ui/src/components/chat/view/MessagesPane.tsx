@@ -57,6 +57,8 @@ type DiffLine = { type: string; content: string; lineNum: number };
 
 type MessagesPaneProps = {
   scrollContainerRef: RefObject<HTMLDivElement>;
+  emptyState?: ReactNode;
+  allowReply?: boolean;
   showReturnToLatest?: boolean;
   onResumeScroll?: () => void;
   onPauseScroll?: (messageKey?: string) => void;
@@ -363,6 +365,8 @@ function isForkedChatSession(session: ProjectSession | null): boolean {
 function MessagesPane({
   scrollContainerRef,
   showReturnToLatest = false,
+  emptyState,
+  allowReply = true,
   onResumeScroll,
   onPauseScroll,
   isLoadingSessionMessages,
@@ -1266,7 +1270,7 @@ function MessagesPane({
             <span>{t('loading', { defaultValue: 'Loading...' })}</span>
           </div>
         </div>
-      ) : isNewConversationEmpty ? (
+      ) : isEmpty && emptyState ? emptyState : isNewConversationEmpty ? (
         <div className="mx-auto flex h-full max-w-[720px] flex-col items-center justify-center gap-4 px-6 py-10 text-center">
           <div className="text-[15px] font-medium text-neutral-900 dark:text-neutral-100">
             {selectedProject
@@ -1392,7 +1396,7 @@ function MessagesPane({
         </div>
       )}
 
-      <AssistantReplyQuoteAction />
+      {allowReply && <AssistantReplyQuoteAction />}
       {openSubagentId ? (
         <SubagentDetailModal
           subagentId={openSubagentId}

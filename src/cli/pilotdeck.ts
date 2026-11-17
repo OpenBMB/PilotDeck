@@ -93,17 +93,9 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         onTurnEvent: (sessionKey, channelKey, event) => {
           deferredBroadcast?.("always-on:turn-event", { sessionKey, channelKey, event });
         },
-        onResultDelivery: (delivery) => {
-          void serverRef?.deliverCronResult(delivery)
-            .then((delivered) => {
-              if (!delivered) {
-                console.warn(`[cron] result delivery was not handled task=${delivery.taskId} run=${delivery.runId}`);
-              }
-            })
-            .catch((error: unknown) => {
-              console.warn(`[cron] result delivery failed ${error instanceof Error ? error.message : String(error)}`);
-            });
-        },
+        onTaskChange: (change) => deferredBroadcast?.("cron:task-changed", change),
+        onReminderChange: (change) => deferredBroadcast?.("cron:reminder-changed", change),
+        generateTaskTitle: (task, signal) => generateTaskTitle(task, signal),
       });
     }
 
@@ -111,7 +103,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     cron = buildCron(snapshot.config.cron);
 
     const {
-      gateway, configStore, dispose: disposeGateway,
+      gateway, configStore, generateTaskTitle, dispose: disposeGateway,
       bindServer, isProjectBusy, updateSubsystems,
     } = createLocalGateway({
       projectRoot,

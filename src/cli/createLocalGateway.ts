@@ -1,3 +1,5 @@
+import { generateCronTaskPresentation } from "../cron/runtime/CronTaskPresentation.js";
+import type { CronTask } from "../cron/protocol/types.js";
 import { VideoStore } from "../tool/builtin/videos/VideoStore.js";
 import { PythonRuntimeManager, withPythonMcpEnvironment, type PythonRuntimeSnapshot } from '../runtime/pythonRuntime.js';
 import { getGitRuntimeStatus } from '../runtime/gitRuntime.js';
@@ -174,6 +176,7 @@ export type SubsystemUpdate = {
 };
 
 export type CreateLocalGatewayResult = {
+  generateTaskTitle: (task: CronTask, signal: AbortSignal) => Promise<string | { title: string; reminderTiming: "due" | "result" } | null>;
   gateway: Gateway;
   configStore: PilotConfigStore;
   registry: ProjectRuntimeRegistry;
@@ -707,6 +710,11 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     gateway,
     configStore,
     registry,
+    generateTaskTitle: async (task, signal) => {
+      const runtime = registry.resolve(task.projectKey);
+      return generateCronTaskPresentation({ text: task.message, sessionId: task.sessionKey, taskId: task.taskId,
+        signal, modelRuntime: runtime.model, model: task.modelSelection ?? runtime.snapshot.config.agent.model });
+    },
     dispose: () => {
       registry.shutdown();
       router?.shutdown();
@@ -1826,6 +1834,7 @@ class ProjectRuntimeRegistry {
       model: agent.model.model,
       modelMultimodal,
       cwd,
+      projectKey: runtime.projectRoot,
       permissionMode,
       jsonSelfCorrect: true,
       ...(subagentRuntimeModel ? { subagentModel: subagentRuntimeModel } : {}),

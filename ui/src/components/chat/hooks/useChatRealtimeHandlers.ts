@@ -357,6 +357,7 @@ function warnResolvedSessionId(msg: LatestChatMessage, fallbackSessionId: string
 }
 
 interface UseChatRealtimeHandlersArgs {
+  sessionScope?: 'chat' | 'task';
   provider: SessionProvider;
   selectedProject: Project | null;
   selectedSession: ProjectSession | null;
@@ -387,6 +388,7 @@ interface UseChatRealtimeHandlersArgs {
 /* ------------------------------------------------------------------ */
 
 export function useChatRealtimeHandlers({
+  sessionScope = 'chat',
   provider,
   selectedSession,
   currentSessionId,
@@ -463,6 +465,10 @@ export function useChatRealtimeHandlers({
       pendingSessionId === currentSessionId ? currentSessionId : null;
     const activeViewSessionId =
       selectedSession?.id || activeCurrentSessionId || pendingSessionId || null;
+
+    const incomingSessionId = resolveSessionId(latestMessage, fallbackSessionId);
+    if (incomingSessionId && (incomingSessionId.startsWith('cron:') !== (sessionScope === 'task'))) return;
+    if (sessionScope === 'task' && incomingSessionId && incomingSessionId !== activeViewSessionId) return;
 
     /* ---------------------------------------------------------------- */
     /*  Legacy messages (no `kind` field) — handle and return           */
@@ -966,7 +972,7 @@ export function useChatRealtimeHandlers({
           );
           onNavigateToSession?.(newSessionId);
         }
-        if (window.refreshProjects) {
+        if (sessionScope === 'chat' && window.refreshProjects) {
           void window.refreshProjects();
         }
         break;
@@ -1056,7 +1062,7 @@ export function useChatRealtimeHandlers({
             onNavigateToSession?.(actualId);
           }
           sessionStorage.removeItem('pendingSessionId');
-          if (window.refreshProjects) {
+          if (sessionScope === 'chat' && window.refreshProjects) {
             setTimeout(() => window.refreshProjects?.(), 500);
           }
         }
@@ -1192,6 +1198,7 @@ export function useChatRealtimeHandlers({
         break;
     }
   }, [
+    sessionScope,
     provider,
     sendMessage,
     clearSessionStatusRetry,

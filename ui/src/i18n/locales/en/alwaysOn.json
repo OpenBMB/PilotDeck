@@ -104,10 +104,10 @@
     }
   },
   "cron": {
-    "title": "Cron",
-    "subtitle": "Scheduled cron jobs across projects.",
+    "title": "Scheduled tasks",
+    "subtitle": "Recurring work, conversations and saved results across projects.",
     "loading": "Loading cron jobs...",
-    "empty": "No active cron jobs found.",
+    "empty": "No tasks match this view.",
     "unassigned": "Unassigned",
     "tabs": {
       "list": "Task List",
@@ -124,7 +124,9 @@
       "delete": "Delete",
       "edit": "Edit",
       "runNow": "Run Now",
-      "stop": "Stop"
+      "stop": "Stop",
+      "pause": "Pause",
+      "resume": "Resume"
     },
     "deleteConfirm": {
       "title": "Delete cron task?",
@@ -136,14 +138,18 @@
     },
     "status": {
       "scheduled": "Scheduled",
-      "running": "Running"
+      "running": "Running",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Needs attention",
+      "missed": "Missed"
     },
     "create": {
-      "title": "Create Cron Task",
-      "subtitle": "Schedule a one-time or recurring background prompt.",
-      "success": "Cron task created.",
+      "title": "New scheduled task",
+      "subtitle": "Describe the work, choose a workspace and set its schedule.",
+      "success": "Scheduled task created.",
       "fields": {
-        "prompt": "Prompt",
+        "prompt": "Task instructions",
         "workspace": "Workspace",
         "scheduleType": "Schedule Type",
         "date": "Date",
@@ -154,12 +160,16 @@
         "weekday": "Day of week",
         "monthDay": "Day of month",
         "month": "Month",
-        "expression": "Cron expression"
+        "expression": "Cron expression",
+        "name": "Task name",
+        "ordinal": "Week of month",
+        "intervalMinutes": "Interval in minutes"
       },
       "placeholders": {
         "prompt": "Describe what PilotDeck should do when this task runs.",
         "workspace": "Select a workspace",
-        "expression": "30 8 * * 1"
+        "expression": "30 8 * * 1",
+        "name": "For example, daily sales report"
       },
       "schedule": {
         "once": "One-time",
@@ -168,7 +178,10 @@
         "daily": "Daily",
         "weekly": "Weekly",
         "monthly": "Monthly",
-        "yearly": "Yearly"
+        "yearly": "Yearly",
+        "interval": "Fixed interval",
+        "monthlyWeekday": "Weekday of month",
+        "existing": "Existing schedule"
       },
       "options": {
         "everyDay": "Every day"
@@ -199,7 +212,8 @@
       "help": {
         "expressionFormat": "Format: minute hour day month weekday",
         "monthlyDateMayBeSkipped": "Months without this date will not trigger the task.",
-        "yearlyLeapDay": "This task will only trigger in leap years."
+        "yearlyLeapDay": "This task will only trigger in leap years.",
+        "custom": "Edit the complete expression below."
       },
       "plan": {
         "label": "Plan:",
@@ -207,7 +221,9 @@
         "daily": "Daily at {{time}}",
         "weekly": "Every {{weekday}} at {{time}}",
         "monthly": "Monthly on day {{day}} at {{time}}",
-        "yearly": "Yearly on {{month}}/{{day}} at {{time}}"
+        "yearly": "Yearly on {{month}}/{{day}} at {{time}}",
+        "interval": "Every {{minutes}} minutes",
+        "monthlyWeekday": "Selected weekday of each month at {{time}}"
       },
       "validation": {
         "messageRequired": "Prompt is required.",
@@ -218,7 +234,9 @@
         "timezoneInvalid": "Timezone is invalid.",
         "runAtInvalid": "Run time does not exist in the selected timezone.",
         "runAtFuture": "Run time must be in the future.",
-        "expressionInvalid": "Cron expression format is invalid."
+        "expressionInvalid": "Cron expression format is invalid.",
+        "interval": "Enter a positive number of minutes.",
+        "projectUnavailable": "This workspace is unavailable. Select an existing project and try again."
       },
       "actions": {
         "expandAdvanced": "Expand",
@@ -227,7 +245,7 @@
       }
     },
     "edit": {
-      "title": "Edit Cron Task",
+      "title": "Edit scheduled task",
       "subtitle": "Update the prompt or schedule for this task.",
       "disabled": {
         "running": "Stop the running task before editing.",
@@ -243,6 +261,130 @@
         "cancel": "Cancel",
         "save": "Save Changes"
       }
+    },
+    "search": "Search tasks",
+    "filter": "Task status",
+    "filters": {
+      "all": "All tasks",
+      "active": "Active",
+      "paused": "Paused",
+      "ended": "Finished",
+      "attention": "Needs attention"
+    },
+    "preview": "Next runs",
+    "latestResult": "Latest result",
+    "unread": "Unread result",
+    "localNotice": "Keep this computer and PilotDeck running for local tasks.",
+    "ordinals": {
+      "1": "First",
+      "2": "Second",
+      "3": "Third",
+      "4": "Fourth",
+      "-1": "Last"
+    },
+    "execution": {
+      "title": "Execution and results",
+      "notifications": "Task reminders",
+      "all": "Every run",
+      "findings": "New findings or failures",
+      "failures": "Failures only",
+      "advanced": "Advanced execution settings",
+      "permissions": "Permissions",
+      "restricted": "Restricted by existing permission rules",
+      "readOnly": "Read only",
+      "fullAccess": "Full Access",
+      "workspace": "Execution workspace",
+      "local": "Project working directory",
+      "worktree": "Isolated Git worktree from committed HEAD",
+      "model": "Model",
+      "defaultModel": "Use project default",
+      "permissionNotice": "Tasks cannot ask for approval while unattended. Actions outside the selected permissions need your attention.",
+      "fullAccessNotice": "Full Access permits background file changes and commands without asking.",
+      "worktreeNotice": "Requires Git. A dedicated worktree starts from committed HEAD and is reused by this task; local uncommitted changes are excluded.",
+      "resultsNotice": "Every task has its own conversation. Recurring runs continue in the same task context. Results stay in Scheduled Tasks.",
+      "taskContext": "Task context"
+    },
+    "history": {
+      "title": "Run history",
+      "close": "Close details",
+      "instructions": "Task instructions",
+      "empty": "No runs yet. Try running this task once.",
+      "scheduledFor": "Scheduled for",
+      "delivery": "Result delivery",
+      "openConversation": "Open execution conversation and files",
+      "retryDelivery": "Retry result delivery",
+      "snapshot": "Instructions used for this run",
+      "snapshotUnavailable": "Unavailable for this older run.",
+      "older": "Load older runs",
+      "detailsFor": "View task details: {{name}}"
+    },
+    "runStatus": {
+      "completed": "Completed",
+      "failed": "Failed",
+      "blocked": "Needs input or permission",
+      "stopped": "Stopped",
+      "aborted": "Interrupted",
+      "running": "Running"
+    },
+    "delivery": {
+      "pending": "Pending",
+      "sent": "Sent",
+      "failed": "Delivery failed",
+      "skipped": "Saved in task / conversation"
+    },
+    "trigger": {
+      "scheduled": "Scheduled",
+      "manual": "Manual"
+    },
+    "errors": {
+      "already_running": "This task is already running.",
+      "concurrency_limit": "The execution limit is reached. Try again when a run finishes.",
+      "disabled": "Scheduling is disabled in settings.",
+      "not_found": "This task no longer exists. Refresh the list.",
+      "not_running": "This task is no longer running.",
+      "conflict": "The task changed. Refresh and try again."
+    },
+    "workspace": {
+      "listOptions": "Task list options",
+      "expandTasks": "Expand tasks",
+      "collapseTasks": "Collapse tasks",
+      "newTask": "New task",
+      "showTasks": "Show task list",
+      "result": "Result",
+      "clearSearch": "Clear search",
+      "noMatches": "No matching tasks.",
+      "noTasks": "Your scheduled tasks will appear here.",
+      "actionsFor": "Task actions: {{name}}",
+      "taskActions": "Task actions",
+      "closeEditor": "Close task editor",
+      "customized": "Customized",
+      "custom": "Custom schedule",
+      "onceAt": "Once · {{time}}",
+      "monthlyWeekday": "{{ordinal}} {{weekday}} of each month · {{time}}",
+      "nextAt": "Next run · {{time}}",
+      "notFound": "This task is unavailable",
+      "notFoundHint": "Refresh the task list or choose another task.",
+      "emptyTitle": "Make room for recurring work",
+      "emptyHint": "Schedule a task once. Find its next run and every result here.",
+      "refreshResults": "Refresh results",
+      "executionResult": "Execution result",
+      "noUpdates": "Nothing new to report from this check.",
+      "runningHint": "Your task is running. Its result will appear here automatically.",
+      "noText": "This run finished without a text response.",
+      "runDetails": "Run details",
+      "finishedAt": "Finished",
+      "firstRun": "Waiting for the first run",
+      "noSavedRuns": "No saved results yet",
+      "sourceConversation": "Source conversation",
+      "openTask": "Open task",
+      "everyMinute": "Every minute"
+    },
+    "detailsFor": "View task details: {{name}}",
+    "reminders": {
+      "timing": "Reminder timing",
+      "auto": "Automatic",
+      "onDue": "At the scheduled time",
+      "onResult": "After execution"
     }
   },
   "sessionMissing": "This chat record no longer exists."

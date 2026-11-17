@@ -1,3 +1,4 @@
+import type { CronReminder, CronReminderListInput, CronReminderDismissInput } from "../../cron/protocol/types.js";
 import type {
   AlwaysOnApplyInput,
   AlwaysOnApplyResult,
@@ -166,6 +167,14 @@ export class RemoteGateway implements Gateway {
 
   async getActiveTurnSnapshot(input: import("../protocol/types.js").GatewayActiveTurnSnapshotInput): Promise<import("../protocol/types.js").GatewayActiveTurnSnapshot> {
     return (await this.client.request("active_turn_snapshot", input)) as import("../protocol/types.js").GatewayActiveTurnSnapshot;
+  }
+
+  async cronReminderList(input: CronReminderListInput): Promise<{ reminders: CronReminder[] }> {
+    return await this.client.request("cron_reminder_list", input) as { reminders: CronReminder[] };
+  }
+
+  async cronReminderDismiss(input: CronReminderDismissInput): Promise<{ dismissed: boolean }> {
+    return await this.client.request("cron_reminder_dismiss", input) as { dismissed: boolean };
   }
 
   async cronCreate(input: CronCreateInput): Promise<CronCreateResult> {

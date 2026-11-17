@@ -44,3 +44,17 @@ export function buildSystemNotification(event, preferences = {}, language = 'en'
     data: { sessionId: event.sessionId, eventId: event.id, scope: event.scope, kind: event.kind, createdAt: event.createdAt, taskId: event.taskId },
   };
 }
+
+export function buildTaskReminderNotification(reminder, preferences = {}, language = 'en', scope = 'local') {
+  const zh = language.startsWith('zh');
+  const label = reminder.kind === 'due' ? zh ? '定时提醒' : 'Scheduled reminder'
+    : reminder.kind === 'failed' ? zh ? '定时任务需要处理' : 'Scheduled task needs attention'
+    : zh ? '定时任务已完成' : 'Scheduled task completed';
+  return {
+    id: reminder.id, title: notificationText(reminder.title, 80) || 'PilotDeck',
+    body: [label, preferences.preview !== false ? reminder.kind === 'due' ? (zh ? '到时间了，点击查看任务。' : 'It is time. Click to view the task.') : notificationText(reminder.body, 160) : ''].filter(Boolean).join('\n'),
+    silent: preferences.sound === false, persistent: true,
+    data: { sessionId: reminder.sessionKey, eventId: reminder.id, reminderId: reminder.id, scope,
+      kind: 'reminder', createdAt: reminder.createdAt, taskId: reminder.taskId },
+  };
+}

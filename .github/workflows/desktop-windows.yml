@@ -117,6 +117,7 @@ jobs:
           apps/desktop/scripts/windows-node-options.test.mjs
           apps/desktop/scripts/startup-network.test.mjs
           apps/desktop/scripts/copy-files.test.mjs
+          apps/desktop/scripts/computer-use-extract.test.mjs
 
       - name: Verify Windows signing policy
         run: node --test apps/desktop/scripts/windows-signing.test.mjs

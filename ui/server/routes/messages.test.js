@@ -9,6 +9,18 @@ afterEach(() => {
 });
 
 describe('message routes', () => {
+  it('preserves guidance identity from Gateway history for live/history reconciliation', async () => {
+    const timeline = { version: 1, turnId: 'run', id: 'steer:guidance', order: 4, revision: 12 };
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+      withPilotDeckGatewayReadRetry: async () => ({ messages: [{ id: 'steer-history', turnId: 'run', kind: 'text', role: 'user',
+        text: 'Use primary sources', timeline, queueItemId: 'guidance', isSteer: true }] }),
+    }));
+    const { default: routes } = await import('./messages.js'); const app = express(); app.use('/api/sessions', routes); const server = app.listen(0);
+    try {
+      const body = await (await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/cron:task/messages`)).json();
+      expect(body.messages[0]).toMatchObject({ timeline, queueItemId: 'guidance', isSteer: true, isFinal: true });
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
   it('retains authoritative timing on a historical turn anchor', async () => {
     const turnTiming = { startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z', finishReason: 'model_error' };
     vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,

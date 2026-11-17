@@ -1,3 +1,4 @@
+import WorkspaceProjectLabel from './WorkspaceProjectLabel';
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -88,23 +89,15 @@ function PageFallback() {
 function ScheduledTasksArea({
   isSidebarCollapsed,
   onOpenSidebar,
+  projects,
+  active,
 }: {
   isSidebarCollapsed?: boolean;
   onOpenSidebar?: () => void;
+  projects: Project[];
+  active: boolean;
 }) {
-  const { t } = useTranslation();
-
-  return (
-    <DedicatedWorkspacePage
-      title={t('sidebar:quickActions.scheduledTasks', { defaultValue: 'Scheduled Tasks' })}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onOpenSidebar={onOpenSidebar}
-    >
-      <Suspense fallback={<PageFallback />}>
-        <CronPanel />
-      </Suspense>
-    </DedicatedWorkspacePage>
-  );
+  return <Suspense fallback={<PageFallback />}><CronPanel isSidebarCollapsed={isSidebarCollapsed} onOpenSidebar={onOpenSidebar} projects={projects} active={active} /></Suspense>;
 }
 
 function SkillsArea({
@@ -412,17 +405,7 @@ function MainAreaContent(props: MainAreaProps) {
               {headerTitle}
             </h1>
           )}
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[var(--pd-muted,#687080)]">
-            <svg aria-hidden="true" className="icon" fill="none" height="13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="13">
-              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-              <path d="M8 10v4" />
-              <path d="M12 10v2" />
-              <path d="M16 10v6" />
-            </svg>
-            <span className="min-w-0 max-w-[24rem] truncate" title={projectName}>
-              {projectName}
-            </span>
-          </span>
+          <WorkspaceProjectLabel label={projectName} />
         </div>
 
         <div className="workspace-actions ml-4 h-9 shrink-0" aria-label={t('common:uiText.tools')}>
@@ -534,31 +517,17 @@ function MainAreaContent(props: MainAreaProps) {
 }
 
 export default function MainArea(props: MainAreaProps) {
-  if (props.activeTab === 'cron') {
-    return (
-      <ScheduledTasksArea
-        isSidebarCollapsed={props.isSidebarCollapsed}
-        onOpenSidebar={props.onOpenSidebar}
-      />
-    );
-  }
-
-  if (props.activeTab === 'skills') {
-    return (
-      <SkillsArea
-        onSkillsProjectChange={props.onSkillsProjectChange}
-        onUseSkill={props.onUseSkill}
-        isSidebarCollapsed={props.isSidebarCollapsed}
-        onOpenSidebar={props.onOpenSidebar}
-        selectedProject={props.selectedProject}
-        projects={props.projects}
-      />
-    );
-  }
-
-  return (
-    <ChatHistorySearchControllerProvider>
-      <MainAreaContent {...props} />
-    </ChatHistorySearchControllerProvider>
-  );
+  const cronActive = props.activeTab === 'cron';
+  const [cronVisited, setCronVisited] = useState(cronActive);
+  useEffect(() => { if (cronActive) setCronVisited(true); }, [cronActive]);
+  return <>
+    {(cronVisited || cronActive) && <div hidden={!cronActive} className={cronActive ? 'h-full min-h-0 flex-1' : 'hidden'}>
+      <ScheduledTasksArea isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar} projects={props.projects} active={cronActive} />
+    </div>}
+    {!cronActive && (props.activeTab === 'skills' ? <SkillsArea
+      onSkillsProjectChange={props.onSkillsProjectChange} onUseSkill={props.onUseSkill}
+      isSidebarCollapsed={props.isSidebarCollapsed} onOpenSidebar={props.onOpenSidebar}
+      selectedProject={props.selectedProject} projects={props.projects} />
+      : <ChatHistorySearchControllerProvider><MainAreaContent {...props} /></ChatHistorySearchControllerProvider>)}
+  </>;
 }

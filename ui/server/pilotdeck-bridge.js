@@ -1179,6 +1179,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                 }),
             ];
         case 'agent_status': {
+            if (event.event === 'cron_input' && typeof event.detail?.message === 'string') {
+                return [createNormalizedMessage({ ...base, id: `cron-input:${event.runId}`, turnId: event.runId, kind: 'text', role: 'user',
+                    content: event.detail.message, isFinal: true })];
+            }
+            if (event.event === 'cron_result' && typeof event.detail?.message === 'string' && typeof event.detail?.runId === 'string') {
+                const resultId = `cron-result:${event.detail.runId}`;
+                return [createNormalizedMessage({ ...base, id: resultId, turnId: resultId, runId: resultId,
+                    kind: 'text', role: 'assistant', content: event.detail.message, isFinal: true })];
+            }
             if (event.event === 'file_input_progress') {
                 const detail = event.detail || {};
                 return [createNormalizedMessage({ ...base, kind: 'agent_activity',
@@ -1770,20 +1779,7 @@ export async function runChatViaGateway(
                     },
                 }
                 : event;
-            if (event?.type === 'steer_applied') {
-                const queuedItem = state.inputQueue.find((item) => item.id === event.itemId);
-                if (queuedItem) {
-                    const hydratedOptions = hydrateQueuedInputOptions(queuedItem.options);
-                    eventForFrames = {
-                        ...eventForFrames,
-                        displayText: queuedItem.displayText,
-                        images: hydratedOptions.images,
-                        attachments: hydratedOptions.displayAttachments ?? hydratedOptions.attachments,
-                    };
-                    state.inputQueue = state.inputQueue.filter((item) => item.id !== event.itemId);
-                    mutateInputQueue(state);
-                }
-            }
+            if (event?.type === 'steer_applied') eventForFrames = consumeQueuedSteer(state, eventForFrames);
             if (event?.type === 'steer_unapplied') {
                 resetSteeringItemForRun(state, event.itemId, runId, writer);
             }
@@ -1921,6 +1917,16 @@ export function queuedUserFrame(item, sessionKey, runId, provider) {
         images: (item.options?.images || []).map((image) => image?.data).filter(Boolean),
         attachments: item.options?.displayAttachments ?? item.options?.attachments ?? [],
     });
+}
+
+function consumeQueuedSteer(state, event, writer) {
+    const queuedItem = state.inputQueue.find(item => item.id === event.itemId);
+    if (!queuedItem) return event;
+    const options = hydrateQueuedInputOptions(queuedItem.options);
+    state.inputQueue = state.inputQueue.filter(item => item.id !== event.itemId);
+    mutateInputQueue(state, writer);
+    return { ...event, displayText: queuedItem.displayText, images: options.images,
+        attachments: options.displayAttachments ?? options.attachments };
 }
 
 async function dispatchNextQueuedInput(state, writer, provider = 'pilotdeck') {
@@ -2599,10 +2605,38 @@ export function createAlwaysOnTurnEventForwarder(forwardFrame) {
 
     return (name, payload) => {
         if (name !== 'always-on:turn-event') return;
-        const { sessionKey, channelKey, event } = payload ?? {};
+        const { sessionKey, channelKey } = payload ?? {};
+        let event = payload?.event;
         if (!sessionKey || !event) return;
 
         const provider = 'pilotdeck';
+        const aoState = ensureSessionState(sessionKey, event.detail?.projectKey || '', channelKey || 'web');
+        const writer = { send: frame => forwardFrame(sessionKey, frame) };
+        if (sessionKey.startsWith('cron:')) {
+            if (event.type === 'agent_status' && event.event === 'cron_settled') {
+                if (aoState.active && aoState.runId !== event.runId) return;
+                clearActiveRunIfCurrent(aoState, event.runId);
+                for (const item of aoState.inputQueue) {
+                    if (item.status === 'steering' && item.steerTargetRunId === event.runId) {
+                        item.status = 'queued'; delete item.steerTargetRunId;
+                    }
+                }
+                const disposition = queuedInputDispositionAfterTurn(event.detail?.finishReason, aoState.queuePaused);
+                if (disposition === 'pause' && aoState.inputQueue.length) {
+                    aoState.queuePaused = true; aoState.queuePauseReason = 'previous_turn_failed';
+                }
+                mutateInputQueue(aoState, writer);
+                if (disposition === 'dispatch') scheduleQueuedDispatchAfterActivityCheck(aoState, writer, provider);
+                return;
+            }
+            if (event.type === 'input_accepted' || event.type === 'agent_status' && event.event === 'cron_input') {
+                setLocalActiveRun(aoState, event.runId);
+            }
+            if (event.type === 'steer_applied') {
+                event = consumeQueuedSteer(aoState, event, writer);
+            }
+            if (event.type === 'steer_unapplied') resetSteeringItemForRun(aoState, event.itemId, event.runId, writer);
+        }
 
         if (!knownSessions.has(sessionKey)) {
             knownSessions.add(sessionKey);
@@ -2630,7 +2664,6 @@ export function createAlwaysOnTurnEventForwarder(forwardFrame) {
                 state: event.state,
             };
         }
-        const aoState = ensureSessionState(sessionKey, '', channelKey || 'web');
         const compactTokenBudget = event.type === 'agent_status' && event.event === 'compact_completed'
             ? tokenBudgetFromCompact(aoState.tokenBudget, event.detail)
             : null;
@@ -2708,4 +2741,21 @@ export async function elicitationRespondViaGateway(requestId, answer) {
         }
     }
     return false;
+}
+
+/** Task lifecycle changes use the existing Gateway connection and browser socket. */
+export function registerCronNotificationForwarding(onChange) {
+    const handler = (name, payload) => { if (name === 'cron:task-changed') onChange(payload); };
+    gatewayNotificationHandlers.add(handler);
+    const gateway = gatewayConnections.current();
+    if (gateway) gateway.onNotification(handler);
+    ensureGateway().catch(error => console.warn('[cron] notification connection unavailable:', error.message));
+}
+
+export function registerCronReminderForwarding(onChange) {
+    const handler = (name, payload) => { if (name === 'cron:reminder-changed') onChange(payload); };
+    gatewayNotificationHandlers.add(handler);
+    const gateway = gatewayConnections.current();
+    if (gateway) gateway.onNotification(handler);
+    ensureGateway().catch(error => console.warn('[cron] reminder connection unavailable:', error.message));
 }

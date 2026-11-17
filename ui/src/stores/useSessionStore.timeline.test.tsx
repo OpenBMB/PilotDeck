@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
-import { useSessionStore, type NormalizedMessage } from './useSessionStore';
+import { getRealtimeMessagesToKeepAfterServerRefresh, useSessionStore, type NormalizedMessage } from './useSessionStore';
 vi.mock('../utils/api', () => ({ authenticatedFetch: (...args: unknown[]) => fetch(...args as Parameters<typeof fetch>), readAgentStatusErrorFromResponse: vi.fn() }));
 afterEach(() => vi.unstubAllGlobals());
 let gatewayEventToFrames: (event: unknown, sessionId: string, provider: string) => NormalizedMessage[];
@@ -13,6 +13,12 @@ beforeAll(async () => {
 const thought = (revision: number, content: string, offset?: number): NormalizedMessage => ({
   id: 'wire', sessionId: 's', runId: 'run', kind: 'thinking', provider: 'pilotdeck', timestamp: '2026-01-01', content,
   timeline: { version: 1, turnId: 'run', id: 'thought', order: 0, revision, offset },
+});
+it('reconciles scheduled inputs by run identity without collapsing a later run of the same instructions', () => {
+  const frames = ['run-1', 'run-2'].map(runId => gatewayEventToFrames({ type: 'agent_status', event: 'cron_input', runId,
+    detail: { message: 'Inspect report' } }, 'cron:task', 'pilotdeck')[0]);
+  const history = [{ ...frames[0], id: 'persisted-input', content: 'Inspect report\n\nLegacy result policy' }];
+  expect(getRealtimeMessagesToKeepAfterServerRefresh(frames, history).map(item => item.runId)).toEqual(['run-2']);
 });
 it('history racing live updates does not change identity, regress content or lose the user anchor', async () => {
   let resolveHistory!: (response: Response) => void;
@@ -186,3 +192,15 @@ for (const method of ['fetchFromServer', 'refreshFromServer'] as const) {
     }
   });
 }
+
+it('merges live task guidance with its durable history once, in the original turn position', async () => {
+  const timeline = { version: 1 as const, turnId: 'run', id: 'steer:guidance', order: 4, revision: 12 };
+  const [live] = gatewayEventToFrames({ type: 'steer_applied', runId: 'run', itemId: 'guidance', timeline,
+    message: { role: 'user', content: [{ type: 'text', text: 'Use primary sources', timeline }] } }, 'cron:task', 'pilotdeck');
+  const history: NormalizedMessage = { ...live, id: 'history-guidance', turnId: 'run', queueItemId: 'guidance', isSteer: true, isFinal: true };
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ messages: [history] }))));
+  const { result } = renderHook(useSessionStore);
+  act(() => result.current.applyTimelineMessage('cron:task', live));
+  await act(async () => { await result.current.refreshFromServer('cron:task'); });
+  expect(result.current.getMessages('cron:task').filter(message => message.content === 'Use primary sources')).toHaveLength(1);
+});

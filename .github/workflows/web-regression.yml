@@ -108,6 +108,12 @@ jobs:
           dist/tests/router/tokenSaver.spec.js
           dist/tests/router/scenario/subagentDetector.spec.js
 
+      - name: Test scheduled tasks and their conversation workspaces
+        run: >-
+          node --test --test-timeout 60000
+          dist/tests/cron/*.spec.js
+          dist/tests/gateway/cron*.spec.js
+
       - name: Test Web UI and server
         # Vitest projects collect only src/ and server/ tests; browser E2E has
         # its own runner. Desktop Smoke runs updater tests with desktop dependencies.

@@ -184,11 +184,11 @@ export const api = {
 
   // Protected endpoints
   // config endpoint removed - no longer needed (frontend uses window.location)
-  projects: () => authenticatedFetch('/api/projects'),
+  projects: (options = {}) => authenticatedFetch('/api/projects', options),
   alwaysOnDashboardEvents: (limit = 200, since) =>
     authenticatedFetch(`/api/always-on/events?limit=${encodeURIComponent(limit)}${since ? `&since=${encodeURIComponent(since)}` : ''}`),
-  allCronJobs: () =>
-    authenticatedFetch('/api/always-on/cron-jobs'),
+  allCronJobs: (options = {}) =>
+    authenticatedFetch('/api/always-on/cron-jobs', options),
   cronCreate: (payload) =>
     authenticatedFetch('/api/always-on/cron-jobs', {
       method: 'POST',
@@ -199,8 +199,13 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
-  cronRunNow: (taskId) =>
-    authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/run-now`, { method: 'POST' }),
+  cronPreview: (payload, options = {}) => authenticatedFetch('/api/always-on/cron-preview', {
+    method: 'POST', body: JSON.stringify(payload), ...options,
+  }),
+  cronOptions: (projectKey) => authenticatedFetch(`/api/always-on/cron-options?${new URLSearchParams({ projectKey })}`),
+  cronDetail: (taskId, projectKey, beforeRunId) => authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}?${new URLSearchParams({ ...(projectKey ? { projectKey } : {}), ...(beforeRunId ? { beforeRunId } : {}) })}`),
+  cronRunNow: (taskId, payload) =>
+    authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/run-now`, { method: 'POST', ...(payload ? { body: JSON.stringify(payload) } : {}) }),
   cronStop: (taskId) =>
     authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/stop`, { method: 'POST' }),
   cronDelete: (taskId) =>
@@ -290,7 +295,7 @@ export const api = {
       body: JSON.stringify(workspaceData),
     }),
   readFile: (projectName, filePath) =>
-    authenticatedFetch(`/api/projects/${projectName}/file?filePath=${encodeURIComponent(filePath)}`),
+    authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/file?filePath=${encodeURIComponent(filePath)}`),
   fileContentUrl: (projectName, filePath, options = {}) => {
     const params = new URLSearchParams({ path: filePath });
     if (options.download) params.set('download', '1');
@@ -397,7 +402,7 @@ export const api = {
   pilotDeckConfig: () =>
     authenticatedFetch('/api/config'),
   saveFile: (projectName, filePath, content, expectedHash, expectedContent) =>
-    authenticatedFetch(`/api/projects/${projectName}/file`, {
+    authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/file`, {
       method: 'PUT',
       body: JSON.stringify({ filePath, content, expectedHash, expectedContent }),
     }),

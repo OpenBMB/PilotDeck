@@ -1,5 +1,6 @@
 import express from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resolveMemoryScheduleConfig } from '../services/pilotdeckConfig.js';
 
 const nativeFetch = globalThis.fetch;
 
@@ -67,6 +68,18 @@ describe('memory clear route', () => {
 });
 
 describe('memory settings route', () => {
+  it('reads and edits nested schedule settings without leaving stale Gateway values', async () => {
+    const { request, getConfig } = await createMemorySettingsApp({ memory: { enabled: true,
+      schedule: { reasoningMode: 'accuracy_first', autoIndexIntervalMinutes: 1, autoDreamIntervalMinutes: 0 } } });
+    const before = await request('/api/memory/settings?projectPath=/tmp/pilotdeck-project');
+    expect(before.body).toEqual({ reasoningMode: 'accuracy_first', autoIndexIntervalMinutes: 1, autoDreamIntervalMinutes: 0 });
+    const saved = await request('/api/memory/settings?projectPath=/tmp/pilotdeck-project', {
+      method: 'POST', body: JSON.stringify({ autoIndexIntervalMinutes: 5 }),
+    });
+    expect(saved.body).toEqual({ reasoningMode: 'accuracy_first', autoIndexIntervalMinutes: 5, autoDreamIntervalMinutes: 0 });
+    expect(getConfig().memory.schedule).toEqual(saved.body);
+    expect(getConfig().memory.enabled).toBe(true);
+  });
   it.each([
     ['without an existing memory section', { schemaVersion: 1 }],
     ['when memory is explicitly disabled', { schemaVersion: 1, memory: { enabled: false } }],
@@ -196,6 +209,7 @@ async function createMemoryApp() {
   }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
     readPilotDeckConfigFile: vi.fn(() => ({ config: {} })),
+    resolveMemoryScheduleConfig,
     updatePilotDeckConfig: vi.fn(async (mutate) => {
       const config = {};
       await mutate(config);
@@ -250,6 +264,7 @@ async function createMemorySettingsApp(initialConfig) {
   }));
   vi.doMock('../services/pilotdeckConfig.js', () => ({
     readPilotDeckConfigFile: vi.fn(() => ({ config })),
+    resolveMemoryScheduleConfig,
     updatePilotDeckConfig,
   }));
   vi.doMock('../services/pilotdeckConfigReloader.js', () => ({
