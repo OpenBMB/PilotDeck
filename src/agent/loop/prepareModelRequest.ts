@@ -39,6 +39,8 @@ export type ModelRequestPreparationDependencies = {
   getModelProtocol?: (provider: string) => ModelProtocol | undefined;
   getModelSupportsPromptCache?: (provider: string, model: string) => boolean | undefined;
   getPromptAddendum?: () => string | undefined;
+  /** Request-only Todo guidance; never part of the stable system prompt. */
+  getTodoReminder?: () => string | undefined;
   getPlanDirectoryPath?: () => string | undefined;
   /** Omitted by silent budget previews; the caller owns lifecycle delivery. */
   onInstructionsLoaded?: (hasSystemPrompt: boolean) => void;
@@ -51,10 +53,11 @@ export async function prepareModelRequest(
   input: ModelRequestPreparationInput,
 ): Promise<CanonicalModelRequest> {
   input.abortSignal?.throwIfAborted();
+  const todoReminder = dependencies.getTodoReminder?.();
   const contextRuntime = dependencies.context ?? new NullContextRuntime();
   const contextInput = createContextInput(config, dependencies, input);
   const prepared = await contextRuntime.prepareForModel(contextInput);
-  return finishRequest(config, dependencies, input, contextInput, prepared);
+  return finishRequest(config, dependencies, input, contextInput, prepared, { todoReminder });
 }
 
 export type PreparedModelRequest = {
@@ -69,6 +72,7 @@ export async function prepareModelRequestAttempt(
   input: ModelRequestPreparationInput,
 ): Promise<{ project(target?: Pick<ContextModelTarget, "provider" | "model">): Promise<PreparedModelRequest> }> {
   input.abortSignal?.throwIfAborted();
+  const todoReminder = dependencies.getTodoReminder?.();
   // The staged API defers mutation itself; it projects the eventual committed
   // prompt, including a new compaction date, rather than a legacy preview.
   const contextInput = createContextInput(config, dependencies, { ...input, previewOnly: undefined });
@@ -91,7 +95,7 @@ export async function prepareModelRequestAttempt(
             materialized = materializeMediaReferences(prepared.messages, { signal: input.abortSignal });
             media.set(prepared.messages, materialized);
           }
-          const request = await finishRequest(config, { ...dependencies, onInstructionsLoaded: undefined }, input, modelTarget, prepared, materialized);
+          const request = await finishRequest(config, { ...dependencies, onInstructionsLoaded: undefined }, input, modelTarget, prepared, { media: materialized, todoReminder });
           let committed = false;
           let committedFingerprint: string | undefined;
           let generation: number | undefined;
@@ -156,12 +160,12 @@ function createContextInput(config: ModelRequestConfig, dependencies: ModelReque
 
 async function finishRequest(config: ModelRequestConfig, dependencies: ModelRequestPreparationDependencies,
   input: ModelRequestPreparationInput, target: Pick<ContextModelTarget, "provider" | "model">,
-  prepared: ModelContext, media?: ReturnType<typeof materializeMediaReferences>): Promise<CanonicalModelRequest> {
+  prepared: ModelContext, options: { media?: ReturnType<typeof materializeMediaReferences>; todoReminder?: string } = {}): Promise<CanonicalModelRequest> {
   input.abortSignal?.throwIfAborted();
   const systemPrompt = prepared.systemPrompt ?? config.systemPrompt;
   dependencies.onInstructionsLoaded?.(!!systemPrompt);
 
-  const materialized = await (media ?? materializeMediaReferences(prepared.messages, { signal: input.abortSignal }));
+  const materialized = await (options.media ?? materializeMediaReferences(prepared.messages, { signal: input.abortSignal }));
   input.abortSignal?.throwIfAborted();
   for (const diagnostic of materialized.diagnostics) {
     // eslint-disable-next-line no-console
@@ -170,9 +174,13 @@ async function finishRequest(config: ModelRequestConfig, dependencies: ModelRequ
     );
   }
 
-  const finalMessages = config.permissionMode === "plan"
-    ? appendPlanModeReminder(materialized.messages, dependencies.getPlanDirectoryPath?.())
+  const reminderMessages: CanonicalMessage[] = options.todoReminder?.trim()
+    ? [...materialized.messages, { role: "user", content: [{ type: "text", text: options.todoReminder }],
+      metadata: { synthetic: true, purpose: "todo_reminder" } }]
     : materialized.messages;
+  const finalMessages = config.permissionMode === "plan"
+    ? appendPlanModeReminder(reminderMessages, dependencies.getPlanDirectoryPath?.())
+    : reminderMessages;
   const finalCachePlan = prepared.cachePlan
     ? buildCachePlan({
         provider: target.provider,

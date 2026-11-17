@@ -161,6 +161,15 @@ test("legacy breakpoints are retained normally and cleared when a plan reminder 
   assert.equal((await f.prepare()).cacheBreakpoints, undefined);
 });
 
+test("appending Todo guidance preserves valid legacy history cache indices", async () => {
+  const f = fixture({}, { getTodoReminder: () => "Update the Todo list",
+    context: { prepareForModel: async (input) => ({ ...project(input), cacheBreakpoints: [0] }) },
+  });
+  const request = await f.prepare();
+  assert.deepEqual(request.cacheBreakpoints, [0]);
+  assert.equal(request.messages.at(-1)?.metadata?.purpose, "todo_reminder");
+});
+
 test("new preparations see tool replacement and removal without mutating earlier requests", async () => {
   const f = fixture();
   f.registry.register(tool("probe"));

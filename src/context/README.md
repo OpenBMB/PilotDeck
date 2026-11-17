@@ -12,7 +12,11 @@ Prompt assembly reads one fresh extension metadata snapshot, orders commands/ski
 
 `prepareForModelAttempt` is an optional staged interface: resolve external inputs, project a provider/model without new I/O, then commit the dispatched projection's date and final cache plan once. Discarded candidates do not mutate session state. Direct `prepareForModel` calls remain supported. Artifact and instruction preparation honor cancellation; legacy asynchronous callbacks may finish in the background but their results cannot start later preparation stages.
 
-The context popover requests `includeModelContext=summary` on authenticated message history and receives only `contextBreakdown`. `includeModelContext=true` explicitly requests the full diagnostic snapshot. Normal history reads omit snapshot I/O. Local system/tool/message estimates describe the latest assembled request and can differ from the reported token budget.
+Anthropic cache plans keep up to three recent message breakpoints and reserve a cacheable history anchor before trailing request-only memory, artifact, Todo and plan reminders. Durable synthetic context such as date notices remains part of that history. Providers without explicit cache plans retain their existing automatic-cache behavior.
+
+The context popover requests `includeModelContext=summary` on authenticated message history and receives `contextBreakdown` and the latest completed turn's numeric `lastTurnUsage`. `includeModelContext=true` explicitly requests the full diagnostic snapshot. Normal history reads omit snapshot I/O. Local system/tool/message estimates describe the latest assembled request and can differ from the reported token budget. Cache hit percentages use provider-reported reads divided by uncached input plus cache reads and writes, excluding output. Missing cache statistics remain unavailable rather than becoming zero.
+
+Previous-turn usage also exposes the saved model-loop iteration count as `calls`, excluding transport retries. The popover presents this separately from cumulative cache-read/input totals; both restored history and completion events use the existing turn result without changing transcript storage.
 
 Snapshots atomically replace a private `<transcript>.context.json` sidecar. Readers validate transcript ownership and reject snapshots from an older accepted turn. Session deletion removes the sidecar. Forked sessions without a fresh snapshot show unavailable estimates until their next model request.
 

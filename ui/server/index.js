@@ -75,6 +75,7 @@ import { getOpenUrlSpawnCommand } from './utils/processSpawn.js';
 import { createProjectUpdateScheduler } from './projectUpdateScheduler.js';
 
 import { getProjectsSnapshot, getProjectCronJobsOverview, getSessions, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache, searchConversations } from './projects.js';
+import { readSessionTokenBudget } from './services/sessionTokenBudget.js';
 import {
     runChatViaGateway,
     replaceLastTurnViaGateway,
@@ -3381,7 +3382,7 @@ app.get('/api/projects/:projectName/sessions/:sessionId/token-usage', authentica
         // PilotDeck sessions use `web:s_<uuid>` keys; Windows-safe sessions
         // may use `web-s_<uuid>` because ':' is illegal in Windows filenames.
         if (provider === 'pilotdeck' || /^web[:_-]s_/.test(sessionId)) {
-            return res.json(getSessionTokenBudget(sessionId));
+            return res.json(await readSessionTokenBudget(projectName, sessionId));
         }
 
         // Allow only safe characters in sessionId

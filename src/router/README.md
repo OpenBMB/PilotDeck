@@ -6,6 +6,8 @@ Entry points: [index.ts](index.ts), [RouterRuntime.ts](RouterRuntime.ts), [runFa
 
 Honor explicit request selections and reference validation before applying automatic routing or fallback.
 
+Cache-aware model switching divides cache reads by all input tokens (uncached input, cache reads and cache writes) to estimate the observed hit ratio. Output tokens are excluded.
+
 Turn cancellation reaches judge requests and retry delays. Optional execution callbacks project resolved context for each selected/fallback model and finalize it after routing patches and media conversion. Cache identity follows the final request; provider changes never reuse another model's plan. Callers without these callbacks retain the ordinary canonical-request interface.
 
 Task classification and legacy subagent tags read actual user requests through the shared model-message predicate. Request-only memory, artifact indexes, date notices and other synthetic context remain available to the answering model without selecting its routing tier or subagent identity. Synthetic context alone does not activate sticky routing; actual conversation history retains that behavior.

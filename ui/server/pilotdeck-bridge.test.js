@@ -50,8 +50,8 @@ it.each(['completed', 'aborted_streaming', 'aborted_tools', 'model_error'])('pre
         startedAt: '2026-09-01T00:00:00Z', completedAt: '2026-09-01T00:01:20Z' };
     const projected = mapAgentEvent({ type: 'turn_completed', sessionId: 's', turnId: 'r', result }, 'r');
     const complete = projected.find(event => event.type === 'turn_completed');
-    expect(complete).toMatchObject({ startedAt: result.startedAt, completedAt: result.completedAt });
-    expect(gatewayEventToFrames(complete, 's', 'pilotdeck')[0]).toMatchObject({ kind: 'complete',
+    expect(complete).toMatchObject({ startedAt: result.startedAt, completedAt: result.completedAt, turns: result.turns });
+    expect(gatewayEventToFrames(complete, 's', 'pilotdeck')[0]).toMatchObject({ kind: 'complete', turns: result.turns,
         turnTiming: { startedAt: result.startedAt, completedAt: result.completedAt, finishReason: reason } });
 });
 

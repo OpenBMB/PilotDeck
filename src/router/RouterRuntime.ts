@@ -232,8 +232,11 @@ export function createRouterRuntime(
     }
 
     const estimatedInputTokens = countMessagesTokens(messages);
-    const observedInputTokens = lastUsage?.inputTokens ?? 0;
     const observedCacheReadTokens = lastUsage?.cacheReadTokens ?? 0;
+    // Canonical inputTokens excludes cache reads and writes.
+    const observedInputTokens = (lastUsage?.inputTokens ?? 0)
+      + observedCacheReadTokens
+      + (lastUsage?.cacheWriteTokens ?? 0);
     const observedCacheHitRatio = observedInputTokens > 0
       ? Math.min(1, Math.max(0, observedCacheReadTokens / observedInputTokens))
       : 0;

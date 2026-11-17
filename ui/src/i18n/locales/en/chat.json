@@ -12,7 +12,16 @@
     "systemPrompt": "System instructions",
     "tools": "Tool descriptions",
     "messages": "Conversation",
-    "estimates": "Estimated token breakdown"
+    "estimates": "Estimated token breakdown",
+    "cacheTitle": "Previous turn cache hits",
+    "cacheBadge": "Hit",
+    "cacheCalls": "Model calls",
+    "cacheCallsValue": "{{count}}",
+    "cacheHit": "Cache hit",
+    "cacheMiss": "No cache hits",
+    "cacheUnreported": "API did not report cache usage",
+    "cacheEmpty": "No completed requests yet",
+    "cacheCounts": "{{read}} / {{input}}"
   },
   "conversationError": {
     "label": "Request failed",

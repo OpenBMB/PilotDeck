@@ -71,7 +71,10 @@ router.get('/:sessionId/messages', async (req, res) => {
     return res.json({
       messages,
       ...(req.query.includeModelContext === 'true' ? { modelContext: result.modelContext ?? null } : {}),
-      ...(req.query.includeModelContext === 'summary' ? { contextBreakdown: result.modelContext?.breakdown ?? null } : {}),
+      ...(req.query.includeModelContext === 'summary' ? {
+        contextBreakdown: result.modelContext?.breakdown ?? null,
+        lastTurnUsage: result.lastTurnUsage ?? null,
+      } : {}),
       ...(result.stream ? { stream: { active: result.stream.active, runId: result.stream.runId,
         messages: result.stream.events.flatMap(event => gatewayEventToFrames(event, sessionId, 'pilotdeck')),
       } } : {}),

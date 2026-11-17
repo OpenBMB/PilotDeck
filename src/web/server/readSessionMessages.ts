@@ -159,6 +159,7 @@ export async function readWebSessionMessages(
         : undefined,
     total: allMessages.length,
     tokenUsage: tokenUsageFromTranscript(entries, options),
+    lastTurnUsage: latestTurnUsageSnapshot(entries),
     session: {
       sessionId: sessionInfo?.sessionId ?? input.sessionKey,
       sessionKey: input.sessionKey,
@@ -337,10 +338,14 @@ function tokenUsageFromCompactBoundary(
 }
 
 function latestTurnUsage(entries: AgentTranscriptEntry[]): CanonicalUsage | undefined {
+  return latestTurnUsageSnapshot(entries)?.usage;
+}
+
+function latestTurnUsageSnapshot(entries: AgentTranscriptEntry[]): WebReadSessionMessagesResult['lastTurnUsage'] {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry.type === "turn_result" && hasPositiveUsage(entry.result.usage)) {
-      return entry.result.usage;
+      return { turnId: entry.turnId, completedAt: entry.result.completedAt, calls: entry.result.turns, usage: entry.result.usage };
     }
   }
   return undefined;

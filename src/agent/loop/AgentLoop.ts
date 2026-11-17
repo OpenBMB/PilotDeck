@@ -2068,7 +2068,7 @@ export class AgentLoop {
       context: this.dependencies.context,
       getModelProtocol: (provider) => this.dependencies.getModelProtocol?.(provider),
       getModelSupportsPromptCache: (provider, model) => this.dependencies.getModelSupportsPromptCache?.(provider, model),
-      getPromptAddendum: () => planTodo?.buildPromptAddendum(),
+      getTodoReminder: () => planTodo?.buildPromptAddendum(),
       getPlanDirectoryPath: () => this.dependencies.planFileManager?.getPlanDirectoryPath(),
       onInstructionsLoaded: emitInstructionEvents === false ? undefined : (hasSystemPrompt) => {
         this.dispatchLifecycle(input, "InstructionsLoaded", { hasSystemPrompt }).catch(() => {});

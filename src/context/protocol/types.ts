@@ -36,7 +36,7 @@ export type ModelContext = {
   diagnostics: ContextDiagnostic[];
   boundaries: ContextBoundary[];
   metadata?: Record<string, unknown>;
-  /** A4: final three non-system message indices for Anthropic recent3 cache layout. */
+  /** Anthropic recent-message indices, including an anchor before request-only tails. */
   cacheBreakpoints?: number[];
   /** Internal provider-boundary cache plan; never persisted to transcript. */
   cachePlan?: CachePlan;
