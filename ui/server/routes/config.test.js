@@ -1631,7 +1631,11 @@ describe('config model removal route', () => {
     expect(snapshot.config.memory.model).toBeUndefined();
     expect(snapshot.config.memory.enabled).toBe(enabled);
     expect(snapshot.diagnostics.some(diagnostic => diagnostic.severity === 'fatal')).toBe(false);
-  });
+    // The first case pays for the cold Vite SSR transform of the Gateway config
+    // module graph, which can take several seconds in CI and exceeds the 5s
+    // default. Timing that out mid-import also left the module half-initialized
+    // for the next case ("Cannot access 'existsSync' before initialization").
+  }, 30000);
 
   it('requires a fresh preview revision', async () => {
     const { request } = await createDiskConfigApp(stringifyYaml(initial));
