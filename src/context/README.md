@@ -20,7 +20,7 @@ Previous-turn usage also exposes the saved model-loop iteration count as `calls`
 
 Snapshots atomically replace a private `<transcript>.context.json` sidecar. Readers validate transcript ownership and reject snapshots from an older accepted turn. Session deletion removes the sidecar. Forked sessions without a fresh snapshot show unavailable estimates until their next model request.
 
-When managed preview tools are available, default guidance requires runnable Web implementations to end with a verified preview URL and stop-task identity. HTTP/content checks remain separate from browser acceptance; remote loopback is never described as client-local. Source-only requests and custom system prompts retain their existing behavior.
+When managed preview tools are available, default guidance requires runnable Web implementations to end with a verified preview URL and stop-task identity. HTTP/content checks remain separate from browser acceptance; remote loopback is never described as client-local. Ask/Plan omit implementation handoff guidance while allowing checks of existing owned previews. Source-only requests and custom system prompts retain their existing behavior.
 
 Memory capture excludes synthetic runtime references, including task instructions and recalled memory, before selecting the latest user turn. Real task replies and mid-turn guidance remain eligible for the normal indexing pipeline.
 

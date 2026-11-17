@@ -749,6 +749,9 @@ function createToolConfigs(t: TFunction): Record<string, ToolDisplayConfig> {
     }
   },
 
+  // ============================================================================
+  // TASK TOOLS (managed background services)
+  // ============================================================================
   task_preview: {
     input: {
       type: 'one-line',

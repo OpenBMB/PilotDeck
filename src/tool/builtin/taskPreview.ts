@@ -32,8 +32,8 @@ export function createTaskPreviewTool(runtime: BackgroundTaskRuntime): PilotDeck
       type: "object", required: ["taskId", "url", "expectedText"], additionalProperties: false,
       properties: {
         taskId: { type: "string", description: "Running task_create development server owned by this session and workspace." },
-        url: { type: "string", description: "Exact HTTP page URL on localhost, 127.0.0.1 or [::1], with an explicit nonzero port. Redirects are not followed." },
-        expectedText: { type: "string", description: "Distinctive nonempty text present in the initial HTML, such as this application's title (max 1024 characters). This is an HTTP content check, not rendered-page acceptance." },
+        url: { type: "string", description: "Exact HTTP page URL on localhost, 127.0.0.1 or [::1], with an explicit nonzero, non-default port. Redirects are not followed." },
+        expectedText: { type: "string", description: "Distinctive nonempty text present in the initial HTML, matched exactly including case and whitespace; use a project-specific marker, not a scaffold default title (max 1024 characters). This is an HTTP content check, not rendered-page acceptance." },
       },
     },
     isReadOnly: () => true,
@@ -43,7 +43,7 @@ export function createTaskPreviewTool(runtime: BackgroundTaskRuntime): PilotDeck
       try { url = new URL(input.url); } catch { throw invalid("Provide a valid preview URL."); }
       if (url.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
         || !url.port || Number(url.port) === 0 || url.username || url.password || url.hash) {
-        throw invalid("Preview requires a loopback HTTP URL with an explicit nonzero port, no credentials and no fragment.");
+        throw invalid("Preview requires a loopback HTTP URL with an explicit nonzero, non-default port, no credentials and no fragment. If the server prints 0.0.0.0, retry the same port on localhost or 127.0.0.1.");
       }
       if (!input.expectedText.trim() || input.expectedText.length > 1024) {
         throw invalid("expectedText must contain 1-1024 characters identifying the page HTML.");
@@ -56,21 +56,24 @@ export function createTaskPreviewTool(runtime: BackgroundTaskRuntime): PilotDeck
         if (task.status !== "running") throw invalid("Preview task is not running. Inspect task_output and restart it if needed.");
       };
       assertTask();
-      context.abortSignal?.throwIfAborted();
+      const timeout = AbortSignal.timeout(5000);
+      const signal = context.abortSignal ? AbortSignal.any([context.abortSignal, timeout]) : timeout;
       // Pin localhost to loopback without DNS or ambient proxy configuration.
       // Vite may bind localhost on IPv6 only, so retry a refused IPv4 connection.
       const target = new URL(url);
       if (target.hostname === "localhost") target.hostname = "127.0.0.1";
       try {
+        signal.throwIfAborted();
         try {
-          await checkHtml(target, url.host, input.expectedText, context.abortSignal);
+          await checkHtml(target, url.host, input.expectedText, signal);
         } catch (error) {
           if (url.hostname !== "localhost" || (error as NodeJS.ErrnoException).code !== "ECONNREFUSED") throw error;
           target.hostname = "[::1]";
-          await checkHtml(target, url.host, input.expectedText, context.abortSignal);
+          await checkHtml(target, url.host, input.expectedText, signal);
         }
       } catch (error) {
         if (context.abortSignal?.aborted) throw new PilotDeckToolRuntimeError("tool_aborted", "Preview check cancelled.");
+        if (timeout.aborted) throw new PilotDeckToolRuntimeError("tool_execution_failed", "Preview check timed out after 5 seconds. Inspect task_output and retry task_preview.");
         throw new PilotDeckToolRuntimeError("tool_execution_failed", `Preview is not ready: ${error instanceof Error ? error.message : String(error)} Inspect task_output, fix the server and retry task_preview.`);
       }
       assertTask();
@@ -94,9 +97,20 @@ function invalid(message: string): PilotDeckToolRuntimeError {
 function checkHtml(url: URL, host: string, expectedText: string, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = request(url, { method: "GET", headers: { host, accept: "text/html", "accept-encoding": "identity" }, signal }, res => {
-      if (res.statusCode !== 200 || !/^text\/html\b/i.test(res.headers["content-type"] ?? "")) {
+      const contentType = res.headers["content-type"] ?? "";
+      let failure: string | undefined;
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400) {
+        failure = `Received HTTP ${res.statusCode} redirect; redirects are not followed. Use the exact HTML page URL.`;
+      } else if (res.statusCode !== 200) {
+        failure = `Expected HTTP 200, received ${res.statusCode}.`;
+      } else if (!/^text\/html\b/i.test(contentType)) {
+        failure = `Expected text/html, received ${contentType || "no content-type"} (HTTP 200).`;
+      } else if (res.headers["content-encoding"] && res.headers["content-encoding"] !== "identity") {
+        failure = `Unsupported content-encoding: ${res.headers["content-encoding"]}; serve uncompressed HTML.`;
+      }
+      if (failure) {
         res.destroy();
-        reject(new Error(`Expected HTTP 200 HTML, received ${res.statusCode}. Redirects are not followed.`));
+        reject(new Error(failure));
         return;
       }
       const chunks: Buffer[] = [];
@@ -113,9 +127,7 @@ function checkHtml(url: URL, host: string, expectedText: string, signal?: AbortS
         resolve();
       });
     });
-    const timer = setTimeout(() => req.destroy(new Error("Preview check timed out after 5 seconds.")), 5000);
     req.on("error", reject);
-    req.on("close", () => clearTimeout(timer));
     req.end();
   });
 }

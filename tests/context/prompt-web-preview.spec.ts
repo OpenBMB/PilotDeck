@@ -20,3 +20,9 @@ test("web handoff advertises only available capabilities and preserves source-on
   }
   assert.doesNotMatch(assembler.assemble({ ...input, customSystemPrompt: "Custom prompt" }).joined, /Web application delivery:/);
 });
+
+test("read-only modes omit service startup guidance even with the complete catalog", () => {
+  for (const mode of [{ permissionMode: "plan" }, { runMode: "plan" }, { runMode: "ask" }]) {
+    assert.doesNotMatch(assembler.assemble({ ...input, ...mode }).joined, /Web application delivery:/);
+  }
+});
