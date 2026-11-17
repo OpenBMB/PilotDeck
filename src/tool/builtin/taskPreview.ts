@@ -1,5 +1,6 @@
 import { request } from "node:http";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type { PilotDeckToolDefinition } from "../protocol/types.js";
@@ -23,16 +24,16 @@ export type TaskPreviewOutput = {
 const MAX_HTML_BYTES = 512 * 1024;
 
 /** Local readiness is distinct from browser acceptance and client reachability. */
-export function createTaskPreviewTool(runtime: BackgroundTaskRuntime): PilotDeckToolDefinition<TaskPreviewInput, TaskPreviewOutput> {
+export function createTaskPreviewTool(runtime: Pick<BackgroundTaskRuntime, "get" | "getOutput">): PilotDeckToolDefinition<TaskPreviewInput, TaskPreviewOutput> {
   return {
     name: "task_preview",
-    description: "Verify a running development server before handing it to the user. Pass its task_create taskId, exact loopback HTTP URL from task_output, and a distinctive expectedText from the page HTML. Checks HTTP success, HTML content and that marker; does not execute JavaScript or open a browser. Use browser-use separately for visual/interaction acceptance. The URL is on the executing Gateway, not necessarily the user's machine; never invent forwarding. Include the verified URL and task_stop taskId in your final response, and leave the requested preview running.",
+    description: "Verify a running development server before handing it to the user. Pass its task_create taskId, exact HTTP page URL on the origin announced in that task's output, and a distinctive expectedText from the page HTML. Checks HTTP success, HTML content and that marker; does not execute JavaScript or open a browser. Use browser-use separately for visual/interaction acceptance. The URL is on the executing Gateway, not necessarily the user's machine; never invent forwarding. Include the verified URL and task_stop taskId in your final response, and leave the requested preview running.",
     kind: "network",
     inputSchema: {
       type: "object", required: ["taskId", "url", "expectedText"], additionalProperties: false,
       properties: {
         taskId: { type: "string", description: "Running task_create development server owned by this session and workspace." },
-        url: { type: "string", description: "Exact HTTP page URL on localhost, 127.0.0.1 or [::1], with an explicit nonzero, non-default port. Redirects are not followed." },
+        url: { type: "string", description: "Exact HTTP page URL on localhost, 127.0.0.1 or [::1], with the non-default port and host announced by the task. A wildcard bind uses the corresponding loopback IP. Redirects are not followed." },
         expectedText: { type: "string", description: "Distinctive nonempty text present in the initial HTML, matched exactly including case and whitespace; use a project-specific marker, not a scaffold default title (max 1024 characters). This is an HTTP content check, not rendered-page acceptance." },
       },
     },
@@ -43,7 +44,7 @@ export function createTaskPreviewTool(runtime: BackgroundTaskRuntime): PilotDeck
       try { url = new URL(input.url); } catch { throw invalid("Provide a valid preview URL."); }
       if (url.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
         || !url.port || Number(url.port) === 0 || url.username || url.password || url.hash) {
-        throw invalid("Preview requires a loopback HTTP URL with an explicit nonzero, non-default port, no credentials and no fragment. If the server prints 0.0.0.0, retry the same port on localhost or 127.0.0.1.");
+        throw invalid("Preview requires a loopback HTTP URL with an explicit nonzero, non-default port, no credentials and no fragment. If the server prints 0.0.0.0 or [::], retry the same port on 127.0.0.1 or [::1], respectively.");
       }
       if (!input.expectedText.trim() || input.expectedText.length > 1024) {
         throw invalid("expectedText must contain 1-1024 characters identifying the page HTML.");
@@ -56,6 +57,10 @@ export function createTaskPreviewTool(runtime: BackgroundTaskRuntime): PilotDeck
         if (task.status !== "running") throw invalid("Preview task is not running. Inspect task_output and restart it if needed.");
       };
       assertTask();
+      const { content } = runtime.getOutput(input.taskId, 0);
+      if (!hasAnnouncedOrigin(content, url)) {
+        throw invalid("The preview origin was not found in this task's retained output. Inspect task_output and use the origin announced by that service.");
+      }
       const timeout = AbortSignal.timeout(5000);
       const signal = context.abortSignal ? AbortSignal.any([context.abortSignal, timeout]) : timeout;
       // Pin localhost to loopback without DNS or ambient proxy configuration.
@@ -88,6 +93,20 @@ export function createTaskPreviewTool(runtime: BackgroundTaskRuntime): PilotDeck
       };
     },
   };
+}
+
+// Startup banners can contain ANSI color codes. Compare host and port, allowing
+// the caller to check a specific route beneath the announced origin.
+function hasAnnouncedOrigin(output: string, url: URL): boolean {
+  const addresses = stripVTControlCharacters(output).matchAll(
+    /(?:^|[\s"'(<=>])http:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):([0-9]{1,5})(?=$|[\s/?#"'<>),;])/gi,
+  );
+  for (const [, printedHost, printedPort] of addresses) {
+    const host = printedHost.toLowerCase();
+    const loopbackHost = host === "0.0.0.0" ? "127.0.0.1" : host === "[::]" ? "[::1]" : host;
+    if (loopbackHost === url.hostname && Number(printedPort) === Number(url.port)) return true;
+  }
+  return false;
 }
 
 function invalid(message: string): PilotDeckToolRuntimeError {

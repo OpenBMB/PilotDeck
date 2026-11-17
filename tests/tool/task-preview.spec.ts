@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import test from "node:test";
 import { createTaskPreviewTool } from "../../src/tool/builtin/taskPreview.js";
-import type { BackgroundTaskRuntime } from "../../src/task/runtime/BackgroundTaskRuntime.js";
 import type { PilotDeckBackgroundBashTask } from "../../src/task/protocol/types.js";
 
 const context = {
@@ -11,9 +10,14 @@ const context = {
   permissionContext: { mode: "bypassPermissions" as const, cwd: process.cwd(), additionalWorkingDirectories: [], canPrompt: false, bypassAvailable: true, rules: { allow: [], deny: [], ask: [] } },
 };
 
-function fixture() {
+function fixture(output = "") {
   const task = { taskId: "preview-task", sessionId: context.sessionId, cwd: context.cwd, status: "running" } as PilotDeckBackgroundBashTask;
-  const runtime = { get: (id: string) => id === task.taskId ? task : undefined } as BackgroundTaskRuntime;
+  const runtime = {
+    get: (id: string) => id === task.taskId ? task : undefined,
+    getOutput: (_id: string, _offset: number) => ({
+      content: output, nextOffset: Buffer.byteLength(output), totalBytes: Buffer.byteLength(output), truncated: false,
+    }),
+  };
   return { task, tool: createTaskPreviewTool(runtime) };
 }
 
@@ -38,7 +42,7 @@ test("owned running preview returns exact clickable URL, evidence and stop ident
   });
   const origin = await listen(server);
   try {
-    const { tool } = fixture();
+    const { tool } = fixture(origin);
     const result = await tool.execute({ taskId: "preview-task", url: `${origin}/demo?mode=review`, expectedText: "Preview fixture" }, context);
     assert.equal(requested, "/demo?mode=review");
     assert.equal(result.data?.url, `${origin}/demo?mode=review`);
@@ -48,6 +52,29 @@ test("owned running preview returns exact clickable URL, evidence and stop ident
     assert.match(text, /\[Open preview\]\(<http:\/\/127\.0\.0\.1:/);
     assert.match(text, /task_stop\(\{ taskId: "preview-task" \}\)/);
     assert.match(text, /browser rendering has not been verified/);
+  } finally { await close(server); }
+});
+
+test("the preview origin must be announced by the selected task", async () => {
+  let requests = 0;
+  const server = createServer((_req, res) => {
+    requests++;
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("Expected app");
+  });
+  const origin = await listen(server);
+  try {
+    const { port } = new URL(origin);
+    const otherPort = port === "3000" ? "3001" : "3000";
+    for (const output of ["", `http://127.0.0.1:${otherPort}`, `http://localhost:${port}`]) {
+      const { tool } = fixture(output);
+      await assert.rejects(tool.execute({ taskId: "preview-task", url: origin, expectedText: "Expected app" }, context), /origin was not found/);
+    }
+    assert.equal(requests, 0);
+
+    const { tool } = fixture(`Local: \x1b[36mhttp://0.0.0.0:${port}/\x1b[0m`);
+    await tool.execute({ taskId: "preview-task", url: origin, expectedText: "Expected app" }, context);
+    assert.equal(requests, 1);
   } finally { await close(server); }
 });
 
@@ -81,7 +108,7 @@ test("wrong content, redirects, HTTP errors and oversized HTML never yield a pre
   });
   const origin = await listen(server);
   try {
-    const { tool } = fixture();
+    const { tool } = fixture(origin);
     for (const route of ["/redirect", "/json", "/error", "/wrong", "/big"]) {
       await assert.rejects(tool.execute({ taskId: "preview-task", url: origin + route, expectedText: "Expected app" }, context), /Preview is not ready/);
     }
@@ -94,18 +121,20 @@ test("caller cancellation interrupts a pending HTTP response", async () => {
   const server = createServer((_req, _res) => abort.abort());
   const origin = await listen(server);
   try {
-    const { tool } = fixture();
+    const { tool } = fixture(origin);
     await assert.rejects(tool.execute({ taskId: "preview-task", url: origin, expectedText: "Expected" }, { ...context, abortSignal: abort.signal }), /cancelled/);
   } finally { await close(server); }
 });
 
 test("a task that exits during the check is not reported ready", async () => {
-  const { tool, task } = fixture();
+  let task: PilotDeckBackgroundBashTask;
   const server = createServer((_req, res) => {
     task.status = "completed";
     res.writeHead(200, { "content-type": "text/html" }); res.end("Expected app");
   });
   const origin = await listen(server);
+  const { tool, task: runningTask } = fixture(origin);
+  task = runningTask;
   try {
     await assert.rejects(tool.execute({ taskId: task.taskId, url: origin, expectedText: "Expected app" }, context), /not running/);
   } finally { await close(server); }
@@ -120,7 +149,7 @@ test("localhost retains its URL and Host header when probing a loopback server",
   const origin = await listen(server);
   const url = origin.replace("127.0.0.1", "localhost");
   try {
-    const { tool } = fixture();
+    const { tool } = fixture(url);
     const result = await tool.execute({ taskId: "preview-task", url, expectedText: "Local app" }, context);
     assert.equal(result.data?.url, url + "/");
     assert.equal(host, new URL(url).host);
@@ -143,9 +172,9 @@ test("IPv6-only localhost services can be checked without DNS", async t => {
   try {
     const address = server.address();
     assert.ok(address && typeof address === "object");
-    const { tool } = fixture();
     for (const host of ["localhost", "[::1]"]) {
-      const url: string = `http://${host}:${address.port}/`;
+      const url = `http://${host}:${address.port}/`;
+      const { tool } = fixture(url);
       assert.equal((await tool.execute({ taskId: "preview-task", url, expectedText: "IPv6 app" }, context)).data?.url, url);
     }
   } finally { await close(server); }
@@ -155,7 +184,7 @@ test("a server that never responds is bounded by the readiness deadline", { time
   const server = createServer(() => {});
   const origin = await listen(server);
   try {
-    const { tool } = fixture();
+    const { tool } = fixture(origin);
     await assert.rejects(tool.execute({ taskId: "preview-task", url: origin, expectedText: "Expected app" }, context), /timed out after 5 seconds/);
   } finally { await close(server); }
 });
@@ -168,7 +197,7 @@ test("response failures identify status, type, redirects and unsupported encodin
   });
   const origin = await listen(server);
   try {
-    const { tool } = fixture();
+    const { tool } = fixture(origin);
     for (const [route, message] of [["/json", /Expected text\/html, received application\/json \(HTTP 200\)/], ["/error", /Expected HTTP 200, received 503/], ["/redirect", /HTTP 302 redirect/], ["/gzip", /Unsupported content-encoding: gzip/]] as const) {
       await assert.rejects(tool.execute({ taskId: "preview-task", url: origin + route, expectedText: "Expected app" }, context), message);
     }
@@ -176,7 +205,7 @@ test("response failures identify status, type, redirects and unsupported encodin
 });
 
 test("already cancelled calls retain the structured cancellation code", async () => {
-  const { tool } = fixture();
+  const { tool } = fixture("http://localhost:12345");
   await assert.rejects(tool.execute({ taskId: "preview-task", url: "http://localhost:12345", expectedText: "Expected app" }, { ...context, abortSignal: AbortSignal.abort() }),
     (error: unknown) => (error as { code: string }).code === "tool_aborted");
 });
@@ -184,6 +213,6 @@ test("already cancelled calls retain the structured cancellation code", async ()
 test("default port and wildcard addresses explain the supported URL contract", async () => {
   const { tool } = fixture();
   for (const url of ["http://127.0.0.1:80", "http://0.0.0.0:3000"]) {
-    await assert.rejects(tool.execute({ taskId: "preview-task", url, expectedText: "App" }, context), /non-default port.*same port on localhost/);
+    await assert.rejects(tool.execute({ taskId: "preview-task", url, expectedText: "App" }, context), /non-default port.*same port on 127\.0\.0\.1/);
   }
 });

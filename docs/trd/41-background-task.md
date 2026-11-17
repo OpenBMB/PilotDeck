@@ -14,9 +14,12 @@ Tests: [runtime](../../tests/task/background-task-runtime.spec.ts), [process/out
 ## Web preview handoff
 
 `task_preview({ taskId, url, expectedText })` checks an already-running task in the
-calling session and workspace. Use the exact page URL from `task_output` and a
-project-specific marker from its initial HTML, matched exactly including case and
-whitespace; avoid scaffold default titles. It requires HTTP 200, `text/html`, and
+calling session and workspace. The page URL must use an HTTP origin announced
+in that task's retained output. Use `task_output` to find it, and map wildcard
+addresses `0.0.0.0` and `[::]` to `127.0.0.1` and `[::1]` at the same port.
+Pass the exact page path and a project-specific marker from its initial HTML,
+matched exactly including case and whitespace. The check requires HTTP 200,
+`text/html`, and
 the marker within 512 KiB. A single five-second deadline covers both IPv4/IPv6
 attempts and callers can cancel. Only explicit nonzero, non-default-port HTTP
 loopback URLs are accepted; credentials, fragments, redirects and compressed
@@ -27,8 +30,8 @@ IPv6 services can also use `[::1]` explicitly.
 The successful result supplies a clickable URL, check time, HTTP/content evidence
 and the task identity for `task_stop`. It neither launches a browser nor executes
 JavaScript. The caller must perform browser acceptance when available and report
-its limits. The task association validates lifecycle/ownership, not OS socket
-ownership: a distinctive HTML marker helps catch a wrong port or application.
+its limits. The task association uses retained output as evidence for the origin.
+Socket ownership is outside the scope of the check.
 The URL belongs to the executing Gateway; remote/Docker clients need their own
 forwarding. No client URL is guessed, service is stopped, or persistent deployment
 is created. Leave requested previews running until the user stops them or the
