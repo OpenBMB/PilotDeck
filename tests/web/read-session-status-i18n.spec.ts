@@ -135,6 +135,10 @@ test("history token usage restores latest non-empty turn past latest empty turn 
     assert.equal(replay.tokenUsage?.used, 35);
     assert.equal((replay.tokenUsage?.breakdown as { output?: number } | undefined)?.output, 2);
     assert.equal(replay.tokenUsage?.total, 1000);
+    assert.deepEqual(replay.lastTurnUsage, {
+      turnId: 'turn-2', completedAt: '2026-07-09T00:00:03.000Z',
+      usage: { inputTokens: 25, outputTokens: 2, cacheReadTokens: 10, totalTokens: 37 },
+    });
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
     await rm(pilotHome, { recursive: true, force: true });
@@ -190,6 +194,8 @@ test("history token usage prefers persisted context budget snapshot", async () =
     assert.equal(replay.tokenUsage?.budgetUsed, 90);
     assert.equal(replay.tokenUsage?.total, 500);
     assert.equal(replay.tokenUsage?.effectiveTotal, 450);
+    assert.equal(replay.lastTurnUsage?.usage.cacheReadTokens, undefined, 'Unreported cache usage must not become zero');
+    assert.deepEqual(replay.lastTurnUsage?.usage, { inputTokens: 100, outputTokens: 5, totalTokens: 105 });
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
     await rm(pilotHome, { recursive: true, force: true });

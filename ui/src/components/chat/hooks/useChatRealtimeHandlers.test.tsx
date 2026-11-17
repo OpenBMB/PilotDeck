@@ -101,6 +101,46 @@ describe('useChatRealtimeHandlers terminal errors', () => {
     expect(chatInactive).toHaveBeenCalledWith('inactive');
   });
 
+  it('does not replace a restored budget with an unknown session-status snapshot', () => {
+    const setTokenBudget = vi.fn();
+    renderHook(() => useChatRealtimeHandlers({ provider,
+      selectedProject: { name: 'fixture', fullPath: '/fixture', displayName: 'Fixture' }, selectedSession: { id: 'web:source' },
+      currentSessionId: 'web:source', setCurrentSessionId: noop, setIsLoading: noop,
+      setSessionRuntimeState: noop, activeRunId: null, setActiveRunId: noop,
+      setCanAbortSession: noop, setIsAborting: noop, setClaudeStatus: noop, setPilotDeckStatus: noop,
+      setTokenBudget, setPendingPermissionRequests: noop, pendingViewSessionRef: { current: null },
+      sessionStore: createSessionStore() }));
+    const respond = (tokenBudget: unknown) => {
+      const request = buildSessionStatusRequest({ sessionId: 'web:source', provider, expectedActiveRunId: null, includeActiveTurnMessages: true });
+      act(() => mocks.listener?.({ type: 'session-status', sessionId: 'web:source', isProcessing: false,
+        statusRequestId: request.statusRequestId, tokenBudget }));
+    };
+    const restored = { used: 50540, total: 1048576 };
+    respond(restored);
+    respond({ used: 0, total: 0, unknown: true });
+    expect(setTokenBudget.mock.calls).toEqual([[restored]]);
+  });
+
+  it('publishes completed-turn usage for an already-open context panel', () => {
+    const listener = vi.fn();
+    window.addEventListener('pilotdeck:agent-turn-complete', listener);
+    try {
+      renderHook(() => useChatRealtimeHandlers({ provider,
+        selectedProject: { name: 'fixture', fullPath: '/fixture', displayName: 'Fixture' }, selectedSession: { id: 'web:source' },
+        currentSessionId: 'web:source', setCurrentSessionId: noop, setIsLoading: noop,
+        setSessionRuntimeState: noop, activeRunId: null, setActiveRunId: noop,
+        setCanAbortSession: noop, setIsAborting: noop, setClaudeStatus: noop, setPilotDeckStatus: noop,
+        setTokenBudget: noop, setPendingPermissionRequests: noop, pendingViewSessionRef: { current: null },
+        sessionStore: createSessionStore() }));
+      const usage = { inputTokens: 5000, cacheReadTokens: 5000, outputTokens: 20 };
+      const completedAt = '2026-09-01T00:01:00Z';
+      act(() => mocks.listener?.({ kind: 'complete', sessionId: 'web:source', runId: 'run-1', usage,
+        turnTiming: { startedAt: '2026-09-01T00:00:00Z', completedAt, finishReason: 'completed' } }));
+      expect(listener.mock.calls[0][0].detail).toMatchObject({ sessionId: 'web:source', projectPath: '/fixture',
+        lastTurnUsage: { turnId: 'run-1', completedAt, usage } });
+    } finally { window.removeEventListener('pilotdeck:agent-turn-complete', listener); }
+  });
+
   it('ends a new send when preflight fails immediately after session creation', () => {
     const sessionStore = createSessionStore();
     const setIsLoading = vi.fn(), setCanAbortSession = vi.fn(), setActiveRunId = vi.fn();

@@ -14,7 +14,7 @@ Prompt assembly reads one fresh extension metadata snapshot, orders commands/ski
 
 Anthropic cache plans keep up to three recent message breakpoints and reserve a cacheable history anchor before trailing request-only memory, artifact, Todo and plan reminders. Durable synthetic context such as date notices remains part of that history. Providers without explicit cache plans retain their existing automatic-cache behavior.
 
-The context popover requests `includeModelContext=summary` on authenticated message history and receives only `contextBreakdown`. `includeModelContext=true` explicitly requests the full diagnostic snapshot. Normal history reads omit snapshot I/O. Local system/tool/message estimates describe the latest assembled request and can differ from the reported token budget.
+The context popover requests `includeModelContext=summary` on authenticated message history and receives `contextBreakdown` and the latest completed turn's numeric `lastTurnUsage`. `includeModelContext=true` explicitly requests the full diagnostic snapshot. Normal history reads omit snapshot I/O. Local system/tool/message estimates describe the latest assembled request and can differ from the reported token budget. Cache hit percentages use provider-reported reads divided by uncached input plus cache reads and writes, excluding output. Missing cache statistics remain unavailable rather than becoming zero.
 
 Snapshots atomically replace a private `<transcript>.context.json` sidecar. Readers validate transcript ownership and reject snapshots from an older accepted turn. Session deletion removes the sidecar. Forked sessions without a fresh snapshot show unavailable estimates until their next model request.
 

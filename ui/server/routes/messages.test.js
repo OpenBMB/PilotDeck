@@ -49,7 +49,8 @@ describe('message routes', () => {
   });
   it('forwards context inspection only when explicitly requested and keeps it out of normal history', async () => {
     const breakdown = { systemTokens: 2200, toolsTokens: 10200, messageTokens: 65500 };
-    const read = vi.fn(async () => ({ messages: [], modelContext: { version: 1, systemPrompt: 'real prompt', breakdown } }));
+    const lastTurnUsage = { turnId: 'r', completedAt: '2026-09-01T00:01:00Z', usage: { inputTokens: 5000, cacheReadTokens: 5000 } };
+    const read = vi.fn(async () => ({ messages: [], lastTurnUsage, modelContext: { version: 1, systemPrompt: 'real prompt', breakdown } }));
     vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
       withPilotDeckGatewayReadRetry: operation => operation({ readSessionMessages: read }),
     }));
@@ -58,13 +59,16 @@ describe('message routes', () => {
     const server = app.listen(0);
     try {
       const url = `http://127.0.0.1:${server.address().port}/api/sessions/s/messages?projectPath=/p`;
-      expect((await (await nativeFetch(url)).json()).modelContext).toBeUndefined();
+      const normal = await (await nativeFetch(url)).json();
+      expect(normal.modelContext).toBeUndefined();
+      expect(normal.lastTurnUsage).toBeUndefined();
       expect(read.mock.calls[0][0].includeModelContext).toBeUndefined();
       const response = await nativeFetch(`${url}&includeModelContext=true&limit=1`);
       expect((await response.json()).modelContext.systemPrompt).toBe('real prompt');
       expect(read.mock.calls[1][0]).toMatchObject({ sessionKey: 's', projectKey: '/p', includeModelContext: true, limit: 1 });
       const summary = await (await nativeFetch(`${url}&includeModelContext=summary&limit=1`)).json();
       expect(summary.contextBreakdown).toEqual(breakdown);
+      expect(summary.lastTurnUsage).toEqual(lastTurnUsage);
       expect(summary.modelContext).toBeUndefined();
       expect(JSON.stringify(summary)).not.toContain('real prompt');
       expect(read.mock.calls[2][0]).toMatchObject({ sessionKey: 's', projectKey: '/p', includeModelContext: true, limit: 1 });

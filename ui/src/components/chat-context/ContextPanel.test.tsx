@@ -3,7 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import ContextPanel from './ContextPanel';
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('../../utils/api', () => ({ authenticatedFetch: mocks.fetch }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, string>) =>
+  key === 'context.cacheCounts' ? `Read ${values?.read} / input ${values?.input} tokens` : key }) }));
 
 afterEach(() => { cleanup(); mocks.fetch.mockReset(); });
 const breakdown = { systemTokens: 2200, toolsTokens: 10200, messageTokens: 65500 };
@@ -62,4 +63,45 @@ it('clamps an overflowing budget and preserves zero category estimates', async (
   expect(screen.getByRole('meter').getAttribute('aria-valuenow')).toBe('100');
   expect(screen.getByRole('meter').getAttribute('aria-valuetext')).toBe('100%+');
   expect(container.querySelector('.pd-context-bar-fill')?.children).toHaveLength(1);
+});
+
+const completedAt = '2026-09-01T00:01:00Z';
+const turn = (values: Record<string, number>) => ({ turnId: 'r', completedAt, usage: values });
+it.each([
+  [{ inputTokens: 5000, cacheReadTokens: 5000, outputTokens: 20000 }, '50%', 'cacheHit', 'Read 5K / input 10K tokens'],
+  [{ inputTokens: 0, cacheReadTokens: 9000, cacheWriteTokens: 1000 }, '90%', 'cacheHit', 'Read 9K / input 10K tokens'],
+  [{ inputTokens: 0, cacheReadTokens: 10000, outputTokens: 20000 }, '100%', 'cacheHit', 'Read 10K / input 10K tokens'],
+  [{ inputTokens: 10000, cacheReadTokens: 0 }, '0%', 'cacheMiss', 'Read 0 / input 10K tokens'],
+  [{ inputTokens: 10000 }, '—', 'cacheUnreported', null],
+] as const)('displays provider cache usage %j with the correct input denominator', async (values, percent, state, counts) => {
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ lastTurnUsage: turn(values) }) });
+  const { container } = render(<ContextPanel target={{ sessionId: 's', projectPath: '/p' }} {...usage} />);
+  await screen.findByText(`context.${state}`);
+  expect(container.querySelector('.pd-context-cache-header strong')?.textContent).toBe(percent);
+  if (counts) expect(screen.getByText(counts)).toBeTruthy();
+});
+
+it('updates an open panel on completion and retains newer usage over stale history and empty completions', async () => {
+  let resolve!: (value: unknown) => void;
+  mocks.fetch.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const view = render(<ContextPanel target={{ sessionId: 's', projectPath: '/p' }} {...usage} />);
+  const complete = (sessionId: string, projectPath: string, lastTurnUsage: unknown) => act(() => {
+    window.dispatchEvent(new CustomEvent('pilotdeck:agent-turn-complete', { detail: { sessionId, projectPath, lastTurnUsage } }));
+  });
+  complete('other', '/p', turn({ inputTokens: 0, cacheReadTokens: 10000 }));
+  complete('s', '/other', turn({ inputTokens: 0, cacheReadTokens: 10000 }));
+  expect(screen.getByText('context.cacheEmpty')).toBeTruthy();
+  complete('s', '/p', turn({ inputTokens: 5000, cacheReadTokens: 5000 }));
+  expect(screen.getByText('50%')).toBeTruthy();
+  await act(async () => resolve({ ok: true, json: async () => ({ lastTurnUsage: {
+    ...turn({ inputTokens: 10000, cacheReadTokens: 0 }), completedAt: '2026-09-01T00:00:00Z',
+  } }) }));
+  complete('s', '/p', turn({}));
+  expect(screen.getByText('50%')).toBeTruthy();
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ lastTurnUsage: null }) });
+  view.rerender(<ContextPanel target={{ sessionId: 'other', projectPath: '/p' }} {...usage} />);
+  await screen.findByText('context.cacheEmpty');
+  expect(screen.queryByText('50%')).toBeNull();
+  view.unmount();
+  complete('other', '/p', turn({ inputTokens: 0, cacheReadTokens: 10000 }));
 });

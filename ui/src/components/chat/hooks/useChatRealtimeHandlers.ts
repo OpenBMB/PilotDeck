@@ -666,7 +666,7 @@ export function useChatRealtimeHandlers({
             return;
           }
 
-          if (isCurrentSession && msg.tokenBudget) {
+          if (isCurrentSession && msg.tokenBudget && (msg.tokenBudget as Record<string, unknown>).unknown !== true) {
             setTokenBudget(msg.tokenBudget as Record<string, unknown>);
           }
 
@@ -1013,6 +1013,8 @@ export function useChatRealtimeHandlers({
               sessionId: sid,
               projectName: selectedProject?.name,
               projectPath: selectedProject?.fullPath || selectedProject?.path || '',
+              lastTurnUsage: { turnId: msgRunId, completedAt: msg.turnTiming?.completedAt ?? msg.timestamp,
+                usage: msg.usage },
             },
           }));
 

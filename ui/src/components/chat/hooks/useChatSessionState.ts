@@ -1090,7 +1090,7 @@ export function useChatSessionState({
         const url = `/api/projects/${encodeURIComponent(requestScope.projectName)}/sessions/${encodeURIComponent(requestScope.sessionId)}/token-usage?provider=pilotdeck`;
         const response = await authenticatedFetch(url, { signal: abort.signal });
         const budget = response.ok ? await response.json() : null;
-        if (isCurrent() && !abort.signal.aborted && revision === tokenBudgetRevision.current) setTokenBudget(budget);
+        if (budget && budget.unknown !== true && isCurrent() && !abort.signal.aborted && revision === tokenBudgetRevision.current) setTokenBudget(budget);
       } catch (error) {
         if (!abort.signal.aborted && isCurrent()) console.error('Failed to fetch initial token usage:', error);
       }

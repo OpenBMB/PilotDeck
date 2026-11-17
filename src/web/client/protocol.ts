@@ -356,6 +356,12 @@ export type WebReadSessionMessagesResult = {
   nextCursor?: string;
   total?: number;
   tokenUsage?: Record<string, unknown>;
+  /** Provider-reported usage of the latest completed turn with non-empty usage. */
+  lastTurnUsage?: {
+    turnId: string;
+    completedAt: string;
+    usage: import('../../model/index.js').CanonicalUsage;
+  };
   session: WebSessionInfo;
 };
 

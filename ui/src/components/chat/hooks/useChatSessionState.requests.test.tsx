@@ -149,6 +149,34 @@ it.each([true, false])('prefers dedicated token usage over a history estimate (h
   await waitFor(() => expect(result.current.view.tokenBudget).toEqual({ used: 200 }));
 });
 
+it.each([true, false])('restores history budget after restart despite an unknown HTTP budget (history first: %s)', async historyFirst => {
+  const historyResponse = deferred();
+  const budgetResponse = deferred();
+  const restored = { used: 50540, total: 1048576, source: 'history' };
+  vi.mocked(authenticatedFetch).mockImplementation(async url => String(url).includes('/token-usage') ? budgetResponse.promise : historyResponse.promise);
+  const { result } = mount();
+  const resolveHistory = async () => {
+    historyResponse.resolve(json({ messages: [], total: 0, hasMore: false, tokenUsage: restored }));
+    await historyResponse.promise;
+  };
+  const resolveBudget = async () => { budgetResponse.resolve(json({ used: 0, total: 0, unknown: true })); await budgetResponse.promise; };
+  await act(historyFirst ? resolveHistory : resolveBudget);
+  await act(historyFirst ? resolveBudget : resolveHistory);
+  await waitFor(() => expect(result.current.view.isLoadingSessionMessages).toBe(false));
+  expect(result.current.view.tokenBudget).toEqual(restored);
+});
+
+it('clears the previous session budget when the next session has no known usage', async () => {
+  const { result, rerender } = mount();
+  await waitFor(() => expect(result.current.view.tokenBudget).toEqual({ used: 20 }));
+  vi.mocked(authenticatedFetch).mockImplementation(async url => String(url).includes('/token-usage')
+    ? json({ used: 0, total: 0, unknown: true }) : history());
+  rerender({ ...initial, session: sessionB });
+  await waitFor(() => expect(urls('/session-b/token-usage')).toHaveLength(1));
+  await waitFor(() => expect(result.current.view.isLoadingSessionMessages).toBe(false));
+  expect(result.current.view.tokenBudget).toBeNull();
+});
+
 it('keeps the latest initial load pending when a previous visit finishes after A to B to A', async () => {
   const old = deferred();
   const latest = deferred();

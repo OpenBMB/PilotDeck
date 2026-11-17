@@ -12,7 +12,14 @@
     "systemPrompt": "System instructions",
     "tools": "Tool descriptions",
     "messages": "Conversation",
-    "estimates": "Estimated token breakdown"
+    "estimates": "Estimated token breakdown",
+    "cacheTitle": "Previous turn cache hits",
+    "cacheHit": "Cache hit",
+    "cacheMiss": "No cache hits",
+    "cacheUnreported": "API did not report cache usage",
+    "cacheEmpty": "No completed requests yet",
+    "cacheCounts": "Read {{read}} / input {{input}} tokens",
+    "cacheReadOnly": "Read {{read}} tokens"
   },
   "conversationError": {
     "label": "Request failed",
