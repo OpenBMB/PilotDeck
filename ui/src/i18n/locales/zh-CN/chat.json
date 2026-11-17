@@ -14,12 +14,14 @@
     "messages": "会话内容",
     "estimates": "分类 token 估算",
     "cacheTitle": "上一轮缓存命中",
+    "cacheBadge": "命中",
+    "cacheCalls": "调用次数",
+    "cacheCallsValue": "{{count}} 次",
     "cacheHit": "已命中",
     "cacheMiss": "未命中缓存",
     "cacheUnreported": "API 未提供缓存统计",
     "cacheEmpty": "尚无已完成请求",
-    "cacheCounts": "读取 {{read}} / 输入 {{input}} tokens",
-    "cacheReadOnly": "读取 {{read}} tokens"
+    "cacheCounts": "{{read}} / {{input}}"
   },
   "conversationError": {
     "label": "请求未完成",

@@ -134,10 +134,10 @@ describe('useChatRealtimeHandlers terminal errors', () => {
         sessionStore: createSessionStore() }));
       const usage = { inputTokens: 5000, cacheReadTokens: 5000, outputTokens: 20 };
       const completedAt = '2026-09-01T00:01:00Z';
-      act(() => mocks.listener?.({ kind: 'complete', sessionId: 'web:source', runId: 'run-1', usage,
+      act(() => mocks.listener?.({ kind: 'complete', sessionId: 'web:source', runId: 'run-1', usage, turns: 6,
         turnTiming: { startedAt: '2026-09-01T00:00:00Z', completedAt, finishReason: 'completed' } }));
       expect(listener.mock.calls[0][0].detail).toMatchObject({ sessionId: 'web:source', projectPath: '/fixture',
-        lastTurnUsage: { turnId: 'run-1', completedAt, usage } });
+        lastTurnUsage: { turnId: 'run-1', completedAt, calls: 6, usage } });
     } finally { window.removeEventListener('pilotdeck:agent-turn-complete', listener); }
   });
 

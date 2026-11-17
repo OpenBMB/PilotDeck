@@ -1014,7 +1014,7 @@ export function useChatRealtimeHandlers({
               projectName: selectedProject?.name,
               projectPath: selectedProject?.fullPath || selectedProject?.path || '',
               lastTurnUsage: { turnId: msgRunId, completedAt: msg.turnTiming?.completedAt ?? msg.timestamp,
-                usage: msg.usage },
+                calls: msg.turns, usage: msg.usage },
             },
           }));
 

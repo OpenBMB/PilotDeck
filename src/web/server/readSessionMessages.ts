@@ -345,7 +345,7 @@ function latestTurnUsageSnapshot(entries: AgentTranscriptEntry[]): WebReadSessio
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry.type === "turn_result" && hasPositiveUsage(entry.result.usage)) {
-      return { turnId: entry.turnId, completedAt: entry.result.completedAt, usage: entry.result.usage };
+      return { turnId: entry.turnId, completedAt: entry.result.completedAt, calls: entry.result.turns, usage: entry.result.usage };
     }
   }
   return undefined;

@@ -136,7 +136,7 @@ test("history token usage restores latest non-empty turn past latest empty turn 
     assert.equal((replay.tokenUsage?.breakdown as { output?: number } | undefined)?.output, 2);
     assert.equal(replay.tokenUsage?.total, 1000);
     assert.deepEqual(replay.lastTurnUsage, {
-      turnId: 'turn-2', completedAt: '2026-07-09T00:00:03.000Z',
+      turnId: 'turn-2', completedAt: '2026-07-09T00:00:03.000Z', calls: 1,
       usage: { inputTokens: 25, outputTokens: 2, cacheReadTokens: 10, totalTokens: 37 },
     });
   } finally {

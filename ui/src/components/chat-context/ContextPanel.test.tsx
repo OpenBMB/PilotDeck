@@ -3,8 +3,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import ContextPanel from './ContextPanel';
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('../../utils/api', () => ({ authenticatedFetch: mocks.fetch }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, string>) =>
-  key === 'context.cacheCounts' ? `Read ${values?.read} / input ${values?.input} tokens` : key }) }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, string | number>) =>
+  key === 'context.cacheCounts' ? `${values?.read} / ${values?.input}`
+    : key === 'context.cacheCallsValue' ? `${values?.count} calls` : key }) }));
 
 afterEach(() => { cleanup(); mocks.fetch.mockReset(); });
 const breakdown = { systemTokens: 2200, toolsTokens: 10200, messageTokens: 65500 };
@@ -21,7 +22,7 @@ it('shows compact usage and three category estimates without the detailed inspec
   expect(screen.getByText('~65.5K')).toBeTruthy();
   expect(screen.getByRole('meter').getAttribute('aria-valuenow')).toBe('45');
   expect(screen.getByRole('meter').getAttribute('aria-valuetext')).toBe('45%');
-  expect(view.container.querySelectorAll('dt')).toHaveLength(3);
+  expect(view.container.querySelectorAll('.pd-context-panel > .pd-context-legend dt')).toHaveLength(3);
   expect(view.container.querySelectorAll('button, input, pre, details')).toHaveLength(0);
   const url = new URL(mocks.fetch.mock.calls[0][0], 'http://local');
   expect(url.pathname).toContain('session%3A1');
@@ -40,7 +41,7 @@ it('aborts stale loads on session switch and retries when reported usage changes
   await waitFor(() => expect(container.firstElementChild?.getAttribute('aria-busy')).toBe('false'));
   await act(async () => { finish(result()); });
   expect(screen.queryByText('~2.2K')).toBeNull();
-  expect([...container.querySelectorAll('dd')].map(row => row.textContent)).toEqual(['—', '—', '—']);
+  expect([...container.querySelectorAll('.pd-context-panel > .pd-context-legend dd')].map(row => row.textContent)).toEqual(['—', '—', '—']);
   expect(screen.queryByRole('alert')).toBeNull();
   mocks.fetch.mockResolvedValueOnce(result());
   rerender(<ContextPanel target={{ sessionId: 'new', projectPath: '/p' }} {...usage} used={118000} />);
@@ -51,7 +52,7 @@ it('uses a quiet unknown state before a session or budget exists', () => {
   const { container } = render(<ContextPanel used={0} total={0} percent={0} percentLabel="0%" />);
   expect(mocks.fetch).not.toHaveBeenCalled();
   expect(screen.getByText('— / —')).toBeTruthy();
-  expect([...container.querySelectorAll('dd')].map(row => row.textContent)).toEqual(['—', '—', '—']);
+  expect([...container.querySelectorAll('.pd-context-panel > .pd-context-legend dd')].map(row => row.textContent)).toEqual(['—', '—', '—']);
   expect(screen.queryByRole('meter')).toBeNull();
 });
 
@@ -66,19 +67,38 @@ it('clamps an overflowing budget and preserves zero category estimates', async (
 });
 
 const completedAt = '2026-09-01T00:01:00Z';
-const turn = (values: Record<string, number>) => ({ turnId: 'r', completedAt, usage: values });
+const turn = (values: Record<string, number>) => ({ turnId: 'r', completedAt, calls: 1, usage: values });
 it.each([
-  [{ inputTokens: 5000, cacheReadTokens: 5000, outputTokens: 20000 }, '50%', 'cacheHit', 'Read 5K / input 10K tokens'],
-  [{ inputTokens: 0, cacheReadTokens: 9000, cacheWriteTokens: 1000 }, '90%', 'cacheHit', 'Read 9K / input 10K tokens'],
-  [{ inputTokens: 0, cacheReadTokens: 10000, outputTokens: 20000 }, '100%', 'cacheHit', 'Read 10K / input 10K tokens'],
-  [{ inputTokens: 10000, cacheReadTokens: 0 }, '0%', 'cacheMiss', 'Read 0 / input 10K tokens'],
+  [{ inputTokens: 5000, cacheReadTokens: 5000, outputTokens: 20000 }, '50%', 'cacheHit', '5K / 10K'],
+  [{ inputTokens: 0, cacheReadTokens: 9000, cacheWriteTokens: 1000 }, '90%', 'cacheHit', '9K / 10K'],
+  [{ inputTokens: 0, cacheReadTokens: 10000, outputTokens: 20000 }, '100%', 'cacheHit', '10K / 10K'],
+  [{ inputTokens: 10000, cacheReadTokens: 0 }, '0%', 'cacheMiss', '0 / 10K'],
   [{ inputTokens: 10000 }, '—', 'cacheUnreported', null],
 ] as const)('displays provider cache usage %j with the correct input denominator', async (values, percent, state, counts) => {
   mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ lastTurnUsage: turn(values) }) });
   const { container } = render(<ContextPanel target={{ sessionId: 's', projectPath: '/p' }} {...usage} />);
   await screen.findByText(`context.${state}`);
-  expect(container.querySelector('.pd-context-cache-header strong')?.textContent).toBe(percent);
+  expect(container.querySelector('.pd-context-cache .pd-context-status strong')?.textContent).toBe(percent);
   if (counts) expect(screen.getByText(counts)).toBeTruthy();
+});
+
+it('shows the saved call count beside the compact cumulative token pair', async () => {
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ lastTurnUsage: {
+    ...turn({ inputTokens: 13256, cacheReadTokens: 306176 }), calls: 6,
+  } }) });
+  render(<ContextPanel target={{ sessionId: 's', projectPath: '/p' }} {...usage} />);
+  await screen.findByText('6 calls');
+  expect(screen.getByText('95.9%')).toBeTruthy();
+  expect(screen.getByText('306K / 319K')).toBeTruthy();
+});
+
+it('keeps a missing legacy call count unavailable instead of inventing one', async () => {
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ lastTurnUsage: {
+    turnId: 'legacy', completedAt, usage: { inputTokens: 817, cacheReadTokens: 60032 },
+  } }) });
+  const { container } = render(<ContextPanel target={{ sessionId: 's', projectPath: '/p' }} {...usage} />);
+  await screen.findByText('60K / 60.8K');
+  expect(container.querySelector('.pd-context-cache-legend dd')?.textContent).toBe('—');
 });
 
 it('updates an open panel on completion and retains newer usage over stale history and empty completions', async () => {

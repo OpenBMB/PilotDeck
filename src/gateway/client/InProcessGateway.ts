@@ -2566,6 +2566,7 @@ function mapTurnCompleted(result: AgentTurnResult): GatewayEvent[] {
     events.push({ type: "structured_output", payload: result.structuredOutput });
   }
   events.push({ type: "turn_completed", usage: result.usage, finishReason: result.stopReason,
+    turns: result.turns,
     startedAt: result.startedAt, completedAt: result.completedAt });
   return events;
 }

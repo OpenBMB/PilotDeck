@@ -1146,6 +1146,7 @@ export function gatewayEventToFrames(event, sessionId, provider) {
                     success: true,
                     finishReason: event.finishReason,
                     usage: event.usage,
+                    turns: event.turns,
                 }),
             ];
         case 'context_budget':

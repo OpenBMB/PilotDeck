@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Layers3 } from 'lucide-react';
+import { DatabaseZap, Layers3 } from 'lucide-react';
 import { authenticatedFetch } from '../../utils/api';
 import type { WebReadSessionMessagesResult } from '../../../../src/web/client/protocol';
 import './context-panel.css';
@@ -81,7 +81,9 @@ export default function ContextPanel({ target, used, total, percent, percentLabe
   const counts = sections.map(row => tokenCount(breakdown?.[row.tokens]));
   const estimated = counts.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   const occupied = total > 0 ? Math.max(0, Math.min(100, percent)) : 0;
-  const lastUsage = cacheSnapshot?.targetKey === targetKey ? cacheSnapshot.turn?.usage : undefined;
+  const lastTurn = cacheSnapshot?.targetKey === targetKey ? cacheSnapshot.turn : null;
+  const lastUsage = lastTurn?.usage;
+  const calls = typeof lastTurn?.calls === 'number' && Number.isSafeInteger(lastTurn.calls) && lastTurn.calls >= 0 ? lastTurn.calls : null;
   const cacheRead = usageCount(lastUsage?.cacheReadTokens);
   const uncached = usageCount(lastUsage?.inputTokens);
   const inputTokens = uncached !== null ? uncached + (cacheRead ?? 0) + (usageCount(lastUsage?.cacheWriteTokens) ?? 0) : null;
@@ -109,14 +111,19 @@ export default function ContextPanel({ target, used, total, percent, percentLabe
         <dd>{counts[index] === null ? '—' : `~${tokenFormat.format(counts[index])}`}</dd>
       </div>)}
     </dl>
-    <section className={`pd-context-cache${cacheRead !== null && cacheRead > 0 ? ' pd-context-cache-hit' : ''}`} aria-label={t('context.cacheTitle')}>
-      <div className="pd-context-cache-header"><span>{t('context.cacheTitle')}</span><strong>{cachePercent}</strong></div>
-      <div className="pd-context-cache-detail">
-        <span className="pd-context-cache-state"><span className="pd-context-swatch" />{t(`context.${cacheState}`)}</span>
-        {cacheRead !== null ? <span>{t(inputTokens !== null ? 'context.cacheCounts' : 'context.cacheReadOnly', {
-          read: tokenFormat.format(cacheRead), input: inputTokens !== null ? tokenFormat.format(inputTokens) : '',
-        })}</span> : null}
+    <section className="pd-context-cache" aria-label={t('context.cacheTitle')}>
+      <div className="pd-context-header">
+        <span className="pd-context-title"><DatabaseZap size={15} strokeWidth={1.7} aria-hidden="true" />{t('context.cacheTitle')}</span>
+        <span className="pd-context-status"><span>{t('context.cacheBadge')}</span><strong>{cachePercent}</strong></span>
       </div>
+      <dl className="pd-context-legend pd-context-cache-legend">
+        <div><dt><span className="pd-context-swatch pd-context-system" />{t('context.cacheCalls')}</dt>
+          <dd>{calls === null ? '—' : t('context.cacheCallsValue', { count: calls })}</dd></div>
+        <div><dt><span className={`pd-context-swatch ${cacheRead !== null && cacheRead > 0 ? 'pd-context-messages' : 'pd-context-system'}`} />{t(`context.${cacheState}`)}</dt>
+          <dd>{cacheRead !== null ? t('context.cacheCounts', {
+            read: tokenFormat.format(cacheRead), input: inputTokens !== null ? tokenFormat.format(inputTokens) : '—',
+          }) : '—'}</dd></div>
+      </dl>
     </section>
   </div>;
 }

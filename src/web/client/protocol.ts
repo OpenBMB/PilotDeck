@@ -105,7 +105,7 @@ export type WebGatewayEvent = WebGatewayEventMetadata & (
   | { type: "worktree_created"; runId: string; cwd: string }
   | { type: "worktree_removed"; cwd: string }
   | { type: "agent_status"; event: string; detail?: Record<string, unknown> }
-  | { type: "turn_completed"; usage: Record<string, number>; finishReason: string; startedAt?: string; completedAt?: string }
+  | { type: "turn_completed"; usage: Record<string, number>; finishReason: string; turns?: number; startedAt?: string; completedAt?: string }
   | {
       type: "error";
       message: string;
@@ -360,6 +360,8 @@ export type WebReadSessionMessagesResult = {
   lastTurnUsage?: {
     turnId: string;
     completedAt: string;
+    /** Recorded model-loop iterations, excluding transport retries. */
+    calls?: number;
     usage: import('../../model/index.js').CanonicalUsage;
   };
   session: WebSessionInfo;
