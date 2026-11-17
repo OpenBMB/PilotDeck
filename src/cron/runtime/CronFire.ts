@@ -120,6 +120,9 @@ export class CronFire {
         await this.deps.store.updateTask(task.taskId, current => current.lastRunId === runId
           ? { ...current, lastRun: record(), revision: (current.revision ?? 0) + 1 } : current);
       }
+      // Preparation and workspace persistence can yield to a successful stop.
+      // Keep this check adjacent to submission, with no intervening await.
+      if (active.stopRequested) return;
       for await (const event of this.deps.gateway.submitTurn({
         sessionKey, channelKey: "cron",
         projectKey: task.projectKey, workspaceCwd, message: task.message, mode: task.mode ?? "default",

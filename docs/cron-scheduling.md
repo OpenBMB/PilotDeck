@@ -90,6 +90,10 @@ same destination rule as execution. Chat-created files in a prepared worktree
 are previewable before the first scheduled run, and a previous run's directory
 does not override the current workspace. File reads never create worktrees and
 retain source registration, owned-worktree and canonical-path checks.
+General tasks retain their saved execution directory when the General workspace
+setting changes; file authorization uses that same task-owned directory, including
+after restart. A local task's unavailable saved directory fails instead of
+falling back to the newly configured General workspace.
 File cards use the task's filesystem route for version checks and downloads;
 references retain the source project's conversation identity.
 The `@` index uses `GET /api/projects/:projectName/files/index` with the
@@ -119,6 +123,8 @@ calendar/clock picker owns Escape before the editor. Rejected saves retain input
 Tasks retain `scheduled`, `running`, `paused`, `completed`, `failed`, or `missed`
 status. `enabled` controls future triggers independently of the active run.
 Pausing a running task lets that run finish; stopping cancels only that run.
+Cancellation is rechecked after workspace preparation and persistence, immediately
+before Gateway submission, so stopping during checkout cannot start a model turn.
 One-time tasks remain after completion, failure or interruption. Resume requires
 a future occurrence; manual retry works without changing the saved schedule.
 Description-only edits preserve the committed occurrence. Edits require an

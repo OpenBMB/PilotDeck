@@ -17,7 +17,8 @@ export function createCronWorkspaceResolver({ getGateway, env = process.env }) {
         if (!task) return null;
         const pilotHome = resolvePilotHome(env);
         const sourceRoot = path.resolve(task.projectKey) === path.resolve(pilotHome)
-            ? await ensureGeneralWorkspaceDirectory(env)
+            // General settings affect new tasks; existing tasks retain their saved execution root.
+            ? task.workspaceCwd || await ensureGeneralWorkspaceDirectory(env)
             : await resolveRegisteredProject(task.projectKey, pilotHome);
         return { root: currentCronWorkspace({ ...task, workspaceCwd: task.workspaceCwd || sourceRoot }, pilotHome),
             sourceRoot, worktree: task.workspaceMode === 'worktree' };

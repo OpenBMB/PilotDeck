@@ -14,6 +14,7 @@ import { SessionConfigOverrides } from '../../../src/always-on/runtime/SessionCo
 import { createCronWorkspaceResolver } from '../services/cronWorkspace.js';
 import { cronTaskOverview } from '../services/cronOverview.js';
 import { projectFileIndex } from '../services/projectFileIndex.js';
+import { ensureGeneralWorkspaceDirectory } from '../utils/generalWorkspace.js';
 import { runWorkspaceFileOperation } from '../../../src/session/checkpoints/workspaceFileOperation.js';
 import { createProjectFilesystemMiddleware } from './projectFilesystem.js';
 import { isPathInsideOrEqual } from '../utils/pathSafety.js';
@@ -258,6 +259,53 @@ it('keeps task file-index pagination and queries scoped to the trusted workspace
     const matched = await (await request('cron-task:owned', '/files/index?query=beta&includeDirs=false')).json();
     expect(matched.items.map(item => item.relativePath)).toEqual(['beta.md']);
     expect(matched.items[0].matches).toEqual(expect.arrayContaining([expect.objectContaining({ start: 0, end: 4 })]));
+});
+
+it('keeps a General task authorized in its saved execution directory after settings change and restart', async () => {
+    const canonicalRoot = await fs.realpath(root);
+    env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY = path.join(canonicalRoot, 'general-a');
+    const generalA = await ensureGeneralWorkspaceDirectory(env);
+    await fs.writeFile(path.join(generalA, 'report.md'), 'Task report in A');
+    const gateway = { closeSession: async () => {}, async *submitTurn() { throw new Error('File requests must not execute a model turn'); } };
+    let manager = createCronManager({ config: defaultCronConfig(), pilotHome: home });
+    manager.bindGateway(gateway);
+    taskResolver = createCronWorkspaceResolver({ getGateway: () => ({ cronList: input => manager.listTasks(input) }), env });
+    try {
+        const task = (await manager.createTask({ name: 'Pinned General report', message: 'Report in the saved workspace',
+            projectKey: 'general', workspaceCwd: generalA, schedule: { type: 'once', runAt: '2030-01-01T00:00:00Z' } })).task;
+        const id = `cron-task:${task.taskId}`;
+        const verifyFiles = async () => {
+            const prepared = await manager.prepareConversation({ sessionKey: task.sessionKey, projectKey: home });
+            expect(await fs.realpath(prepared.workspaceCwd)).toBe(await fs.realpath(generalA));
+            const pageResponse = await request(id, '/files/index');
+            expect(pageResponse.status).toBe(200);
+            const page = await pageResponse.json();
+            expect(page.projectKey).toBe(await fs.realpath(generalA));
+            expect(page.items.map(item => item.relativePath)).toContain('report.md');
+            const preview = await request(id, '/file?filePath=report.md');
+            expect(preview.status).toBe(200); expect((await preview.json()).content).toBe('Task report in A');
+            const download = await request(id, '/files/content?path=report.md&download=1');
+            expect(download.status).toBe(200); expect(await download.text()).toBe('Task report in A');
+            expect((await request(id, '/file?filePath=' + encodeURIComponent(path.join(home, 'auth.db')))).status).toBe(403);
+        };
+        await verifyFiles();
+        env.PILOTDECK_GENERAL_WORKSPACE_DIRECTORY = path.join(canonicalRoot, 'general-b');
+        const generalB = await ensureGeneralWorkspaceDirectory(env);
+        await fs.writeFile(path.join(generalB, 'report.md'), 'New General report in B');
+        await verifyFiles();
+        expect((await request(id, '/file?filePath=' + encodeURIComponent(path.join(generalB, 'report.md')))).status).toBe(403);
+        await manager.stop();
+        manager = createCronManager({ config: defaultCronConfig(), pilotHome: home });
+        manager.bindGateway(gateway);
+        await manager.start();
+        await verifyFiles();
+        expect((await manager.listTasks({ taskId: task.taskId })).tasks[0].lastRun).toBeUndefined();
+        expect(await fs.readFile(path.join(generalB, 'report.md'), 'utf8')).toBe('New General report in B');
+        await fs.rm(generalA, { recursive: true });
+        expect((await request(id, '/files/index')).status).toBe(404); // Never silently redirect old tasks to B.
+        await fs.symlink(home, generalA, process.platform === 'win32' ? 'junction' : 'dir');
+        expect((await request(id, '/files/index')).status).toBe(403);
+    } finally { await manager.stop(); }
 });
 
 it('previews files from task chat before its first worktree execution and follows the current workspace', async () => {
