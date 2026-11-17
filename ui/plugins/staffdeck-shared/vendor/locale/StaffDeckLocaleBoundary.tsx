@@ -83,9 +83,14 @@ function localizeText(node: Text, locale: Locale): void {
     return;
   }
 
-  // locale === 'en': record source if we haven't already, then translate it.
-  const original = source ?? current;
-  if (!source || (current !== source && current !== previousTarget)) {
+  // Same rationale as localizeAttribute: when the cached source no longer
+  // matches the DOM (a rerendered React component swapped it out), the
+  // newly observed DOM value must become the fresh source — not the stale
+  // cached one.
+  let original = source ?? current;
+  const sourceChanged = current !== source && current !== previousTarget;
+  if (!source || sourceChanged) {
+    original = current;
     textSources.set(node, original);
   }
   const target = translateWhitespace(original);
@@ -114,8 +119,16 @@ function localizeAttribute(element: Element, name: string, locale: Locale): void
     return;
   }
 
-  const original = source ?? current;
-  if (!source || (current !== source && current !== previousTarget)) {
+  // When the cached source no longer matches what the DOM now carries
+  // (the attribute was rewritten by a rerender), the new DOM value must
+  // become the fresh source — not the stale cached one. The old code did
+  //   original = source ?? current; if (...) sources.set(name, original);
+  // which kept updating the cache with the *old* source whenever source
+  // existed, so rerendered values never translated.
+  let original = source ?? current;
+  const sourceChanged = current !== source && current !== previousTarget;
+  if (!source || sourceChanged) {
+    original = current;
     sources.set(name, original);
   }
   const target = translateWhitespace(original);

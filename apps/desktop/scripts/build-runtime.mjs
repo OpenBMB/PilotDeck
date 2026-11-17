@@ -249,6 +249,9 @@ function prepareRuntimeTree(installEnv = process.env) {
     "--frozen-lockfile",
     "--prefer-offline",
   ], installRoot, withBundledPlaywrightEnv(installEnv));
+  // node-pty ships no Linux prebuilds; do not rely on cached install side effects.
+  runPnpm(["rebuild", "node-pty", "--ignore-workspace", "--config.node-linker=hoisted"],
+    installRoot, withBundledPlaywrightEnv(installEnv));
   rmSync(runtimeRoot, { recursive: true, force: true });
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   renameSync(installRoot, runtimeRoot);
