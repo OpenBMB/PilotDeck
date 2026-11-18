@@ -12,6 +12,7 @@
  * lookup); tools without a runtime hand back `unsupported_tool`.
  */
 
+import { createTaskPreviewTool } from "./taskPreview.js";
 import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
 import type {
   PilotDeckBackgroundBashTask,
@@ -517,6 +518,7 @@ export function createTaskTools(options: CreateTaskToolsOptions): {
   output: ReturnType<typeof createTaskOutputTool>;
   wait: ReturnType<typeof createTaskWaitTool>;
   stop: ReturnType<typeof createTaskStopTool>;
+  preview: ReturnType<typeof createTaskPreviewTool>;
 } {
   return {
     create: createTaskCreateTool(options.runtime),
@@ -524,5 +526,6 @@ export function createTaskTools(options: CreateTaskToolsOptions): {
     output: createTaskOutputTool(options.runtime),
     wait: createTaskWaitTool(options.runtime),
     stop: createTaskStopTool(options.runtime),
+    preview: createTaskPreviewTool(options.runtime),
   };
 }

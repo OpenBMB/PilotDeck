@@ -24,6 +24,7 @@ export const PLAN_MODE_ALLOWED_TOOLS = new Set([
   "bash",
   "task_list",
   "task_output",
+  "task_preview",
   "task_wait",
   "write_file",
   "edit_file",
