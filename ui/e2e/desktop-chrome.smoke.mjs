@@ -1,6 +1,7 @@
 // Run with Vite on 127.0.0.1:5187 and compiled apps/desktop/dist.
 // All app network traffic is synthetic; no real runtime or model is contacted.
 import { _electron as electron, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -12,6 +13,17 @@ const platformName = mac ? 'mac' : process.platform === 'linux' ? 'linux' : 'win
 const artifactDir = process.env.PILOTDECK_CHROME_ARTIFACTS || path.join(root, 'outputs/desktop-chrome-review');
 await fs.mkdir(artifactDir, { recursive: true });
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'pilotdeck-chrome-'));
+function runtimeModulesFromGeneratedProfile() {
+  const source = readFileSync(path.join(root, 'ui/src/composition/generated/frontend-modules.ts'), 'utf8');
+  const match = source.match(/export const generatedFrontendProfile = ([\s\S]*?) as const;/);
+  if (!match) throw new Error('Unable to read the generated frontend profile');
+  const modules = JSON.parse(match[1]).modules ?? {};
+  const fields = ['enabled', 'provider', 'implementationId', 'frontendModule', 'contract', 'transport', 'methods', 'hostAdapter'];
+  return Object.fromEntries(Object.entries(modules).map(([slot, binding]) => [
+    slot,
+    Object.fromEntries(fields.filter(field => binding?.[field] !== undefined).map(field => [field, binding[field]])),
+  ]));
+}
 const app = await electron.launch({
   executablePath: createRequire(import.meta.url)(path.join(root, 'apps/desktop/node_modules/electron')),
   args: [path.join(root, 'apps/desktop/scripts/fixtures/desktop-chrome.cjs'),
@@ -33,6 +45,17 @@ try {
     const url = new URL(route.request().url());
     let body = {};
     if (url.pathname === '/api/projects') body = projects;
+    else if (url.pathname === '/api/modules/runtime') body = {
+      // The shell only mounts a chat surface after the live projection confirms
+      // the generated assembly; without it every chat-owned control stays disabled.
+      // Derive the live modules from the checked-in assembly instead of hardcoding
+      // them: `ui`'s prebuild regenerates this file from the active profile, so a
+      // build can legitimately enable or disable slots (for example SOP/knowledge).
+      projectBindings: false,
+      modules: runtimeModulesFromGeneratedProfile(),
+      gatewayCapabilities: [],
+      runtime: { gatewayState: 'ready', unavailableSlots: [] },
+    };
     else if (url.pathname.includes('onboarding-status')) body = { hasCompletedOnboarding: completedOnboarding };
     else if (url.pathname === '/api/settings/permissions') body = { success: true, permissions: { skipPermissions: false, allowedTools: [], deniedTools: [] } };
     else if (url.pathname.includes('/messages')) body = { messages: [], hasMore: false, total: 0 };

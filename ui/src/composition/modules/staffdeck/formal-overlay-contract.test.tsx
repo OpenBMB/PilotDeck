@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { pilotDeckFormalComponents } from './vendor/host-components';
+import { pilotDeckFormalComponents } from '../../../../plugins/staffdeck-shared/vendor/host-components';
 const { UIButton, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent, TooltipProvider, Tooltip, TooltipTrigger, TooltipContent, Accordion, AccordionItem, AccordionTrigger, AccordionContent } = pilotDeckFormalComponents;
 import StaffDeckLocaleBoundary from './StaffDeckLocaleBoundary';
 // Graph rendering is outside this overlay contract; its focused evidence is already delivered.

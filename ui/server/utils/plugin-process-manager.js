@@ -32,6 +32,10 @@ export function startPluginServer(name, pluginDir, serverEntry) {
       env: {
         PATH: process.env.PATH,
         HOME: process.env.HOME,
+        ...(process.env.PILOT_HOME ? { PILOT_HOME: process.env.PILOT_HOME } : {}),
+        ...(process.env.PILOTDECK_CONFIG_PATH
+          ? { PILOTDECK_CONFIG_PATH: process.env.PILOTDECK_CONFIG_PATH }
+          : {}),
         NODE_ENV: process.env.NODE_ENV || 'production',
         PLUGIN_NAME: name,
       },

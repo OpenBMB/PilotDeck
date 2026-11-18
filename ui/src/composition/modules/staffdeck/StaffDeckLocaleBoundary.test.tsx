@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 let currentLanguage = 'zh-CN';
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { resolvedLanguage: currentLanguage } }) }));
 import StaffDeckLocaleBoundary from './StaffDeckLocaleBoundary';
-import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from './vendor/dialog-primitives';
+import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from '../../../../plugins/staffdeck-shared/vendor/dialog-primitives';
 
 afterEach(() => { cleanup(); currentLanguage = 'zh-CN'; });
 

@@ -32,7 +32,7 @@ export const KNOWLEDGE_CORE_OPERATIONS = Object.freeze({
   list_documents: operation('GET', i => kb(i) + '/documents'),
   get_document: operation('GET', doc),
   import_document: operation('POST', i => kb(i) + '/documents', ['filename', 'content_base64', 'title', 'model_id', 'metadata', 'capability_scope']),
-  import_okf: operation('POST', i => kb(i) + '/okf', ['filename', 'content_base64', 'title']),
+  import_okf: operation('POST', () => '/okf', ['filename', 'content_base64']),
   update_document: operation('PUT', doc, ['expected_updated_at', 'content_md', 'title', 'status', 'metadata']),
   delete_document: operation('DELETE', doc, [], ['expected_updated_at']),
   list_document_buckets: operation('GET', i => doc(i) + '/buckets'),
@@ -97,7 +97,12 @@ export function knowledgeCoreRequest(operationName, input, binding, capabilities
     if (advertised.method !== descriptor.method) throw Object.assign(new Error('Knowledge method mismatch'), { status: 503 });
   } else {
     path = '/api/km/v1' + descriptor.path(value);
-    if (capabilities) {
+    // Only validate path-match when the catalog actually advertises this
+    // operation. Minimal presets don't advertise okf operations at all but
+    // still expose them on a non-catalog route (e.g. POST /api/km/v1/okf
+    // via the concepts module), so a silent catalog must not invalidate
+    // the hardcoded descriptor path.
+    if (capabilities?.operations[operationName]) {
       const normalize = path => path.replace(/\{[^}]+\}/g, '{}');
       const markerInput = new Proxy(value, { get: (target, key) => target[key] ?? `{${String(key)}}` });
       const template = '/api/km/v1' + descriptor.path(markerInput).replaceAll('%7B', '{').replaceAll('%7D', '}');

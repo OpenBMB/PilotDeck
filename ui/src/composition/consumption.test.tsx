@@ -8,9 +8,9 @@ import { getPermissionPanel } from '../components/chat/tools/configs/permissionP
 import { activateAssembly, getActiveAssembly, setActiveAssembly, validateRuntimeCapabilities } from './runtime';
 import type { Assembly } from './contracts';
 import { SopPermissionPanel } from './modules/staffdeck-sop';
-import SopVersionDetailDialog from './modules/staffdeck/vendor/SopVersionDetailDialog';
-import { SkillsPageHostProvider } from './modules/staffdeck/vendor/SkillsPageHost';
-import { pilotDeckSkillsPageHost } from './modules/staffdeck/vendor/skills-host-adapter';
+import SopVersionDetailDialog from '../../plugins/staffdeck-sop/src/vendor/SopVersionDetailDialog';
+import { SkillsPageHostProvider } from '../../plugins/staffdeck-sop/src/vendor/SkillsPageHost';
+import { pilotDeckSkillsPageHost } from '../../plugins/staffdeck-sop/src/vendor/skills-host-adapter';
 import { normalizedToChatMessages } from '../components/chat/hooks/useChatMessages';
 import type { NormalizedMessage } from '../stores/useSessionStore';
 

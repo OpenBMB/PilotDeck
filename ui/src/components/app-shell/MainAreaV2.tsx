@@ -228,6 +228,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+      {displayActiveTab.startsWith('plugin:') ? null : (
       <header className="workspace-header relative z-[80] shrink-0 overflow-visible">
         {isSidebarCollapsed ? (
           // Just the "expand sidebar" affordance — the PilotDeck logo lives
@@ -405,6 +406,7 @@ function MainAreaV2Content(props: MainAreaV2Props) {
           ) : null}
         </div>
       </header>
+      )}
 
       {/* Body */}
       <div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden">

@@ -2,10 +2,27 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
 import { prepareCliSpawn } from './processSpawn.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// User-installed plugins (git/marketplace). This is the only *writable* plugin
+// root — installs and uninstalls target it.
 const PLUGINS_DIR = path.join(os.homedir(), '.pilotdeck', 'plugins');
 const PLUGINS_CONFIG_PATH = path.join(os.homedir(), '.pilotdeck', 'plugins.json');
+
+// Plugins bundled with the runtime/product. `npm run build` copies
+// `src/extension/plugins/builtin` into `dist/src/extension/plugins/builtin`,
+// so a plugin folder dropped in the source tree ships with the packaged app.
+// The same relative layout holds in dev, in `dist/`, and inside the desktop
+// runtime (`resources/runtime/`), so one relative resolution covers all three.
+const BUILTIN_PLUGINS_RELATIVE_PATH = ['src', 'extension', 'plugins', 'builtin'];
+
+// UI page plugins bundled with the product. These live under `ui/plugins` —
+// the frontend counterpart of the core builtin dir above, kept out of the
+// server-side plugin tree. `npm run build` copies them to `dist/ui/plugins`.
+const UI_PLUGINS_RELATIVE_PATH = ['plugins'];
 
 const REQUIRED_MANIFEST_FIELDS = ['name', 'displayName', 'entry'];
 
@@ -29,6 +46,70 @@ export function getPluginsDir() {
     fs.mkdirSync(PLUGINS_DIR, { recursive: true });
   }
   return PLUGINS_DIR;
+}
+
+/**
+ * Locate the bundled builtin plugins directory, or null when none exists.
+ *
+ * An explicit runtime-root env wins; otherwise we resolve relative to this
+ * module, which lands on `src/extension/plugins/builtin` in a repo checkout
+ * and on `dist/src/extension/plugins/builtin` in a built/packaged runtime.
+ */
+export function resolveBuiltinPluginsDir(env = process.env) {
+  const candidates = [];
+  const runtimeRoot = env.PILOTDECK_RUNTIME_ROOT || env.PILOTDECK_DESKTOP_RUNTIME_ROOT;
+  if (runtimeRoot) {
+    candidates.push(path.join(runtimeRoot, 'dist', ...BUILTIN_PLUGINS_RELATIVE_PATH));
+  }
+  candidates.push(path.resolve(__dirname, '../../..', ...BUILTIN_PLUGINS_RELATIVE_PATH));
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isDirectory()) return candidate;
+    } catch { /* try next candidate */ }
+  }
+  return null;
+}
+
+/**
+ * Locate the bundled UI page plugins directory (`ui/plugins`), or null.
+ *
+ * `npm run build` copies `ui/plugins` into `dist/ui/plugins`, and resolving
+ * relative to this module (`ui/server/utils`) lands on the right place in dev,
+ * in a built `dist/`, and inside the desktop runtime alike.
+ */
+export function resolveUiPluginsDir(env = process.env) {
+  const candidates = [];
+  const runtimeRoot = env.PILOTDECK_RUNTIME_ROOT || env.PILOTDECK_DESKTOP_RUNTIME_ROOT;
+  if (runtimeRoot) {
+    candidates.push(path.join(runtimeRoot, 'dist', 'ui', ...UI_PLUGINS_RELATIVE_PATH));
+  }
+  candidates.push(path.resolve(__dirname, '../..', ...UI_PLUGINS_RELATIVE_PATH));
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.statSync(candidate).isDirectory()) return candidate;
+    } catch { /* try next candidate */ }
+  }
+  return null;
+}
+
+/**
+ * Directories to scan for UI plugins, in precedence order (first match on a
+ * plugin name wins). User-installed plugins override bundled ones, mirroring
+ * the gateway's global-over-builtin resolution.
+ */
+export function getPluginSearchDirs() {
+  const dirs = [{ dir: PLUGINS_DIR, source: 'global' }];
+  const uiDir = resolveUiPluginsDir();
+  if (uiDir) {
+    dirs.push({ dir: uiDir, source: 'bundled' });
+  }
+  const builtinDir = resolveBuiltinPluginsDir();
+  if (builtinDir) {
+    dirs.push({ dir: builtinDir, source: 'builtin' });
+  }
+  return dirs;
 }
 
 export function getPluginsConfig() {
@@ -145,61 +226,106 @@ function runBuildIfNeeded(dir, packageJsonPath, onSuccess, onError) {
   });
 }
 
-export function scanPlugins() {
-  const pluginsDir = getPluginsDir();
-  const config = getPluginsConfig();
-  const plugins = [];
-
-  let entries;
-  try {
-    entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
-  } catch {
-    return plugins;
+/**
+ * Read a plugin's unified manifest: `manifest.json` (legacy UI format) wins,
+ * otherwise `plugin.json` (DSH format) is mapped when it declares a `ui`
+ * contribution. Returns null when the directory holds no renderable plugin.
+ */
+function readPluginManifest(dir) {
+  const legacyPath = path.join(dir, 'manifest.json');
+  if (fs.existsSync(legacyPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(legacyPath, 'utf-8'));
+    } catch (err) {
+      console.warn(`[Plugins] Failed to parse manifest.json in ${dir}:`, err.message);
+      return null;
+    }
   }
 
+  const dshPath = path.join(dir, 'plugin.json');
+  if (!fs.existsSync(dshPath)) return null;
+
+  try {
+    const dshManifest = JSON.parse(fs.readFileSync(dshPath, 'utf-8'));
+    // A DSH plugin without a ui contribution has no frontend page — skip it.
+    if (!dshManifest.ui) return null;
+    return {
+      name: dshManifest.name,
+      displayName: dshManifest.ui.displayName || dshManifest.name,
+      version: dshManifest.version || '0.0.0',
+      description: dshManifest.description || '',
+      author: '',
+      icon: dshManifest.ui.icon || 'Puzzle',
+      type: 'module',
+      slot: dshManifest.ui.slot || 'tab',
+      entry: dshManifest.ui.entry,
+      server: dshManifest.server || null,
+      serverRoutes: Array.isArray(dshManifest.serverRoutes)
+        ? dshManifest.serverRoutes.filter((r) => typeof r === 'string' && r.startsWith('/api/'))
+        : [],
+      permissions: [],
+    };
+  } catch (err) {
+    console.warn(`[Plugins] Failed to parse plugin.json in ${dir}:`, err.message);
+    return null;
+  }
+}
+
+/** Read the plugin's git remote URL (drives the "update" affordance), if any. */
+function readRepoUrl(dir) {
+  try {
+    const gitConfigPath = path.join(dir, '.git', 'config');
+    if (!fs.existsSync(gitConfigPath)) return null;
+    const match = fs.readFileSync(gitConfigPath, 'utf-8').match(/url\s*=\s*(.+)/);
+    if (!match) return null;
+    let repoUrl = match[1].trim().replace(/\.git$/, '');
+    // Convert SSH URLs to HTTPS
+    if (repoUrl.startsWith('git@')) {
+      repoUrl = repoUrl.replace(/^git@([^:]+):/, 'https://$1/');
+    }
+    // Strip embedded credentials (e.g. https://user:pass@host/...)
+    return sanitizeRepoUrl(repoUrl);
+  } catch {
+    return null;
+  }
+}
+
+export function scanPlugins() {
+  const config = getPluginsConfig();
+  const plugins = [];
   const seenNames = new Set();
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    // Skip transient temp directories from in-progress installs
-    if (entry.name.startsWith('.tmp-')) continue;
-
-    const manifestPath = path.join(pluginsDir, entry.name, 'manifest.json');
-    if (!fs.existsSync(manifestPath)) continue;
-
+  for (const { dir: searchDir, source } of getPluginSearchDirs()) {
+    let entries;
     try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      entries = fs.readdirSync(searchDir, { withFileTypes: true });
+    } catch {
+      // Missing/unreadable directory — this source contributes nothing.
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      // Skip transient temp directories from in-progress installs
+      if (entry.name.startsWith('.tmp-')) continue;
+
+      const dir = path.join(searchDir, entry.name);
+      const manifest = readPluginManifest(dir);
+      if (!manifest) continue;
+
       const validation = validateManifest(manifest);
       if (!validation.valid) {
-        console.warn(`[Plugins] Skipping ${entry.name}: ${validation.error}`);
+        console.warn(`[Plugins] Skipping ${entry.name} (${source}): ${validation.error}`);
         continue;
       }
 
-      // Skip duplicate manifest names
+      // Skip duplicate manifest names — the first source to claim a name wins,
+      // so user-installed plugins override bundled ones.
       if (seenNames.has(manifest.name)) {
-        console.warn(`[Plugins] Skipping ${entry.name}: duplicate plugin name "${manifest.name}"`);
+        console.warn(`[Plugins] Skipping ${entry.name} (${source}): duplicate plugin name "${manifest.name}"`);
         continue;
       }
       seenNames.add(manifest.name);
-
-      // Try to read git remote URL
-      let repoUrl = null;
-      try {
-        const gitConfigPath = path.join(pluginsDir, entry.name, '.git', 'config');
-        if (fs.existsSync(gitConfigPath)) {
-          const gitConfig = fs.readFileSync(gitConfigPath, 'utf-8');
-          const match = gitConfig.match(/url\s*=\s*(.+)/);
-          if (match) {
-            repoUrl = match[1].trim().replace(/\.git$/, '');
-            // Convert SSH URLs to HTTPS
-            if (repoUrl.startsWith('git@')) {
-              repoUrl = repoUrl.replace(/^git@([^:]+):/, 'https://$1/');
-            }
-            // Strip embedded credentials (e.g. https://user:pass@host/...)
-            repoUrl = sanitizeRepoUrl(repoUrl);
-          }
-        }
-      } catch { /* ignore */ }
 
       plugins.push({
         name: manifest.name,
@@ -212,13 +338,14 @@ export function scanPlugins() {
         slot: manifest.slot || 'tab',
         entry: manifest.entry,
         server: manifest.server || null,
+        serverRoutes: Array.isArray(manifest.serverRoutes) ? manifest.serverRoutes : [],
         permissions: manifest.permissions || [],
         enabled: config[manifest.name]?.enabled !== false, // enabled by default
         dirName: entry.name,
-        repoUrl,
+        dir,
+        source,
+        repoUrl: readRepoUrl(dir),
       });
-    } catch (err) {
-      console.warn(`[Plugins] Failed to read manifest for ${entry.name}:`, err.message);
     }
   }
 
@@ -226,10 +353,8 @@ export function scanPlugins() {
 }
 
 export function getPluginDir(name) {
-  const plugins = scanPlugins();
-  const plugin = plugins.find(p => p.name === name);
-  if (!plugin) return null;
-  return path.join(getPluginsDir(), plugin.dirName);
+  const plugin = scanPlugins().find(p => p.name === name);
+  return plugin ? plugin.dir : null;
 }
 
 export function resolvePluginAssetPath(name, assetPath) {
@@ -375,10 +500,14 @@ export function installPluginFromGit(url) {
 
 export function updatePluginFromGit(name) {
   return new Promise((resolve, reject) => {
-    const pluginDir = getPluginDir(name);
-    if (!pluginDir) {
+    const plugin = scanPlugins().find(p => p.name === name);
+    if (!plugin) {
       return reject(new Error(`Plugin "${name}" not found`));
     }
+    if (plugin.source !== 'global') {
+      return reject(new Error(`Plugin "${name}" is bundled with the app (source: ${plugin.source}) and cannot be updated from git`));
+    }
+    const pluginDir = plugin.dir;
 
     // Only fast-forward to avoid silent divergence
     const gitProcess = spawn('git', ['pull', '--ff-only', '--'], {
@@ -437,10 +566,14 @@ export function updatePluginFromGit(name) {
 }
 
 export async function uninstallPlugin(name) {
-  const pluginDir = getPluginDir(name);
-  if (!pluginDir) {
+  const plugin = scanPlugins().find(p => p.name === name);
+  if (!plugin) {
     throw new Error(`Plugin "${name}" not found`);
   }
+  if (plugin.source !== 'global') {
+    throw new Error(`Plugin "${name}" is bundled with the app (source: ${plugin.source}) and cannot be uninstalled`);
+  }
+  const pluginDir = plugin.dir;
 
   // On Windows, file handles may be released slightly after process exit.
   // Retry a few times with a short delay before giving up.

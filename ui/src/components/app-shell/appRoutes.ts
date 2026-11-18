@@ -10,7 +10,12 @@ export const DEDICATED_TAB_PATHS = {
 export type DedicatedTab = keyof typeof DEDICATED_TAB_PATHS;
 
 export function getDedicatedTabPath(tab: string): string | undefined {
-  return Object.prototype.hasOwnProperty.call(DEDICATED_TAB_PATHS, tab)
-    ? DEDICATED_TAB_PATHS[tab as DedicatedTab]
-    : undefined;
+  if (Object.prototype.hasOwnProperty.call(DEDICATED_TAB_PATHS, tab)) {
+    return DEDICATED_TAB_PATHS[tab as DedicatedTab];
+  }
+  // Plugin tabs use the generic `/plugin/:name` URL form.
+  if (tab.startsWith('plugin:')) {
+    return `/plugin/${tab.slice('plugin:'.length)}`;
+  }
+  return undefined;
 }

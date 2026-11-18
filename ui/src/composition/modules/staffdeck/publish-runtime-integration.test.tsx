@@ -9,7 +9,7 @@ import { createPublishRuntimeObserver } from './publish-runtime-observer';
 import { PublishRuntimeProvider, usePublishRuntimeObserver } from './publish-runtime-context';
 import PublishRuntimeStatus from './PublishRuntimeStatus';
 import { staffDeckSopManagementClient } from './clients';
-import { createPilotDeckDistillPageHost } from './vendor/skills-host-adapter';
+import { createPilotDeckDistillPageHost } from '../../../../plugins/staffdeck-sop/src/vendor/skills-host-adapter';
 
 const owner = { tenantId: 'tenant', actorUserId: 'actor', agentId: 'agent' };
 const bootstrap = (agentId = 'agent', receipts: unknown[] = []) => ({ enabled: true, ...owner, agentId, runtime: { receipts } });

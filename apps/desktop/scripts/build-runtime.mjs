@@ -195,13 +195,18 @@ function addDependency(target, sources, name) {
   throw new Error(`Missing runtime dependency version for ${name}`);
 }
 
+// Workspace packages are linked by path because the runtime installs with
+// --ignore-workspace and cannot resolve "workspace:*" specifiers.
+const WORKSPACE_RUNTIME_DEPENDENCIES = {
+  "@pilotdeck/sdk": "file:../../../packages/sdk",
+  "edgeclaw-memory-core": "file:../../../src/context/memory/edgeclaw-memory-core",
+};
+
 function createRuntimeDependencies(rootPackage, uiPackage) {
   const dependencies = {};
   for (const [name, version] of Object.entries(rootPackage.dependencies ?? {})) {
     if (!name.startsWith("@types/")) {
-      dependencies[name] = name === "edgeclaw-memory-core"
-        ? "file:../../../src/context/memory/edgeclaw-memory-core"
-        : version;
+      dependencies[name] = WORKSPACE_RUNTIME_DEPENDENCIES[name] ?? version;
     }
   }
   for (const name of uiServerDependencies) {
@@ -244,6 +249,9 @@ function prepareRuntimeTree(installEnv = process.env) {
     "--frozen-lockfile",
     "--prefer-offline",
   ], installRoot, withBundledPlaywrightEnv(installEnv));
+  // node-pty ships no Linux prebuilds; do not rely on cached install side effects.
+  runPnpm(["rebuild", "node-pty", "--ignore-workspace", "--config.node-linker=hoisted"],
+    installRoot, withBundledPlaywrightEnv(installEnv));
   rmSync(runtimeRoot, { recursive: true, force: true });
   mkdirSync(dirname(runtimeRoot), { recursive: true });
   renameSync(installRoot, runtimeRoot);
@@ -464,7 +472,9 @@ function prunePackageSpecificFiles() {
 }
 
 function rewriteUiServerSourceImports(serverRoot) {
-  const extensions = new Set([".js"]);
+  // .mjs/.cjs sources import "../../src/..." too; tsc output lives in dist/src,
+  // and the staged runtime deletes its top-level src tree.
+  const extensions = new Set([".js", ".mjs", ".cjs"]);
 
   function visit(path) {
     const stat = statSync(path);

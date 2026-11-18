@@ -2,12 +2,12 @@
 import * as React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Input } from './vendor/formal-primitives/input';
-import { Textarea } from './vendor/formal-primitives/textarea';
-import { Progress } from './vendor/formal-primitives/progress';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './vendor/formal-primitives/select';
-import { Checkbox } from './vendor/formal-primitives/checkbox';
-import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from './vendor/dialog-primitives';
+import { Input } from '../../../../plugins/staffdeck-shared/vendor/formal-primitives/input';
+import { Textarea } from '../../../../plugins/staffdeck-shared/vendor/formal-primitives/textarea';
+import { Progress } from '../../../../plugins/staffdeck-shared/vendor/formal-primitives/progress';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../../plugins/staffdeck-shared/vendor/formal-primitives/select';
+import { Checkbox } from '../../../../plugins/staffdeck-shared/vendor/formal-primitives/checkbox';
+import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from '../../../../plugins/staffdeck-shared/vendor/dialog-primitives';
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { resolvedLanguage: 'zh-CN' } }) }));
 afterEach(cleanup);
 

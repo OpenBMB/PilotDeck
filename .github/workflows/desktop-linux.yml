@@ -158,7 +158,10 @@ jobs:
             unpacked_dir: linux-arm64-unpacked
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
-    container: rockylinux:9
+    container:
+      image: rockylinux:9
+      env:
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     timeout-minutes: 90
     env:
       PILOTDECK_RELEASE_DATE: ${{ inputs.release_date }}

@@ -171,7 +171,22 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
-      exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+      // These server suites use node:test; Vitest's jsdom pipeline cannot
+      // bundle the node:test builtin.
+      exclude: [
+        'e2e/**',
+        'node_modules/**',
+        'dist/**',
+        'server/localSopRuntime.test.mjs',
+        'server/module-request-abort.test.js',
+        'server/public-knowledge-model-selection.test.mjs',
+        'server/staffdeck-approval-authority.test.mjs',
+        'server/staffdeck-public-capabilities.test.mjs',
+        'server/staffdeck-publish-route.test.js',
+        'server/staffdeck-publish-runtime.test.mjs',
+        'server/staffdeck-runtime-readiness.test.mjs',
+        'server/adapters/staffdeck-request-context.test.js',
+      ],
       server: {
         deps: {
           inline: ['react', 'react-dom']

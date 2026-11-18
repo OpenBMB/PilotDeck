@@ -1,7 +1,7 @@
-import { afterEach, expect, it, vi } from 'vitest';
+﻿import { afterEach, expect, it, vi } from 'vitest';
 import { planPublicHost, readPilotDeckModelCatalog, selectedPublicScope } from './public-host-mapping';
 import { authenticatedFetch } from '../../../utils/api';
-import { createPilotDeckDistillPageHost } from './vendor/skills-host-adapter';
+import { createPilotDeckDistillPageHost } from '../../../../plugins/staffdeck-sop/src/vendor/skills-host-adapter';
 vi.mock('../../../utils/api', () => ({ authenticatedFetch: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
 it('retains selected employee/team and never defaults to a target', () => {
@@ -64,7 +64,7 @@ it('rejects selected non-target/team draft management instead of writing to the 
   expect(call).not.toHaveBeenCalled();
 });
 it('uses the authenticated fixed target without clearing old selected scope and rejects explicit excluded scope', async () => {
-  const { createFixedTargetContext } = await import('./vendor/copy-scope');
+  const { createFixedTargetContext } = await import('../../../../plugins/staffdeck-shared/vendor/copy-scope');
   const { staffDeckCopyClient } = await import('./clients');
   window.localStorage.setItem('ultrarag_enterprise_agent_scope', 'team:previous');
   vi.spyOn(staffDeckCopyClient, 'call').mockResolvedValue([

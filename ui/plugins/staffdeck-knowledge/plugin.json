@@ -1,0 +1,14 @@
+{
+  "name": "staffdeck-knowledge",
+  "version": "0.1.0",
+  "description": "StaffDeck 知识库管理页，作为 UI 插件接入 PilotDeck，页面外观与 StaffDeck 保持一致。",
+  "ui": {
+    "entry": "index.js",
+    "displayName": "知识库",
+    "icon": "BookOpen"
+  },
+  "server": "server.js",
+  "serverRoutes": [
+    "/api/modules/staffdeck-copy"
+  ]
+}

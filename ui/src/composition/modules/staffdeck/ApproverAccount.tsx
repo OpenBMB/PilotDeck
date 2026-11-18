@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { LogIn, LogOut } from 'lucide-react';
 import AuthInputField from '../../../components/auth/view/AuthInputField';
 import { Button } from '../../../components/ui/button';
-import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from './vendor/dialog-primitives';
+import { PilotDeckDialog, PilotDeckDialogContent, PilotDeckDialogTitle } from '../../../../plugins/staffdeck-shared/vendor/dialog-primitives';
 import type { useApproverSession } from './useApproverSession';
 
 export function ApproverAccount({ session }: { session: ReturnType<typeof useApproverSession> }) {

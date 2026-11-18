@@ -1,12 +1,10 @@
 import express from 'express';
-import path from 'path';
 import http from 'http';
 import mime from 'mime-types';
 import fs from 'fs';
 import {
   scanPlugins,
   getPluginsConfig,
-  getPluginsDir,
   savePluginsConfig,
   getPluginDir,
   resolvePluginAssetPath,
@@ -223,7 +221,7 @@ router.all('/:name/rpc/*', async (req, res) => {
     if (!plugin.enabled) {
       return res.status(503).json({ error: 'Plugin is disabled' });
     }
-    const pluginDir = path.join(getPluginsDir(), plugin.dirName);
+    const pluginDir = getPluginDir(pluginName);
     try {
       port = await startPluginServer(pluginName, pluginDir, plugin.server);
     } catch (err) {

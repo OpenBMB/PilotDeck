@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { announceEnterpriseCapabilityCatalogChange, subscribeEnterpriseCapabilityCatalogRefresh, copyTextToClipboard, parseHandoffAssigneeValue, formatHandoffAssigneeValue, normalizeCapabilityScope, isTeamScope, readEmployeeScope, persistSharedAgentScope, clearSharedAgentScope } from './host-contract-helpers';
-import { createCopyContext } from './vendor/copy-scope';
+import { createCopyContext } from '../../../../plugins/staffdeck-shared/vendor/copy-scope';
 import { staffDeckCopyClient } from './clients';
 
 const originalClipboard = navigator.clipboard;

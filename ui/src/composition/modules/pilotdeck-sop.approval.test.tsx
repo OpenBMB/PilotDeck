@@ -8,8 +8,8 @@ vi.mock('../../utils/api', () => ({ authenticatedFetch: async () => {
   return new Response(JSON.stringify({ status: { sessionId: 'owned', revision: 1,
     approval: { waitId: 'wait', revision: 1, skillId: 'sop', version: '1', nodeId: 'human', assigneeUserId: 'pilotdeck:owner' } } }));
 } }));
-vi.mock('./staffdeck/vendor/DistillPage', () => ({ SkillFlow: () => null }));
-vi.mock('./staffdeck/vendor/SopVersionDetailDialog', () => ({ default: () => null }));
+vi.mock('../../../plugins/staffdeck-sop/src/vendor/DistillPage', () => ({ SkillFlow: () => null }));
+vi.mock('../../../plugins/staffdeck-sop/src/vendor/SopVersionDetailDialog', () => ({ default: () => null }));
 vi.mock('./staffdeck/StaffDeckLocaleBoundary', () => ({ default: ({ children }: any) => children }));
 import { PilotDeckSopApproval } from './pilotdeck-sop';
 afterEach(() => { cleanup(); state.hold = false; sessionStorage.clear(); });

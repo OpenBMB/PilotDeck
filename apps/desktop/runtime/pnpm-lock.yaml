@@ -20,12 +20,21 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.0
         version: 22.0.1
+      '@pilotdeck/sdk':
+        specifier: file:../../../packages/sdk
+        version: file:../../../packages/sdk(zod@4.5.4)
       '@playwright/mcp':
         specifier: 0.0.75
         version: 0.0.75
       '@vscode/ripgrep':
         specifier: ^1.18.0
         version: 1.18.0
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: ^3.0.1
+        version: 3.0.1(ajv@8.20.0)
       bcrypt:
         specifier: ^6.0.0
         version: 6.0.0
@@ -408,6 +417,10 @@ packages:
     resolution: {integrity: sha512-Tyudswj2I/0BCCK9cQ2x8znzjOEuZZhT00hTnGaPiinYHvbPwiZIW7s8EMJKnGW53g7e1UGccCq+Fq2OCfKMsA==}
     engines: {node: '>=22'}
     hasBin: true
+
+  '@pilotdeck/sdk@file:../../../packages/sdk':
+    resolution: {directory: ../../../packages/sdk, type: directory}
+    engines: {node: '>=22.13.0 <23'}
 
   '@playwright/mcp@0.0.75':
     resolution: {integrity: sha512-oBjzVXfEGZ9Ev45tKKQULNDVdF83B82lg0uPejEK3xsp/zWmdNdNVnPi032fmd/o20ZZXs+LX7cr77qRNbV4VA==}
@@ -2279,6 +2292,16 @@ snapshots:
     dependencies:
       semver: 7.8.5
       tar: 7.5.22
+
+  '@pilotdeck/sdk@file:../../../packages/sdk(zod@4.5.4)':
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.30.0(zod@4.5.4)
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - supports-color
+      - zod
 
   '@playwright/mcp@0.0.75':
     dependencies:

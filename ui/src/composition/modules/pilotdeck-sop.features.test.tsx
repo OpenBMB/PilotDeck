@@ -6,9 +6,9 @@ const policy = vi.hoisted(() => ({ knowledge: false, versionManagement: false })
 vi.mock('../../utils/api', () => ({ authenticatedFetch: async (url: string) => ({ ok: true, json: async () => url.endsWith('capabilities')
   ? { models: [{ id: 'p/model-a', name: 'Model A' }, { id: 'p/model-b', name: 'Model B' }], bindings: [], features: { ...policy } }
   : { data: [{ sop_id: 'example', name: 'Example', status: 'published', published_version: '1.0.0', content: { skill_id: 'example', version: '1.0.0', nodes: [], edges: [] } }], drafts: [] } }) }));
-vi.mock('./staffdeck/vendor/DistillPage', () => ({ SkillFlow: (props: any) => <><div data-testid="graph-policy">{JSON.stringify({ knowledge: props.knowledgeEnabled, versionManagement: props.versionManagement })}</div><div data-testid="child-catalog">{JSON.stringify(props.sopSkills)}</div></> }));
-vi.mock('./staffdeck/vendor/SopVersionDetailDialog', () => ({ default: () => null }));
-vi.mock('./staffdeck/vendor/FormalSopApprovalInbox', () => ({ default: () => null }));
+vi.mock('../../../plugins/staffdeck-sop/src/vendor/DistillPage', () => ({ SkillFlow: (props: any) => <><div data-testid="graph-policy">{JSON.stringify({ knowledge: props.knowledgeEnabled, versionManagement: props.versionManagement })}</div><div data-testid="child-catalog">{JSON.stringify(props.sopSkills)}</div></> }));
+vi.mock('../../../plugins/staffdeck-sop/src/vendor/SopVersionDetailDialog', () => ({ default: () => null }));
+vi.mock('../../../plugins/staffdeck-sop/src/vendor/FormalSopApprovalInbox', () => ({ default: () => null }));
 vi.mock('./staffdeck/StaffDeckLocaleBoundary', () => ({ default: ({ children }: any) => children }));
 import { PilotDeckSopPage } from './pilotdeck-sop';
 afterEach(cleanup);

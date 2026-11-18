@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { USER_CONTENT_ATTRIBUTES } from './vendor/FormalUserContent';
+import { USER_CONTENT_ATTRIBUTES } from '../../../../plugins/staffdeck-shared/vendor/FormalUserContent';
 import { usePublishRuntimeSnapshot } from './publish-runtime-context';
 
 export default function PublishRuntimeStatus() {

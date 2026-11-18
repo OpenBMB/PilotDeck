@@ -127,7 +127,11 @@ describe('StaffDeck formal copy bridge', () => {
     const mismatch = await setup({ moduleAgentId: 'different-agent' });
     try {
       expect((await call(rejected.origin, 'list_agents')).status).toBe(403);
-      expect((await call(disabled.origin, 'list_agents')).status).toBe(501);
+      // A disabled formal binding is a standalone deployment: the enabled
+      // plugin serves its local directory instead of failing closed.
+      expect(await call(disabled.origin, 'list_agents')).toEqual({ status: 200, body: { result: [{
+        id: 'pd-user', tenant_id: 'local', name: '当前用户', is_overall: false, active: true, can_manage: true, copy_target: true,
+      }] } });
       expect((await call(mismatch.origin, 'list_agents')).status).toBe(409);
       expect(mismatch.requests).toEqual([]);
       delete process.env[TOKEN_ENV];

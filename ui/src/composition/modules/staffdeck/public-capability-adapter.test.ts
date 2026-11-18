@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { ApiError } from './vendor/DistillPageHost';
+﻿import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../../../plugins/staffdeck-sop/src/vendor/DistillPageHost';
 import { createPublicCapabilityAdapter, type PublicJobEventDecoder } from './public-capability-adapter';
 const unusedDecoder: PublicJobEventDecoder = async function* () {};
 
