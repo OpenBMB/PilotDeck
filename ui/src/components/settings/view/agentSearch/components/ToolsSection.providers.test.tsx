@@ -26,7 +26,7 @@ it.each(["en", "zh-CN"])("shows readable provider/engine labels in %s and tests 
   await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("SerpAPI"));
   fireEvent.keyDown(help, { key: "Escape" });
   expect(screen.queryByRole("tooltip")).toBe(null);
-  expect(provider.querySelectorAll("option")).toHaveLength(10);
+  expect(provider.querySelectorAll("option")).toHaveLength(11);
   for (const option of provider.querySelectorAll("option")) expect(option.textContent).not.toContain("pilotDeckConfig.");
   expect(screen.getByRole("option", { name: "Serper (Google)" })).toBeTruthy();
   expect(screen.getByRole("option", { name: "Brave Search" })).toBeTruthy();
@@ -41,6 +41,29 @@ it.each(["en", "zh-CN"])("shows readable provider/engine labels in %s and tests 
   fireEvent.change(provider, { target: { value: "baidu" } });
   expect(change.mock.calls[1][0].tools.webSearch.apiKey).toBeUndefined();
   expect(change.mock.calls[1][0].tools.webSearch.providers.serpapi).toEqual({ apiKey: "********", searchEngine: "yahoo" });
+});
+
+it.each([
+  ["en", "Open Parallel documentation"],
+  ["zh-CN", "打开 Parallel 文档"],
+])("shows the fixed Parallel destination and links to its installation guide in %s", async (lng, docsLabel) => {
+  const i18n = createInstance();
+  await i18n.init({
+    lng,
+    resources: { en: { settings: en }, "zh-CN": { settings: zh } },
+    defaultNS: "settings",
+  });
+  const config = { tools: { webSearch: {
+    enabled: true,
+    provider: "parallel" as const,
+    endpoint: "https://example.com/ignored",
+  } } };
+  render(<Provider i18n={i18n}><ToolsSection config={config} onChange={vi.fn()} /></Provider>);
+
+  expect(screen.getByRole("link", { name: docsLabel }).getAttribute("href"))
+    .toBe("https://docs.parallel.ai/integrations/mcp/installation");
+  expect(screen.getByText("https://mcp.parallel.ai/mcp").closest("a")).toBeNull();
+  expect(screen.queryByText(config.tools.webSearch.endpoint)).toBeNull();
 });
 
 it("keeps separately edited keys after switching, toggling and remounting", async () => {
@@ -68,6 +91,14 @@ it("keeps separately edited keys after switching, toggling and remounting", asyn
   select("tavily");
   expect(key().value).toBe("");
   editKey("tavily-saved");
+  select("parallel");
+  expect(screen.queryByLabelText("API key")).toBeNull();
+  expect(screen.getByText("Search queries are sent to Parallel. No API key is required.")).toBeTruthy();
+  fetch.mockResolvedValue({ json: async () => ({ ok: true }) });
+  fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ provider: "parallel" });
+  fetch.mockClear();
   select("glm");
   expect(key().value).toBe("glm-original");
   editKey("glm-updated");

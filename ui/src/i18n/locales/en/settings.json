@@ -1591,6 +1591,10 @@
           "bocha": "Bocha Web Search",
           "exa": "Exa",
           "serpapi": "SerpAPI",
+          "parallel": "Parallel",
+          "parallelDescription": "Search queries are sent to Parallel. No API key is required.",
+          "parallelDocsHint": "View Parallel documentation (opens a new window)",
+          "parallelDocsLabel": "Open Parallel documentation",
           "docs": "API documentation and keys",
           "docsHint": "View {{provider}} documentation and key setup (opens a new window)",
           "docsLabel": "Open {{provider}} documentation and key setup"

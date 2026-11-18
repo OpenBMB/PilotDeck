@@ -13,7 +13,7 @@ export function webSearchConfigForProvider(
   provider: WebSearchProvider,
   glmDefaultEndpoint: string,
 ): WebSearchConfig {
-  const endpoint = provider === "custom" ? undefined : provider === "glm" ? glmDefaultEndpoint : WEB_SEARCH_ENDPOINTS[provider];
+  const endpoint = provider === "custom" || provider === "parallel" ? undefined : provider === "glm" ? glmDefaultEndpoint : WEB_SEARCH_ENDPOINTS[provider];
   const migrated = migrateWebSearchProviderConfigs(current);
   return {
     ...migrated,
@@ -36,7 +36,7 @@ export function isWebSearchApiKeyRequired(
   config: WebSearchConfig,
 ): boolean {
   const active = resolveWebSearchConfig(config);
-  return (
+  return active.provider !== "parallel" && (
     active.provider !== "custom"
     || (active.customProvider?.auth ?? "bearer") !== "none"
   );

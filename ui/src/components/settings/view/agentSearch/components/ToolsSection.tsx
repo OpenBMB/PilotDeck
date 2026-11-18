@@ -3,7 +3,7 @@ import CustomSearchEditor from './CustomSearchEditor';
 import { CircleHelp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isOptionalFeatureEnabled } from "../../../../../../../src/pilot/config/optionalFeature.js";
-import { WEB_SEARCH_PROVIDERS, WEB_SEARCH_DOCS, SERPAPI_ENGINES, isSerpApiEngine } from "../../../../../../../src/pilot/config/webSearchProviders.js";
+import { WEB_SEARCH_PROVIDERS, WEB_SEARCH_DOCS, WEB_SEARCH_ENDPOINTS, SERPAPI_ENGINES, isSerpApiEngine } from "../../../../../../../src/pilot/config/webSearchProviders.js";
 import { resolveWebSearchConfig, updateWebSearchProviderConfig } from "../../../../../../../src/pilot/config/webSearchConfig.js";
 import Tooltip from "../../../../../shared/view/ui/Tooltip";
 import { GeneralSettingsIcon } from "../../../shared/view/GeneralSettingsPrimitives";
@@ -376,9 +376,9 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
           method: "POST",
           body: JSON.stringify({
             provider,
-            apiKey: trimmedKey,
+            ...(provider === "parallel" ? {} : { apiKey: trimmedKey }),
             ...(provider === "serpapi" ? { searchEngine: ws.searchEngine ?? "google" } : {}),
-            ...(trimmedEndpoint ? { endpoint: trimmedEndpoint } : {}),
+            ...(provider !== "parallel" && trimmedEndpoint ? { endpoint: trimmedEndpoint } : {}),
             customProvider:
               provider === "custom"
                 ? {
@@ -493,18 +493,24 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
             <div className="search-setting-copy">
               {provider === "custom" ? <label htmlFor="search-provider">
                 {t("pilotDeckConfig.panels.tools.provider.label")}
-              </label> : <Tooltip content={t("pilotDeckConfig.panels.tools.provider.docsHint", {
+              </label> : <Tooltip content={t(provider === "parallel"
+                ? "pilotDeckConfig.panels.tools.provider.parallelDocsHint"
+                : "pilotDeckConfig.panels.tools.provider.docsHint", {
                 provider: t(`pilotDeckConfig.panels.tools.provider.${provider}`),
               })}>
                 <a href={WEB_SEARCH_DOCS[provider]} target="_blank" rel="noopener noreferrer" className="search-provider-help"
-                  aria-label={t("pilotDeckConfig.panels.tools.provider.docsLabel", {
+                  aria-label={t(provider === "parallel"
+                    ? "pilotDeckConfig.panels.tools.provider.parallelDocsLabel"
+                    : "pilotDeckConfig.panels.tools.provider.docsLabel", {
                     provider: t(`pilotDeckConfig.panels.tools.provider.${provider}`),
                   })}>
                   <span>{t("pilotDeckConfig.panels.tools.provider.label")}</span>
                   <GeneralSettingsIcon icon={CircleHelp} />
                 </a>
               </Tooltip>}
-              <p>{t("pilotDeckConfig.panels.tools.provider.description")}</p>
+              <p>{provider === "parallel"
+                ? <>{t("pilotDeckConfig.panels.tools.provider.parallelDescription")}<br /><code>{WEB_SEARCH_ENDPOINTS.parallel}</code></>
+                : t("pilotDeckConfig.panels.tools.provider.description")}</p>
             </div>
             <div className="search-control-area">
               <div className="search-select-wrap">
@@ -578,50 +584,52 @@ export default function ToolsSection({ config, onChange }: ToolsSectionProps) {
             </div>
           ) : null}
 
-          <div className="search-setting-row">
-            <div className="search-setting-copy">
-              <label htmlFor="search-api-key">
-                {t("pilotDeckConfig.panels.tools.apiKey.label")}
-              </label>
-              <p>{t("pilotDeckConfig.panels.tools.apiKey.description")}</p>
-            </div>
-            <div className="search-control-area search-editable-control">
-              <div className="search-input-wrap">
-                <KeyIcon />
-                <input
-                  id="search-api-key"
-                  type="password"
-                  required
-                  autoComplete="off"
-                  disabled={!enabled || editingField !== "apiKey"}
-                  aria-invalid={
-                    editingField === "apiKey" && !apiKeyDraft.trim()
-                  }
-                  value={
-                    editingField === "apiKey"
-                      ? apiKeyDraft
-                      : isMaskedSecret(apiKey)
-                        ? MASK
-                        : apiKey
-                  }
-                  placeholder={t(
-                    "pilotDeckConfig.panels.tools.apiKey.providerPlaceholder",
-                    {
-                      provider: t(
-                        `pilotDeckConfig.panels.tools.provider.${provider}`,
-                      ),
-                    },
-                  )}
-                  onChange={(event) => setApiKeyDraft(event.target.value)}
-                />
+          {provider !== "parallel" && (
+            <div className="search-setting-row">
+              <div className="search-setting-copy">
+                <label htmlFor="search-api-key">
+                  {t("pilotDeckConfig.panels.tools.apiKey.label")}
+                </label>
+                <p>{t("pilotDeckConfig.panels.tools.apiKey.description")}</p>
               </div>
-              {renderActions(
-                "apiKey",
-                Boolean(apiKeyDraft.trim()),
-                saveApiKey,
-              )}
+              <div className="search-control-area search-editable-control">
+                <div className="search-input-wrap">
+                  <KeyIcon />
+                  <input
+                    id="search-api-key"
+                    type="password"
+                    required
+                    autoComplete="off"
+                    disabled={!enabled || editingField !== "apiKey"}
+                    aria-invalid={
+                      editingField === "apiKey" && !apiKeyDraft.trim()
+                    }
+                    value={
+                      editingField === "apiKey"
+                        ? apiKeyDraft
+                        : isMaskedSecret(apiKey)
+                          ? MASK
+                          : apiKey
+                    }
+                    placeholder={t(
+                      "pilotDeckConfig.panels.tools.apiKey.providerPlaceholder",
+                      {
+                        provider: t(
+                          `pilotDeckConfig.panels.tools.provider.${provider}`,
+                        ),
+                      },
+                    )}
+                    onChange={(event) => setApiKeyDraft(event.target.value)}
+                  />
+                </div>
+                {renderActions(
+                  "apiKey",
+                  Boolean(apiKeyDraft.trim()),
+                  saveApiKey,
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {provider === 'custom' && <CustomSearchEditor key={JSON.stringify([endpoint, ws.customProvider])}
