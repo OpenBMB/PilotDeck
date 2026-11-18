@@ -60,7 +60,10 @@ try {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByLabel('Pick files').setInputFiles([...files, ...files, ...files]);
-  await page.getByRole('button', { name: '预览 image.png' }).last().click();
+  // The draft rail and the previously sent grid both contain image.png.
+  const draftImages = page.locator('section').getByRole('button', { name: '预览 image.png', exact: true });
+  await expect(draftImages).toHaveCount(9);
+  await draftImages.last().click();
   await expect(page.getByRole('dialog')).toContainText('9 / 9');
   await expect(page.getByRole('dialog').locator('img')).toBeVisible();
   await expect.poll(() => page.getByRole('dialog').locator('img').evaluate(image => image.naturalWidth)).toBe(600);

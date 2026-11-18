@@ -97,4 +97,15 @@ Desktop sidebar drag acceptance waits for `#root[data-pilotdeck-startup]` to cle
 before input. Width probes exceed the 3px drag activation threshold while
 retaining exact boundary-width and title-bar alignment assertions.
 
+The browser suite includes `client-layout.spec.mjs`: workspace, settings, search
+provider labels and onboarding must fit Windows/Linux desktop bridges, Web, PWA
+and mobile viewports. These are current UI contracts, without comparing CSS to
+the same Git revision or fixing decorative pixel positions. Context popovers
+retain category/cache checks and must fit the viewport as their content grows.
+Fork HTTP field mapping and transcript entry IDs use synthetic sessions in
+`ui/server/routes/messages.test.js`; they do not require a running user session.
+Native file-picker acceptance waits for DevTools readiness and uses the pinned
+Chromium browser for its ordinary file-input fallback. Set
+`PILOTDECK_TEST_BROWSER_CHANNEL` to opt into an installed browser such as Edge.
+
 Record commands, outcomes and limits in the PR/CI artifacts. Put temporary screenshots, logs, request dumps and benchmark data in ignored artifacts/<topic>/ or outputs/<topic>/, never in a new tracked delivery report. The [session timeline](architecture/session-timeline.md) and [reasoning reference](reasoning-settings.md) are durable contracts, not test-run logs.
