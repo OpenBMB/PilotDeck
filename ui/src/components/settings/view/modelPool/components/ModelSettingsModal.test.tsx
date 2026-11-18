@@ -99,3 +99,17 @@ it('keeps the draft open when saving before a test fails', async () => {
   expect(screen.getByText('Save conflict')).toBeTruthy();
   expect(p.onClose).not.toHaveBeenCalled();
 });
+
+it('applies refreshed token limits only to untouched fields and can reset to automatic values', () => {
+  const p = props();
+  const automatic = { maxContextTokens: { value: 1048576, source: 'provider' as const }, maxOutputTokens: { value: 393216, source: 'provider' as const } };
+  const view = render(<ModelSettingsModal {...p} automaticLimits={automatic} tokenSources={automatic} limitsLoading />);
+  const output = screen.getByLabelText('pilotDeckConfig.panels.models.maxOutputTokens') as HTMLInputElement;
+  fireEvent.change(output, { target: { value: '1024' } });
+  view.rerender(<ModelSettingsModal {...p} initial={{ ...initial, maxContextTokens: 1048576, maxOutputTokens: 393216 }} automaticLimits={automatic} tokenSources={automatic} />);
+  expect(output.value).toBe('1024');
+  expect((screen.getByLabelText('pilotDeckConfig.panels.models.maxContextTokens') as HTMLInputElement).value).toBe('1048576');
+  fireEvent.click(screen.getByRole('button', { name: 'pilotDeckConfig.panels.models.modelSettings.resetTokenLimits' }));
+  expect(output.value).toBe('393216');
+  expect(screen.getAllByText('pilotDeckConfig.panels.models.modelSettings.tokenSources.provider')).toHaveLength(2);
+});
