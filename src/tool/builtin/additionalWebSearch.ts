@@ -1,9 +1,9 @@
 import { isSerpApiEngine, type SerpApiEngine } from "../../pilot/config/webSearchProviders.js";
 import type { WebSearchOrganicResult } from "./webSearch.js";
 
-export type AdditionalSearchProvider = "deepseek" | "baidu" | "bocha" | "exa" | "serpapi";
+export type AdditionalSearchProvider = "deepseek" | "baidu" | "bocha" | "exa" | "keenable" | "serpapi";
 export function isAdditionalSearchProvider(value: unknown): value is AdditionalSearchProvider {
-  return value === "deepseek" || value === "baidu" || value === "bocha" || value === "exa" || value === "serpapi";
+  return value === "deepseek" || value === "baidu" || value === "bocha" || value === "exa" || value === "keenable" || value === "serpapi";
 }
 
 /** Used by both real searches and the settings connection probe. */
@@ -36,6 +36,10 @@ export function additionalSearchRequest(provider: AdditionalSearchProvider, opti
   } else if (provider === "bocha") {
     headers.Authorization = `Bearer ${apiKey}`;
     body = { query, count: limit, freshness: "noLimit", summary: true };
+  } else if (provider === "keenable") {
+    headers["X-API-Key"] = apiKey;
+    headers["X-Keenable-Title"] = "PilotDeck";
+    body = { query, max_results: limit };
   } else {
     headers["x-api-key"] = apiKey;
     body = { query, numResults: limit, type: "auto", contents: { highlights: true, text: false } };
@@ -56,7 +60,7 @@ export function additionalSearchResults(provider: AdditionalSearchProvider, raw:
   if (provider === "serpapi" && record(raw.search_metadata) && raw.search_metadata.status === "Error") throw new Error("SerpAPI search failed.");
   const data = provider === "bocha" && record(raw.data) ? raw.data : raw;
   const pages = record(data.webPages) ? data.webPages.value : undefined;
-  const items = provider === "baidu" ? raw.references : provider === "bocha" ? pages : (provider === "exa" || provider === "deepseek") ? raw.results : raw.organic_results;
+  const items = provider === "baidu" ? raw.references : provider === "bocha" ? pages : (provider === "exa" || provider === "keenable" || provider === "deepseek") ? raw.results : raw.organic_results;
   // SerpAPI legitimately omits organic_results for a query with no organic hits.
   if (!Array.isArray(items)) {
     if (provider === "serpapi" && record(raw.search_metadata) && raw.search_metadata.status === "Success") return [];
@@ -65,12 +69,21 @@ export function additionalSearchResults(provider: AdditionalSearchProvider, raw:
   return items.filter(record).filter(item => provider !== "baidu" || !item.type || item.type === "web").slice(0, Math.max(0, limit)).map(item => ({
     title: text(item.title) ?? text(item.name),
     link: text(item.url) ?? text(item.link),
-    snippet: text(item.summary) ?? text(item.snippet) ?? text(item.content)
+    snippet: provider === "keenable" ? keenableSnippet(item) : text(item.summary) ?? text(item.snippet) ?? text(item.content)
       ?? (Array.isArray(item.highlights) ? item.highlights.filter(value => typeof value === "string").join("\n") || undefined : undefined)
       ?? text(item.text),
     source: text(item.site_name) ?? text(item.siteName) ?? text(item.source),
     publishedAt: text(item.publishedDate) ?? text(item.datePublished) ?? text(item.date),
   }));
+}
+
+const KEENABLE_SNIPPET_MAX_CHARS = 1000;
+/** Keenable's `description` is often empty and `snippet` can be a whole page. */
+function keenableSnippet(item: Record<string, unknown>): string | undefined {
+  const description = text(item.description);
+  if (description) return description;
+  const snippet = text(item.snippet);
+  return snippet && snippet.length > KEENABLE_SNIPPET_MAX_CHARS ? `${snippet.slice(0, KEENABLE_SNIPPET_MAX_CHARS)}…` : snippet;
 }
 
 /** Query-authenticated APIs can include the full request URL in network errors. */

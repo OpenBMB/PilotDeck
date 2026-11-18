@@ -16,6 +16,7 @@ for the same provider, endpoint and authentication settings.
 | Baidu AI Search | `BAIDU_WEB_SEARCH_API_KEY` | [Baidu Search](https://ai.baidu.com/ai-doc/AppBuilder/pmaxd1hvy) |
 | Bocha Web Search | `BOCHA_API_KEY` | [Provider-maintained API reference](https://github.com/Bocha-Labs/bocha-skills/tree/main/bocha-web-search) |
 | Exa | `EXA_API_KEY` | [Search](https://exa.ai/docs/reference/search) |
+| Keenable | `KEENABLE_API_KEY` | [Keenable](https://keenable.ai/) |
 | SerpAPI | `SERPAPI_API_KEY` | [Search API](https://serpapi.com/search-api) |
 | Custom | `CUSTOM_WEB_SEARCH_API_KEY` | Your endpoint's documentation |
 
