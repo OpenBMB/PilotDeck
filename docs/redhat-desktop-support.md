@@ -7,6 +7,10 @@ native architecture-matched CI runners. The target family is RHEL 9+, Rocky Linu
 A build baseline does not certify every distribution or desktop environment;
 verify each supported release on its target desktop.
 
+The CI job container declares the standard system `PATH` explicitly so Actions
+can prepend Node.js and pnpm paths without losing system commands when the Rocky
+image omits `PATH` from its container configuration.
+
 ## Build and installation
 
 Build in a Rocky Linux 9 container on the matching CPU architecture:

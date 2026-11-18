@@ -58,6 +58,8 @@ try {
       tokenUsage: { used: 117000, total: 262144, effectiveTotal: 262144, state: 'ok' },
       ...(url.searchParams.get('includeModelContext') === 'summary' ? {
         contextBreakdown: { systemTokens: 2200, toolsTokens: 10200, messageTokens: 65500 },
+        lastTurnUsage: { turnId: 'chrome-review-turn', completedAt: '2026-09-01T00:01:00Z', calls: 6,
+          usage: { inputTokens: 13256, cacheReadTokens: 306176 } },
       } : {}),
     };
     else if (url.pathname.includes('/sessions')) body = { sessions: projects[1].sessions, hasMore: false, total: 1 };
@@ -100,7 +102,11 @@ try {
   }
   await expect(context.getByText('~2.2K', { exact: true })).toBeVisible();
   await expect(context.getByText('~117K / 262K', { exact: true })).toBeVisible();
-  await expect(context.locator('dt')).toHaveCount(3);
+  await expect(context.getByLabel('Estimated token breakdown', { exact: true }).locator('dt')).toHaveCount(3);
+  const cache = context.getByRole('region', { name: 'Previous turn cache hits', exact: true });
+  await expect(cache.locator('dt')).toHaveText(['Model calls', 'Cache hit']);
+  await expect(cache.locator('dd')).toHaveText(['6', '306K / 319K']);
+  await expect(cache.getByText('95.9%', { exact: true })).toBeVisible();
   await expect(context.locator('button, input, pre, details')).toHaveCount(0);
   await page.screenshot({ path: path.join(artifactDir, `${platformName}-context-breakdown.png`) });
   await context.screenshot({ path: path.join(artifactDir, `${platformName}-context-summary-dark.png`) });
@@ -123,10 +129,17 @@ try {
   }
   await expect(compactContext.getByText('~65.5K', { exact: true })).toBeVisible();
   await expect(compactContext.getByText('45%', { exact: true })).toBeVisible();
+  const compactCache = compactContext.getByRole('region', { name: '上一轮缓存命中', exact: true });
+  await expect(compactCache.locator('dt')).toHaveText(['调用次数', '已命中']);
+  await expect(compactCache.locator('dd')).toHaveText(['6 次', '306K / 319K']);
+  await expect(compactCache.getByText('95.9%', { exact: true })).toBeVisible();
   const compactBounds = await compactContext.boundingBox();
   expect(compactBounds.width).toBeLessThanOrEqual(320);
-  expect(compactBounds.height).toBeLessThan(200);
+  const budgetBounds = await compactContext.getByLabel('分类 token 估算', { exact: true }).boundingBox();
+  expect(budgetBounds.y + budgetBounds.height - compactBounds.y).toBeLessThan(200);
+  expect(compactBounds.height).toBeLessThan(300);
   await compactContext.screenshot({ path: path.join(artifactDir, `${platformName}-context-summary-light-zh.png`) });
+  console.log('PASS: context budget and previous-turn cache remain compact in English/dark and Chinese/light');
   await page.keyboard.press('Escape');
   await page.evaluate(() => window.pilotdeckDesktop.setAppearance({ language: 'en', themeMode: 'dark' }));
   await page.reload();

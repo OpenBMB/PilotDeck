@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import test from 'node:test';
@@ -96,7 +97,21 @@ test('Linux manual acceptance selects native ARM64 while shared builds default t
     assert.ok(job.steps.some(step => step.run?.includes('run-linux-chrome-smoke.sh x11')));
     assert.ok(job.steps.some(step => step.run?.includes('run-linux-chrome-smoke.sh wayland')));
   }
-  assert.equal(linux.jobs.rpm.container, 'rockylinux:9');
+  assert.equal(linux.jobs.rpm.container.image, 'rockylinux:9');
+});
+
+test('RPM container retains system command lookup after Actions prepends tool paths', {
+  skip: process.platform === 'win32' ? 'Requires POSIX system commands' : false,
+}, () => {
+  const container = workflow('desktop-linux').jobs.rpm.container;
+  // The runner combines added tool paths with PATH from the container config.
+  // Images without a declared PATH otherwise leave only Node/pnpm searchable.
+  const searchPath = ['/pilotdeck-test/node/bin', '/pilotdeck-test/pnpm/bin', container.env?.PATH].filter(Boolean).join(':');
+  const result = spawnSync('sh', ['-ec', 'command -v sh; command -v env; command -v tar'], {
+    env: { PATH: searchPath }, encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  assert.equal(result.stdout.trim().split('\n').length, 3);
 });
 
 test('shared native builds cannot select arbitrary source or request release write access', () => {
