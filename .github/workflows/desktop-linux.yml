@@ -173,7 +173,12 @@ jobs:
       matrix:
         arch: ${{ fromJSON(inputs.architecture == 'arm64' && '["arm64"]' || inputs.architecture == 'x64' && '["x64"]' || '["x64","arm64"]') }}
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-22.04-arm' || 'ubuntu-22.04' }}
-    container: rockylinux:9
+    container:
+      image: rockylinux:9
+      env:
+        # Actions reads the container's configured PATH when adding Node/pnpm.
+        # Keep system commands searchable even when the image omits PATH.
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     timeout-minutes: 90
     env:
       PILOTDECK_RELEASE_DATE: ${{ inputs.release_date }}

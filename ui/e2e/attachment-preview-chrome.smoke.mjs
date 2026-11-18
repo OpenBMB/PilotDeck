@@ -57,7 +57,7 @@ try {
       await page.setViewportSize(viewport);
       const inset = await captionHeight();
       await page.getByLabel('Pick files').setInputFiles(files);
-      await page.getByRole('button', { name: '预览 image-0.png', exact: true }).click();
+      await page.locator('section').getByRole('button', { name: '预览 image-0.png', exact: true }).click();
       await check('关闭预览', inset);
       if (platform !== 'web') {
         await setFullscreen(true);
@@ -68,7 +68,8 @@ try {
       await page.getByRole('button', { name: '关闭预览', exact: true }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await page.getByText('Send test message', { exact: true }).click();
-      await page.getByRole('button', { name: 'Preview image-0.png', exact: true }).click();
+      const sentImage = page.locator('.pd-user-message-bubble').getByRole('button', { name: '预览 image-0.png', exact: true });
+      await sentImage.click();
       await check(null, inset);
       await page.getByRole('dialog').locator('img').click();
       await expect(page.getByRole('dialog')).toBeVisible();
@@ -83,7 +84,7 @@ try {
       }
       await page.locator('[data-modal-overlay]').click({ position: { x: 8, y: 8 } });
       await expect(page.getByRole('dialog')).toHaveCount(0);
-      await page.getByRole('button', { name: 'Preview image-0.png', exact: true }).click();
+      await sentImage.click();
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
       console.log(`PASS ${platform} ${viewport.width}x${viewport.height}: draft/sent controls, image bounds and fullscreen transitions`);

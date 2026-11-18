@@ -64,10 +64,15 @@ try {
     await expect(popover.getByText('~65.5K', { exact: true })).toBeVisible();
     const bounds = await popover.boundingBox();
     expect(bounds.width).toBeLessThanOrEqual(272);
-    expect(bounds.height).toBeLessThan(180);
+    expect(bounds.y).toBeGreaterThanOrEqual(8);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize().height - 8);
     expect(bounds.x).toBeGreaterThanOrEqual(8);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 8);
     await expect(popover.getByRole('meter')).toHaveAttribute('aria-valuenow', '45');
+    await expect(popover.getByLabel(language === 'en' ? 'Estimated token breakdown' : '分类 token 估算', { exact: true }).locator('dt')).toHaveCount(3);
+    const cache = popover.getByRole('region', { name: language === 'en' ? 'Previous turn cache hits' : '上一轮缓存命中', exact: true });
+    await expect(cache.locator('dt')).toHaveCount(2);
+    await expect(cache).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: path.join(artifacts, `context-${language}-${theme}-${width}.png`) });
     await page.keyboard.press('Escape'); await expect(popover).toHaveCount(0); await expect(trigger).toBeFocused();
     await page.goto(`${baseUrl}/settings/general`);

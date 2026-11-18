@@ -28,17 +28,16 @@ test("openai schema normalization adds explicit types to cron literal variants",
   const schedule = properties.schedule;
   const variants = schedule.anyOf as Array<Record<string, unknown>>;
 
-  const onceProperties = variants[0]?.properties as Record<string, Record<string, unknown>>;
-  assert.equal(onceProperties.type.type, "string");
-  assert.equal(onceProperties.type.const, "once");
+  const byType = new Map(variants.map(variant => {
+    const fields = variant.properties as Record<string, Record<string, unknown>>;
+    return [fields.type.const, fields];
+  }));
+  for (const kind of ["interval", "monthly", "once", "cron", "delay"]) {
+    assert.ok(byType.has(kind), `Missing schedule variant: ${kind}`);
+    assert.equal(byType.get(kind)!.type.type, "string", kind);
+  }
 
-  const cronProperties = variants[1]?.properties as Record<string, Record<string, unknown>>;
-  assert.equal(cronProperties.type.type, "string");
-  assert.equal(cronProperties.type.const, "cron");
-
-  const delayProperties = variants[2]?.properties as Record<string, Record<string, unknown>>;
-  assert.equal(delayProperties.type.type, "string");
-  assert.equal(delayProperties.type.const, "delay");
+  const delayProperties = byType.get("delay")!;
   assert.equal(delayProperties.unit.type, "string");
   assert.deepEqual(delayProperties.unit.enum, ["second", "minute", "hour", "day"]);
 });

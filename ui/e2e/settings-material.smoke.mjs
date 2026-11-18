@@ -30,6 +30,7 @@ async function mockServer(page) {
     const p = new URL(route.request().url()).pathname;
     let body = {};
     if (p === '/api/projects') body = [{name:'demo', displayName:'Material test', fullPath:'/fixture/demo', kind:'workspace', sessions:[], capabilities:{files:true}}];
+    else if (p === '/api/settings/general-workspace') body = { directory: '', effectiveDirectory: '/fixture/PilotDeckGeneral', defaultDirectory: '/fixture/PilotDeckGeneral' };
     else if (p === '/api/config') body = {exists:true, path:'/fixture/config.yaml', raw:JSON.stringify(config), validation:{valid:true,errors:[],warnings:[]}};
     else if (p === '/api/mcp/config') { const value={raw:JSON.stringify({mcpServers:{fixture:{command:'fixture',args:[]}}}),path:'/fixture/mcp.json',exists:true}; body={global:value,project:value}; }
     else if (p === '/api/gateway/status') body={feishu:{enabled:false,appId:'',hasSecret:false,connectionMode:'stream',domainName:'feishu'},weixin:{enabled:false,hasCredentials:false,accountId:null},wecom:{enabled:false,botId:'',hasSecret:false,websocketUrl:'',dmPolicy:'open',groupPolicy:'disabled',allowFrom:[],groupAllowFrom:[]}};
@@ -117,7 +118,7 @@ async function verify(page, platform) {
   await page.getByRole('button',{name:'深色',exact:true}).click();
   await expect(page.locator('html')).not.toHaveAttribute('data-light-background');
   await expect(page.locator('.general-card').first()).not.toHaveCSS('background-color','rgba(0, 0, 0, 0)');
-  await page.getByRole('button',{name:'切换浅色并编辑',exact:true}).click();
+  await page.getByRole('button',{name:'浅色',exact:true}).click();
   await expect(page.locator('.general-card').first()).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
   await page.reload();
   await expect(page.locator('.appearance-image-upload img')).toBeVisible();

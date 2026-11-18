@@ -11,6 +11,7 @@ import { ImageStore, type GeneratedImage } from "../../../src/tool/builtin/image
 import { createImageGenerationTools } from "../../../src/tool/builtin/imageGeneration.js";
 import { createBuiltinRegistry } from "../../../src/tool/registry/createBuiltinRegistry.js";
 import { requestOpenAIImage } from "../../../src/tool/builtin/images/openaiImages.js";
+import { NetworkFetchError } from "../../../src/network/fetch.js";
 import { parseToolsConfig } from "../../../src/pilot/config/parseToolsConfig.js";
 import type { PilotConfigDiagnostic } from "../../../src/pilot/config/types.js";
 import type { PilotDeckToolRuntimeContext } from "../../../src/tool/protocol/types.js";
@@ -156,6 +157,10 @@ test("cancellation interrupts a response body without automatically retrying a p
     calls++;
     return new Response(new ReadableStream({ start() { setTimeout(() => controller.abort(new Error("cancelled")), 10); } }));
   } });
-  await assert.rejects(() => pending, /cancelled/);
+  await assert.rejects(() => pending, (error: unknown) => {
+    assert.ok(error instanceof NetworkFetchError);
+    assert.equal(error.code, "network_abort");
+    return true;
+  });
   assert.equal(calls, 1);
 });

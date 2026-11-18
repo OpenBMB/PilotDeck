@@ -72,6 +72,7 @@ try {
   await pick([second]); await page.frameLocator('#frame').locator('#frame-file').click();
   await expect.poll(() => page.frameLocator('#frame').locator('#frame-file').evaluate(e => e.files[0]?.name)).toBe('world.txt');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.openDevTools({ mode: 'detach' }));
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened())).toBe(true);
   await page.locator('#files').evaluate(e => e.value = '');
   await pick([second]); await page.locator('#files').click();
   await expect.poll(() => page.locator('#files').evaluate(e => e.files[0]?.name)).toBe('world.txt');
@@ -79,7 +80,7 @@ try {
   expect(errors).toEqual([]);
   console.log('PASS: actual Electron shared picker, cancellation, multi-select, folder paths, image filters, 256MB native File, owned iframe and existing DevTools');
 } finally { await app.close(); }
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ channel: process.env.PILOTDECK_TEST_BROWSER_CHANNEL || undefined, headless: true });
 try {
   const page = await browser.newPage(); await prepare(page);
   const chooser = page.waitForEvent('filechooser'); await page.locator('#files').click();

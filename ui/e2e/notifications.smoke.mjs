@@ -25,6 +25,7 @@ const mockApi = async route => {
   const p = new URL(route.request().url()).pathname;
   let body = {};
   if (p === '/api/projects') body = [{ name: 'demo', displayName: 'Demo', fullPath: '/fixture/demo', kind: 'workspace', sessions: [{ id: 's1', title: 'Report' }], capabilities: { files: true } }];
+  else if (p === '/api/settings/general-workspace') body = { directory: '', effectiveDirectory: '/fixture/PilotDeckGeneral', defaultDirectory: '/fixture/PilotDeckGeneral' };
   else if (p.includes('onboarding-status')) body = { hasCompletedOnboarding: true };
   else if (p.includes('sessions')) body = { sessions: [], messages: [], hasMore: false, total: 0 };
   else if (p === '/api/config') body = { exists: true, raw: 'agent:\n  model: fixture/test\n', validation: { valid: true, errors: [] } };
@@ -101,6 +102,7 @@ try {
       window.__preferences = { enabled: false, sound: true, preview: true, badge: true };
       window.pilotdeckDesktop = {
         platform, getAppearance: () => ({ language: 'zh-CN', themeMode: 'light' }), setAppearance: async () => {},
+        getRuntimeStatus: () => ({ phase: 'ready', progress: 96 }), onRuntimeStatus: () => () => {},
         getNotificationStatus: async () => ({ supported: true, permission: 'unknown', preferences: window.__preferences }),
         setNotificationPreferences: async value => { window.__preferences = value; return value; },
         showNotification: async value => { window.__notifications.push(value); return true; },

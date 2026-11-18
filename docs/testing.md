@@ -93,4 +93,26 @@ First build the relevant Core/Desktop/Web outputs when a command consumes compil
 
 Appearance, native file selection and window chrome acceptance use ui/e2e/appearance.smoke.mjs, file-picker.smoke.mjs and desktop-chrome.smoke.mjs. With Vite on port 5187, run `node ui/e2e/theme-components.smoke.mjs` for all six light/dark palettes on the real chat menus and skills screen, including warning semantics, selected states, placeholders and text contrast. `node ui/e2e/dialog-appearance.smoke.mjs` checks confirmation actions and image overlays. Prepare their Vite/Desktop prerequisites and isolated profiles. Preview pages do not replace the real startup-flow regression. Native package installation, update, signing and OS permission acceptance remain platform-specific.
 
+Desktop sidebar drag acceptance waits for `#root[data-pilotdeck-startup]` to clear
+before input. Width probes exceed the 3px drag activation threshold while
+retaining exact boundary-width and title-bar alignment assertions.
+
+The browser suite includes `client-layout.spec.mjs`. It checks horizontal
+overflow in the workspace, settings and onboarding content and scroll
+containers across Windows/Linux desktop bridges, Web, PWA and mobile. The PWA
+case starts a Chromium app window and verifies standalone safe-area padding
+with nonzero test insets. Search provider option IDs must match the shared
+catalog and all labels must resolve. Context popovers retain category/cache
+checks and must fit the viewport as their content grows.
+
+Run `node --import tsx --test ui/e2e/history-fork.test.mjs` to exercise history,
+fork creation and the forked transcript through a real Web server and Gateway.
+Web CI runs this test with synthetic transcripts, temporary storage and
+loopback ports. Route-level failure cases remain in
+`ui/server/routes/messages.test.js`.
+
+Native file-picker acceptance waits for DevTools readiness and uses the pinned
+Chromium browser for its ordinary file-input fallback. Set
+`PILOTDECK_TEST_BROWSER_CHANNEL` to opt into an installed browser such as Edge.
+
 Record commands, outcomes and limits in the PR/CI artifacts. Put temporary screenshots, logs, request dumps and benchmark data in ignored artifacts/<topic>/ or outputs/<topic>/, never in a new tracked delivery report. The [session timeline](architecture/session-timeline.md) and [reasoning reference](reasoning-settings.md) are durable contracts, not test-run logs.

@@ -9,6 +9,81 @@ afterEach(() => {
 });
 
 describe('message routes', () => {
+  it('preserves transcript entry IDs and the fork HTTP contract using a synthetic session', async () => {
+    const projectPath = '/fixture/a workspace';
+    const gateway = {
+      readSessionMessages: vi.fn(async () => ({ messages: [
+        { id: 'first', entryId: 'first-entry', kind: 'text', role: 'user', text: 'Earlier request' },
+        { id: 'answer', entryId: 'answer-entry', kind: 'text', role: 'assistant', text: 'Earlier answer' },
+        { id: 'point', entryId: 'fork-entry', kind: 'text', role: 'user', text: 'Continue here' },
+      ], total: 3 })),
+      forkSession: vi.fn(async () => ({ newSessionKey: 'web:s_fork-fixture', prefillText: 'Continue here', carriedMessageCount: 2 })),
+    };
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: async () => gateway, isGatewayUnavailableError: () => false,
+      withPilotDeckGatewayReadRetry: operation => operation(gateway),
+    }));
+    const { default: routes } = await import('./messages.js');
+    const app = express(); app.use(express.json()); app.use('/api/sessions', routes);
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.on('listening', resolve));
+    const base = `http://127.0.0.1:${server.address().port}/api/sessions/web%3As_source`;
+    try {
+      const history = await nativeFetch(`${base}/messages?${new URLSearchParams({ projectPath, limit: '200' })}`);
+      expect(history.status).toBe(200);
+      const { messages } = await history.json();
+      const point = messages.find(message => message.entryId === 'fork-entry');
+      expect(point).toMatchObject({ role: 'user', entryId: 'fork-entry' });
+      const response = await nativeFetch(`${base}/fork`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath, fromEntryId: point.entryId }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ newSessionId: 'web:s_fork-fixture', prefillText: 'Continue here', carriedMessageCount: 2 });
+      expect(gateway.forkSession).toHaveBeenCalledExactlyOnceWith({
+        sessionKey: 'web:s_source', projectKey: projectPath, fromEntryId: 'fork-entry',
+      });
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
+
+  it('rejects a fork without an entry ID before contacting Gateway', async () => {
+    const getGateway = vi.fn();
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: getGateway,
+      isGatewayUnavailableError: () => false, withPilotDeckGatewayReadRetry: vi.fn() }));
+    const { default: routes } = await import('./messages.js');
+    const app = express(); app.use(express.json()); app.use('/api/sessions', routes);
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.on('listening', resolve));
+    try {
+      const response = await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/source/fork`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectPath: '/fixture/demo' }),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'fromEntryId is required' });
+      expect(getGateway).not.toHaveBeenCalled();
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
+
+  it.each([['fork_entry_not_found', 400], ['gateway_unavailable', 500]])('returns %s fork failures over HTTP', async (code, status) => {
+    const error = Object.assign(new Error('Synthetic fork failure'), { code });
+    const forkSession = vi.fn().mockRejectedValue(error);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: async () => ({ forkSession }),
+      isGatewayUnavailableError: () => false, withPilotDeckGatewayReadRetry: vi.fn() }));
+    const { default: routes } = await import('./messages.js');
+    const app = express(); app.use(express.json()); app.use('/api/sessions', routes);
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.on('listening', resolve));
+    try {
+      const response = await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/source/fork`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: '/fixture/demo', fromEntryId: 'missing-entry' }),
+      });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ error: error.message, ...(status === 400 ? { code } : {}) });
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
+
   it('preserves guidance identity from Gateway history for live/history reconciliation', async () => {
     const timeline = { version: 1, turnId: 'run', id: 'steer:guidance', order: 4, revision: 12 };
     vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,

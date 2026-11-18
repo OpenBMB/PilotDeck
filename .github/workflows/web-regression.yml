@@ -114,6 +114,9 @@ jobs:
           dist/tests/cron/*.spec.js
           dist/tests/gateway/cron*.spec.js
 
+      - name: Test history fork through Web and Gateway
+        run: node --import tsx --test ui/e2e/history-fork.test.mjs
+
       - name: Test Web UI and server
         # Vitest projects collect only src/ and server/ tests; browser E2E has
         # its own runner. Desktop Smoke runs updater tests with desktop dependencies.
