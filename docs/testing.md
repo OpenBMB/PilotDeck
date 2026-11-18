@@ -93,4 +93,8 @@ First build the relevant Core/Desktop/Web outputs when a command consumes compil
 
 Appearance, native file selection and window chrome acceptance use ui/e2e/appearance.smoke.mjs, file-picker.smoke.mjs and desktop-chrome.smoke.mjs. With Vite on port 5187, run `node ui/e2e/theme-components.smoke.mjs` for all six light/dark palettes on the real chat menus and skills screen, including warning semantics, selected states, placeholders and text contrast. `node ui/e2e/dialog-appearance.smoke.mjs` checks confirmation actions and image overlays. Prepare their Vite/Desktop prerequisites and isolated profiles. Preview pages do not replace the real startup-flow regression. Native package installation, update, signing and OS permission acceptance remain platform-specific.
 
+Desktop sidebar drag acceptance waits for `#root[data-pilotdeck-startup]` to clear
+before input. Width probes exceed the 3px drag activation threshold while
+retaining exact boundary-width and title-bar alignment assertions.
+
 Record commands, outcomes and limits in the PR/CI artifacts. Put temporary screenshots, logs, request dumps and benchmark data in ignored artifacts/<topic>/ or outputs/<topic>/, never in a new tracked delivery report. The [session timeline](architecture/session-timeline.md) and [reasoning reference](reasoning-settings.md) are durable contracts, not test-run logs.

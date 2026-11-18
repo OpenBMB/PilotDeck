@@ -172,7 +172,10 @@ try {
         }));
       for (const target of targets) expect(target, JSON.stringify(target)).toMatchObject({ safe: true, hit: true, region: 'no-drag' });
     };
-    for (const width of [76, 119, 120, 172, 173, 174, 200, 220, 360, 220]) {
+    // The shell is visible during startup handoff, before it accepts input.
+    await expect(page.locator('#root')).not.toHaveAttribute('data-pilotdeck-startup');
+    // Retain boundary widths while keeping each gesture past the 3px threshold.
+    for (const width of [76, 119, 172, 120, 173, 220, 174, 200, 360, 220]) {
       const resizer = await page.locator('.sidebar-resizer').boundingBox();
       const currentWidth = await page.locator('.project-sidebar').evaluate(el => el.getBoundingClientRect().width);
       await page.mouse.move(resizer.x + resizer.width / 2, resizer.y + 180);
