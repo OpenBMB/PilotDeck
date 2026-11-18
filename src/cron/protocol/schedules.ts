@@ -1,4 +1,12 @@
+export type CronCalendarSchedule = {
+  type: "calendar";
+  times: string[];
+  weekdays?: number[];
+  timezone: string;
+};
+
 export type CronTaskSchedule =
+  | CronCalendarSchedule
   | { type: "interval"; everySeconds: number; anchorAt: string }
   | { type: "monthly"; ordinal: 1 | 2 | 3 | 4 | -1; weekday: number; hour: number; minute: number; timezone: string }
   | {

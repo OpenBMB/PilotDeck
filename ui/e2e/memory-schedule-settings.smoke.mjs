@@ -104,6 +104,21 @@ export async function verifyMemoryScheduleSettings({ browser, base, output, case
    const date = editor.getByLabel(common.cron.create.fields.date, { exact: true });
    expect(await date.evaluate(styles, fieldKeys)).toEqual(field);
    await page.screenshot({ path: path.join(output, language + '-' + mode + '-cron-create.png') });
+   await editor.getByRole('button', { name: common.cron.create.schedule.cron, exact: true }).click();
+   await editor.getByRole('combobox', { name: common.cron.create.fields.repeatPeriod, exact: true }).selectOption('weekly');
+   const weekday = editor.getByRole('button', { name: common.cron.create.weekdays.wednesday, exact: true });
+   const selected = await weekday.evaluate(styles, ['backgroundColor', 'borderColor', 'color']);
+   await expect(weekday).toHaveAttribute('aria-pressed', 'true');
+   await expect(weekday.locator('svg')).toBeVisible();
+   await weekday.click();
+   await expect(weekday).toHaveAttribute('aria-pressed', 'false');
+   await expect(weekday.locator('svg')).toBeHidden();
+   await expect.poll(() => weekday.evaluate(styles, Object.keys(selected))).not.toEqual(selected);
+   await weekday.press('Space');
+   await expect(weekday).toHaveAttribute('aria-pressed', 'true');
+   await expect(weekday.locator('svg')).toBeVisible();
+   await expect.poll(() => weekday.evaluate(styles, Object.keys(selected))).toEqual(selected);
+
    await go('/p/demo'); await expect(page.locator('.workspace-header')).toBeVisible();
    await page.locator('.workspace-header button[aria-haspopup=menu]').click();
    await page.getByRole('menuitem', { name: /Memory|记忆/ }).click();

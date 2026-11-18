@@ -46,7 +46,7 @@ export type CreateCronManagerOptions = {
   onTurnEvent?: CronTurnEventHandler;
   onTaskChange?: (change: CronTaskChange) => void;
   onReminderChange?: (change: { id: string; reminder?: CronReminder; dismissedScope?: string }) => void;
-  generateTaskTitle?: CreateCronRuntimeOptions["generateTaskTitle"];
+  generateTaskDetails?: CreateCronRuntimeOptions["generateTaskDetails"];
 };
 
 export class CronManager {
@@ -258,7 +258,7 @@ export class CronManager {
       onTurnEvent: this.options.onTurnEvent,
       onTaskChange: this.options.onTaskChange,
       onReminder: reminder => this.recordReminder(reminder),
-      generateTaskTitle: this.options.generateTaskTitle,
+      generateTaskDetails: this.options.generateTaskDetails,
       activeRunCount: () => this.activeRunCount(),
       onRunFinished: () => { for (const loaded of this.runtimes.values()) loaded.poke(); },
       skipToolCreation: true,

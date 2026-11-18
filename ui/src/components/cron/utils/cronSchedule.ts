@@ -1,3 +1,5 @@
+import type { CronCalendarSchedule } from '../../../../../src/cron/protocol/schedules';
+
 export type SimpleCronSchedule =
   | { mode: 'daily'; time: string }
   | { mode: 'weekly'; time: string; weekday: number }
@@ -5,6 +7,14 @@ export type SimpleCronSchedule =
   | { mode: 'yearly'; time: string; dayOfMonth: number; monthOfYear: number };
 
 export type SimpleRecurrenceMode = SimpleCronSchedule['mode'];
+
+export const INTERVAL_SECONDS = { minute: 60, hour: 3600, day: 86400 } as const;
+export type IntervalUnit = keyof typeof INTERVAL_SECONDS;
+
+export function intervalFields(everySeconds: number): { amount: number; unit: IntervalUnit } {
+  const unit = (['day', 'hour', 'minute'] as const).find(candidate => everySeconds % INTERVAL_SECONDS[candidate] === 0) ?? 'minute';
+  return { amount: everySeconds / INTERVAL_SECONDS[unit], unit };
+}
 
 export function buildSimpleCronExpression(schedule: SimpleCronSchedule): string {
   const { hour, minute } = parseTime(schedule.time);
@@ -64,6 +74,29 @@ export function parseSimpleCronExpression(expression: string): SimpleCronSchedul
   }
 
   return undefined;
+}
+
+export function parseCalendarCronExpression(expression: string): Pick<CronCalendarSchedule, 'times' | 'weekdays'> | undefined {
+  const fields = expression.trim().split(/\s+/);
+  if (fields.length !== 5 || fields[2] !== '*' || fields[3] !== '*') return undefined;
+  const [minuteField, hourField, , , weekdayField] = fields;
+  const minutes = parseIntegerList(minuteField, 59);
+  const hours = parseIntegerList(hourField, 23);
+  const days = weekdayField === '*' ? undefined : parseIntegerList(weekdayField, 7);
+  if (!minutes || !hours || (weekdayField !== '*' && !days)) return undefined;
+  const times = hours.flatMap(hour => minutes.map(minute => `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`));
+  const weekdays = days && [...new Set(days.map(day => day % 7))].sort((a, b) => a - b);
+  return { times, ...(weekdays ? { weekdays } : {}) };
+}
+
+function parseIntegerList(value: string, max: number): number[] | undefined {
+  const list: number[] = [];
+  for (const part of value.split(',')) {
+    const item = parseIntegerInRange(part, 0, max);
+    if (item === undefined) return undefined;
+    list.push(item);
+  }
+  return [...new Set(list)].sort((a, b) => a - b);
 }
 
 export function getYearlyMonthDayCount(month: number): number {

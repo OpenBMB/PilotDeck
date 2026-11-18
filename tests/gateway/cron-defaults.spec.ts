@@ -52,6 +52,17 @@ for (const [name, yaml, enabled] of [
     const cron = createCronManager({ config, pilotHome: home });
     const requests: CanonicalModelRequest[] = [];
     const schedule = { type: "once" as const, runAt: new Date(Date.now() + 86_400_000).toISOString() };
+    const weekly = { type: "calendar", times: ["10:00", "15:30"], weekdays: [1, 3], timezone: "Asia/Shanghai" };
+    const creationAttempts = [
+      { id: "absolute", message: "Agent reminder", schedule },
+      { id: "monthly-weekday", message: "Monthly weekday task", schedule: {
+        type: "monthly", ordinal: 1, weekday: 1, hour: 9, minute: 0, timezone: "UTC",
+      } },
+      { id: "partial-minute", message: "Partial-minute interval", schedule: { type: "interval", everySeconds: 90 } },
+      { id: "whole-minute", message: "Whole-minute interval", schedule: { type: "interval", everySeconds: 120 } },
+      { id: "delay", message: "Ten-minute delay", schedule: { type: "delay", amount: 10, unit: "minute" } },
+      { id: "calendar", message: "Weekly walks", schedule: weekly },
+    ];
     const local = createLocalGateway({
       pilotHome: home,
       projectRoot: project,
@@ -66,11 +77,10 @@ for (const [name, yaml, enabled] of [
             requests.push(request);
             yield { type: "message_start", role: "assistant" };
             if (enabled && requests.length === 1) {
-              yield { type: "tool_call_start", id: "create-reminder", name: "cron_create" };
-              yield {
-                type: "tool_call_end",
-                toolCall: { id: "create-reminder", name: "cron_create", input: { message: "Agent reminder", schedule } },
-              };
+              for (const { id, ...input } of creationAttempts) {
+                yield { type: "tool_call_start", id, name: "cron_create" };
+                yield { type: "tool_call_end", toolCall: { id, name: "cron_create", input } };
+              }
               yield { type: "message_end", finishReason: "tool_call" };
             } else {
               yield { type: "text_delta", text: "Done" };
@@ -110,9 +120,25 @@ for (const [name, yaml, enabled] of [
         assert.equal(requests[0]?.tools?.some(tool => tool.name === name), enabled, name);
       }
       const { tasks } = await local.gateway.cronList({ projectKey: project });
-      assert.deepEqual(tasks.map(task => task.message).sort(), enabled ? ["Agent reminder", "Manual reminder"] : []);
+      assert.deepEqual(tasks.map(task => task.message).sort(), enabled
+        ? ["Agent reminder", "Manual reminder", "Ten-minute delay", "Weekly walks", "Whole-minute interval"] : []);
       if (enabled) {
         assert.equal(tasks.find(task => task.message === "Agent reminder")?.originSessionKey, "web:cron-defaults");
+        const createTool = requests[0]?.tools?.find(tool => tool.name === "cron_create");
+        const properties = createTool?.inputSchema.properties as {
+          schedule: { anyOf: Array<{ properties: { type: { const: string }; everySeconds?: { multipleOf: number } } }> };
+        };
+        const options = properties.schedule.anyOf;
+        assert.deepEqual(options.map(option => option.properties.type.const).sort(), ["calendar", "cron", "delay", "interval", "once"]);
+        assert.equal(options.find(option => option.properties.type.const === "interval")?.properties.everySeconds?.multipleOf, 60);
+        const rejected = events.flatMap(event => event.type === "tool_call_finished" && !event.ok ? [event.resultPreview ?? ""] : []);
+        assert.equal(rejected.length, 2);
+        assert.ok(rejected.some(message => /monthly weekday rules/.test(message)));
+        assert.ok(rejected.some(message => /whole minutes/.test(message)));
+        const delayed = tasks.find(task => task.message === "Ten-minute delay");
+        assert.ok(delayed?.schedule.type === "once");
+        assert.equal(Date.parse(delayed.schedule.runAt) - Date.parse(delayed.createdAt), 600_000);
+        assert.deepEqual(tasks.find(task => task.message === "Weekly walks")?.schedule, weekly);
       }
     } finally {
       await cron.stop();

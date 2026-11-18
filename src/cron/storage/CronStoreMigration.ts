@@ -263,9 +263,10 @@ async function writeFinalSnapshots(
 }
 
 async function writeTaskFile(dir: string, tasks: unknown[]): Promise<void> {
+  const migratedTasks = tasks.map(task => isRecord(task) && task.mode === "plan" ? { ...task, mode: "default" } : task);
   await atomicWrite(
     resolve(dir, "tasks.json"),
-    `${JSON.stringify({ schemaVersion: 1, tasks }, null, 2)}\n`,
+    `${JSON.stringify({ schemaVersion: 1, tasks: migratedTasks }, null, 2)}\n`,
   );
 }
 

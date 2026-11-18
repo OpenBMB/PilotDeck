@@ -2444,6 +2444,10 @@ export class AgentLoop {
           directive,
           parentConfig: {
             ...this.config,
+            permissionContext: {
+              ...this.config.permissionContext,
+              canPrompt: input.canPrompt ?? this.config.permissionContext.canPrompt,
+            },
             subagentDepth: depth + 1,
             isSubagent: true,
           },

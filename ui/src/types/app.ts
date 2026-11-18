@@ -1,3 +1,5 @@
+import type { CronTaskSchedule } from '../../../src/cron/protocol/schedules';
+
 export type SessionProvider = 'claude' | 'cursor' | 'codex' | 'gemini' | 'pilotdeck';
 export type ProjectSessionKind = 'background_task';
 export type SessionMessagesUpdateTarget = {
@@ -121,18 +123,7 @@ export interface DiscoveryContextPlanItem {
 
 export type CronJobOverviewStatus = 'scheduled' | 'running' | 'paused' | 'completed' | 'failed' | 'missed';
 
-export type CronJobSchedule =
-  | { type: 'interval'; everySeconds: number; anchorAt: string }
-  | { type: 'monthly'; ordinal: 1 | 2 | 3 | 4 | -1; weekday: number; hour: number; minute: number; timezone: string }
-  | {
-      type: 'once';
-      runAt: string;
-    }
-  | {
-      type: 'cron';
-      expression: string;
-      timezone?: string;
-    };
+export type CronJobSchedule = CronTaskSchedule;
 
 export interface CronJobOverview {
   id: string;
@@ -144,8 +135,7 @@ export interface CronJobOverview {
   workspaceCwd?: string;
   workspaceMode?: 'local' | 'worktree';
   notificationPolicy?: 'all' | 'findings' | 'failures';
-  reminderTiming?: 'due' | 'result';
-  mode?: 'default' | 'plan' | 'bypassPermissions';
+  mode?: 'default' | 'bypassPermissions';
   modelSelection?: { provider: string; model: string };
   originSessionKey?: string;
   targetSessionKey?: string;

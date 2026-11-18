@@ -31,7 +31,7 @@ vi.mock('../../../utils/api', () => ({
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (_key: string, options?: Record<string, unknown>) => {
-      if (typeof options?.defaultValue !== 'string') return ({ 'cron.title': 'Scheduled tasks', 'cron.workspace.firstRun': 'Your first result is on its way', 'cron.history.empty': 'No runs yet. Try running this task once.', 'cron.workspace.emptyTitle': 'Make room for recurring work', 'cron.workspace.emptyHint': 'Schedule a task once.', 'cron.execution.advanced': 'Advanced execution settings', 'cron.execution.permissions': 'Permissions', 'cron.execution.restricted': 'Restricted by existing permission rules', 'cron.execution.readOnly': 'Read only', 'cron.execution.fullAccess': 'Full Access', 'cron.execution.workspace': 'Execution workspace', 'cron.execution.local': 'Project working directory', 'cron.execution.worktree': 'Isolated Git worktree from committed HEAD', 'cron.execution.model': 'Model', 'cron.execution.defaultModel': 'Use project default', 'confirmDialog.cancel': 'Cancel', 'confirmDialog.close': 'Close', 'confirmDialog.working': 'Working…' } as Record<string, string>)[_key] || _key;
+      if (typeof options?.defaultValue !== 'string') return ({ 'cron.title': 'Scheduled tasks', 'cron.workspace.firstRun': 'Your first result is on its way', 'cron.history.empty': 'No runs yet. Try running this task once.', 'cron.workspace.emptyTitle': 'Make room for recurring work', 'cron.workspace.emptyHint': 'Schedule a task once.', 'cron.execution.advanced': 'Advanced execution settings', 'cron.execution.permissions': 'Permissions', 'chat:input.permissions.default': 'Default Permissions', 'chat:input.permissions.bypassPermissions': 'Full Access', 'cron.execution.workspace': 'Execution workspace', 'cron.execution.local': 'Project working directory', 'cron.execution.worktree': 'Isolated Git worktree from committed HEAD', 'cron.execution.model': 'Model', 'cron.execution.defaultModel': 'Use project default', 'confirmDialog.cancel': 'Cancel', 'confirmDialog.close': 'Close', 'confirmDialog.working': 'Working…' } as Record<string, string>)[_key] || _key;
       return options.defaultValue.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => String(options[key] ?? ''));
     },
   }),
@@ -88,6 +88,12 @@ function setup(jobs: CronJobOverview[], projectEntries: Project[] = [project], o
 
 const findText = async (text: string | RegExp) => (await screen.findAllByText(text))[0];
 function createEntry() { return screen.getAllByRole('button', { name: 'New task' })[0]; }
+function selectExecutionDays(days: string[]) {
+  const group = screen.getByRole('group', { name: 'Execution day' });
+  for (const button of within(group).getAllByRole('button')) {
+    if ((button.getAttribute('aria-pressed') === 'true') !== days.includes(button.textContent ?? '')) fireEvent.click(button);
+  }
+}
 function taskAction(name: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Task actions' }));
   return screen.getByRole('menuitem', { name });
@@ -249,7 +255,7 @@ describe('scheduled task management', () => {
     await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({ projectKey: '/state/general', workspaceCwd: '/work/general' })));
   });
 
-  it('creates fixed intervals and monthly ordinal weekdays using typed schedules', async () => {
+  it.each([['minute', 1800], ['hour', 108000], ['day', 2592000]])('creates an interval in %s units', async (unit, everySeconds) => {
     setup([]);
     fireEvent.click(createEntry());
     await findText('New scheduled task');
@@ -257,20 +263,22 @@ describe('scheduled task management', () => {
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Interval report' } });
     fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
     fireEvent.change(screen.getByLabelText('Repeat period'), { target: { value: 'interval' } });
-    fireEvent.change(screen.getByLabelText('Interval in minutes'), { target: { value: '30' } });
+    expect(screen.queryByRole('option', { name: 'Weekday of month' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Interval amount'), { target: { value: '30' } });
+    fireEvent.change(screen.getByLabelText('Interval unit'), { target: { value: unit } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
-    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({ schedule: expect.objectContaining({ type: 'interval', everySeconds: 1800 }) })));
-    fireEvent.click(createEntry());
-    await findText('New scheduled task');
-    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: project.fullPath } });
-    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Last Friday report' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
-    fireEvent.change(screen.getByLabelText('Repeat period'), { target: { value: 'monthly-weekday' } });
-    fireEvent.change(screen.getByLabelText('Week of month'), { target: { value: '-1' } });
-    fireEvent.change(screen.getByLabelText('Day of week'), { target: { value: '5' } });
-    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:30' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
-    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({ schedule: expect.objectContaining({ type: 'monthly', ordinal: -1, weekday: 5, hour: 9, minute: 30 }) })));
+    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({ schedule: expect.objectContaining({ type: 'interval', everySeconds }) })));
+  });
+
+  it('preserves an existing monthly ordinal weekday when editing the instructions', async () => {
+    const schedule = { type: 'monthly', ordinal: -1, weekday: 5, hour: 9, minute: 30, timezone: 'UTC' } as const;
+    setup([makeJob({ name: 'Last Friday report', schedule })]);
+    await findText('Last Friday report');
+    fireEvent.click(taskAction('Edit'));
+    expect((screen.getByLabelText('Repeat period') as HTMLSelectElement).value).toBe('custom');
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Updated report instructions' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await waitFor(() => expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-1', expect.objectContaining({ schedule })));
   });
 
   it('pauses future occurrences without stopping the active run', async () => {
@@ -380,16 +388,12 @@ describe('CronPanel', () => {
         message: 'Daily digest',
         projectKey: '/project/general',
         timezone: 'Asia/Shanghai',
-        schedule: {
-          type: 'cron',
-          expression: '30 8 * * *',
-          timezone: 'Asia/Shanghai',
-        },
+        schedule: { type: 'calendar', times: ['08:30'], timezone: 'Asia/Shanghai' },
       }));
     });
   });
 
-  it('creates a weekly cron task', async () => {
+  it('saves multiple exact clock times across the selected weekdays', async () => {
     setup([]);
 
     fireEvent.click(createEntry());
@@ -398,14 +402,22 @@ describe('CronPanel', () => {
     fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: '/project/general' } });
     fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
     fireEvent.change(screen.getByLabelText('Repeat period'), { target: { value: 'weekly' } });
-    fireEvent.change(screen.getByLabelText('Day of week'), { target: { value: '1' } });
-    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '08:30' } });
+    selectExecutionDays(['Monday', 'Wednesday']);
+    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '15:40' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add time' }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Time 2'));
+    fireEvent.change(screen.getByLabelText('Time 2'), { target: { value: '15:40' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
+    await findText('Each time can only be added once.');
+    expect(apiMock.cronCreate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Time 2'), { target: { value: '10:15' } });
     fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Shanghai' } });
+    const schedule = { type: 'calendar', times: ['10:15', '15:40'], weekdays: [1, 3], timezone: 'Asia/Shanghai' };
     fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
 
     await waitFor(() => {
       expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({
-        schedule: { type: 'cron', expression: '30 8 * * 1', timezone: 'Asia/Shanghai' },
+        schedule,
       }));
     });
   });
@@ -429,6 +441,37 @@ describe('CronPanel', () => {
         schedule: { type: 'cron', expression: '30 8 15 * *', timezone: 'Asia/Shanghai' },
       }));
     });
+  });
+
+  it.each([
+    ['daily', 'monthly', '40 15 15 * *'],
+    ['weekly', 'yearly', '40 15 15 9 *'],
+  ])('keeps the first execution time when switching from %s to %s', async (from, to, expression) => {
+    setup([]);
+    fireEvent.click(createEntry());
+    await findText('New scheduled task');
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Schedule switch' } });
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: '/project/general' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+    const repeatPeriod = screen.getByLabelText('Repeat period');
+    fireEvent.change(repeatPeriod, { target: { value: from } });
+    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '15:40' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add time' }));
+    fireEvent.change(screen.getByLabelText('Time 2'), { target: { value: '10:15' } });
+
+    fireEvent.change(repeatPeriod, { target: { value: to } });
+    expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('15:40');
+    fireEvent.change(repeatPeriod, { target: { value: from } });
+    expect((screen.getByLabelText('Time 2') as HTMLInputElement).value).toBe('10:15');
+    fireEvent.change(repeatPeriod, { target: { value: to } });
+    if (to === 'yearly') fireEvent.change(screen.getByLabelText('Month'), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText('Day of month'), { target: { value: '15' } });
+    fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Shanghai' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
+
+    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({
+      schedule: { type: 'cron', expression, timezone: 'Asia/Shanghai' },
+    })));
   });
 
   it('creates a yearly cron task', async () => {
@@ -507,10 +550,10 @@ describe('CronPanel', () => {
     expect(screen.queryByRole('option', { name: 'Custom Cron' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '08:30' } });
     fireEvent.change(screen.getByLabelText('Repeat period'), { target: { value: 'weekly' } });
-    fireEvent.change(screen.getByLabelText('Day of week'), { target: { value: '1' } });
+    selectExecutionDays(['Monday']);
     fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
     await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({
-      message: 'Daily summary', schedule: expect.objectContaining({ expression: '30 8 * * 1' }),
+      message: 'Daily summary', schedule: expect.objectContaining({ times: ['08:30'], weekdays: [1] }),
     })));
     expect(apiMock.cronCreate.mock.calls[0][0]).not.toHaveProperty('name');
   });
@@ -525,7 +568,7 @@ describe('CronPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
     fireEvent.change(screen.getByLabelText('Repeat period'), { target: { value: 'weekly' } });
-    fireEvent.change(screen.getByLabelText('Day of week'), { target: { value: '1' } });
+    selectExecutionDays(['Monday']);
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '08:30' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'One-time' }));
@@ -534,7 +577,7 @@ describe('CronPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
     expect((screen.getByLabelText('Repeat period') as HTMLSelectElement).value).toBe('weekly');
-    expect((screen.getByLabelText('Day of week') as HTMLSelectElement).value).toBe('1');
+    expect(screen.getByRole('button', { name: 'Monday' }).getAttribute('aria-pressed')).toBe('true');
     expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('08:30');
   });
 
@@ -640,15 +683,20 @@ describe('CronPanel', () => {
 
     await findText('Weekly report');
     fireEvent.click(taskAction('Edit'));
+    fireEvent.click(screen.getByText('Advanced execution settings'));
+    expect((screen.getByLabelText('cron.execution.notifications') as HTMLSelectElement).value).toBe('all');
+    const permissions = screen.getByLabelText<HTMLSelectElement>('Permissions');
+    expect(permissions.value).toBe('default');
+    expect(Array.from(permissions.options, option => option.text)).toEqual(['Default Permissions', 'Full Access']);
+    expect(screen.queryByLabelText('cron.reminders.timing')).toBeNull();
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Updated weekly report' } });
-    fireEvent.change(screen.getByLabelText('Day of week'), { target: { value: '5' } });
+    selectExecutionDays(['Friday']);
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '10:45' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-edit', {
         notificationPolicy: 'all',
-        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -656,7 +704,7 @@ describe('CronPanel', () => {
         message: 'Updated weekly report',
         projectKey: '/project/general',
         expectedRevision: 7,
-        schedule: { type: 'cron', expression: '45 10 * * 5', timezone: 'Asia/Shanghai' },
+        schedule: { type: 'calendar', times: ['10:45'], weekdays: [5], timezone: 'Asia/Shanghai' },
         timezone: 'Asia/Shanghai',
       });
       expect(apiMock.cronCreate).not.toHaveBeenCalled();
@@ -752,7 +800,6 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-once-to-cron', {
         notificationPolicy: 'all',
-        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -760,7 +807,7 @@ describe('CronPanel', () => {
         message: 'Convert to recurring',
         projectKey: '/project/general',
         expectedRevision: 2,
-        schedule: { type: 'cron', expression: '30 10 * * *', timezone: 'UTC' },
+        schedule: { type: 'calendar', times: ['10:30'], timezone: 'UTC' },
         timezone: 'UTC',
       });
     });
@@ -788,7 +835,6 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once', {
         notificationPolicy: 'all',
-        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -825,7 +871,6 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-date-boundary', {
         notificationPolicy: 'all',
-        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -906,7 +951,6 @@ describe('CronPanel', () => {
     await waitFor(() => {
       expect(apiMock.cronUpdate).toHaveBeenCalledWith('job-cron-to-once-fallback', {
         notificationPolicy: 'all',
-        reminderTiming: 'result',
         mode: 'default',
         workspaceMode: 'local',
         modelSelection: null,
@@ -957,7 +1001,7 @@ describe('CronPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
     expect((screen.getByLabelText('Repeat period') as HTMLSelectElement).value).toBe('weekly');
-    expect((screen.getByLabelText('Day of week') as HTMLSelectElement).value).toBe('1');
+    expect(screen.getByRole('button', { name: 'Monday' }).getAttribute('aria-pressed')).toBe('true');
     expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('13:30');
 
     fireEvent.click(screen.getByRole('button', { name: 'One-time' }));

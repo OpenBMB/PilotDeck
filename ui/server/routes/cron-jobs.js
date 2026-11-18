@@ -1,3 +1,5 @@
+import { isValidCalendarSchedule } from '../../../src/cron/runtime/CronSchedule.js';
+
 export function createCronUpdateHandler({ getGateway }) {
     return async function handleCronUpdate(req, res) {
         try {
@@ -38,7 +40,7 @@ export function createCronUpdateHandler({ getGateway }) {
                 message,
                 schedule,
                 timezone,
-                ...Object.fromEntries(['name', 'enabled', 'notificationPolicy', 'reminderTiming', 'mode', 'workspaceMode', 'modelSelection']
+                ...Object.fromEntries(['name', 'enabled', 'notificationPolicy', 'mode', 'workspaceMode', 'modelSelection']
                     .filter(key => Object.hasOwn(req.body, key)).map(key => [key, req.body[key]])),
             });
             if (!result.updated) {
@@ -80,6 +82,7 @@ function isCronTaskSchedule(schedule) {
             && schedule.expression.trim().length > 0
             && !hasInvalidTimezone(schedule);
     }
+    if (schedule.type === 'calendar') return isValidCalendarSchedule(schedule);
     if (schedule.type === 'interval') return Number.isSafeInteger(schedule.everySeconds) && schedule.everySeconds >= 60 && typeof schedule.anchorAt === 'string';
     if (schedule.type === 'monthly') return [1, 2, 3, 4, -1].includes(schedule.ordinal) && Number.isInteger(schedule.weekday)
         && Number.isInteger(schedule.hour) && Number.isInteger(schedule.minute) && typeof schedule.timezone === 'string';
@@ -95,5 +98,5 @@ function hasInvalidTimezone(value) {
 
 function isCronValidationError(error) {
     const message = error instanceof Error ? error.message : String(error || '');
-    return /^(Invalid Cron|Cron (expression|timezone|schedule|task|delay)|One-time Cron)/i.test(message);
+    return /^(Invalid Cron|Cron (expression|timezone|schedule|task|delay|interval)|One-time Cron)/i.test(message);
 }

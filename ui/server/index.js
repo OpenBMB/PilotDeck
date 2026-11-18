@@ -802,6 +802,7 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
         const gateway = await getPilotDeckGateway();
         const result = await gateway.cronCreate({
             message,
+            generateInstructions: true,
             projectKey,
             schedule,
             timezone,
@@ -810,7 +811,6 @@ app.post('/api/always-on/cron-jobs', authenticateToken, async (req, res) => {
             workspaceCwd: projectKey === resolvePilotHome(process.env) ? await ensureGeneralWorkspaceDirectory(process.env) : req.body?.workspaceCwd,
             sessionKey: req.body?.sessionKey,
             notificationPolicy: req.body?.notificationPolicy,
-            reminderTiming: req.body?.reminderTiming,
             mode: req.body?.mode,
             workspaceMode: req.body?.workspaceMode,
             modelSelection: req.body?.modelSelection,

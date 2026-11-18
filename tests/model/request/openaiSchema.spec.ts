@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CRON_SCHEDULE_SCHEMA } from "../../../src/cron/tool/CronSchemas.js";
+import { CRON_CREATE_SCHEDULE_SCHEMA, CRON_UPDATE_SCHEDULE_SCHEMA } from "../../../src/cron/tool/CronSchemas.js";
 import { buildModelRequest } from "../../../src/model/index.js";
 import type {
   CanonicalModelRequest,
@@ -14,33 +14,35 @@ import type {
 import { normalizeOpenAISchema } from "../../../src/model/providers/openai/schema.js";
 import type { OpenAIResponsesRequestBody } from "../../../src/model/providers/openai-responses/request.js";
 
-test("openai schema normalization adds explicit types to cron literal variants", () => {
-  const normalized = normalizeOpenAISchema({
-    type: "object",
-    required: ["schedule"],
-    additionalProperties: false,
-    properties: {
-      schedule: CRON_SCHEDULE_SCHEMA,
-    },
+for (const [name, schema, expectedTypes] of [
+  ["creation", CRON_CREATE_SCHEDULE_SCHEMA, ["calendar", "cron", "delay", "interval", "once"]],
+  ["update", CRON_UPDATE_SCHEDULE_SCHEMA, ["calendar", "cron", "delay", "interval", "monthly", "once"]],
+] as const) {
+  test(`openai schema normalization preserves cron ${name} variants`, () => {
+    const normalized = normalizeOpenAISchema({
+      type: "object",
+      required: ["schedule"],
+      additionalProperties: false,
+      properties: { schedule: schema },
+    });
+
+    const properties = normalized.properties as Record<string, Record<string, unknown>>;
+    const variants = properties.schedule.anyOf as Array<Record<string, unknown>>;
+    const byType = new Map(variants.map(variant => {
+      const fields = variant.properties as Record<string, Record<string, unknown>>;
+      return [String(fields.type.const), fields];
+    }));
+    assert.deepEqual([...byType.keys()].sort(), expectedTypes);
+    for (const kind of expectedTypes) {
+      assert.equal(byType.get(kind)!.type.type, "string", kind);
+    }
+
+    assert.equal(byType.get("interval")!.everySeconds.multipleOf, name === "creation" ? 60 : undefined);
+    const delayProperties = byType.get("delay")!;
+    assert.equal(delayProperties.unit.type, "string");
+    assert.deepEqual(delayProperties.unit.enum, ["second", "minute", "hour", "day"]);
   });
-
-  const properties = normalized.properties as Record<string, Record<string, unknown>>;
-  const schedule = properties.schedule;
-  const variants = schedule.anyOf as Array<Record<string, unknown>>;
-
-  const byType = new Map(variants.map(variant => {
-    const fields = variant.properties as Record<string, Record<string, unknown>>;
-    return [fields.type.const, fields];
-  }));
-  for (const kind of ["interval", "monthly", "once", "cron", "delay"]) {
-    assert.ok(byType.has(kind), `Missing schedule variant: ${kind}`);
-    assert.equal(byType.get(kind)!.type.type, "string", kind);
-  }
-
-  const delayProperties = byType.get("delay")!;
-  assert.equal(delayProperties.unit.type, "string");
-  assert.deepEqual(delayProperties.unit.enum, ["second", "minute", "hour", "day"]);
-});
+}
 
 test("openai schema normalization preserves array item fallback", () => {
   const normalized = normalizeOpenAISchema({

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { EventEmitter, once } from 'node:events';
 import test from 'node:test';
 import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createCronManager, defaultCronConfig } from '../../src/cron/index.js';
-import { CronReminderStore, taskReminder } from '../../src/cron/storage/CronReminderStore.js';
+import { createCronManager, defaultCronConfig, resolveCronPaths } from '../../src/cron/index.js';
+import { CronReminderStore } from '../../src/cron/storage/CronReminderStore.js';
 import type { Gateway, GatewaySubmitTurnInput } from '../../src/gateway/index.js';
 import { createProjectId } from '../../src/pilot/paths.js';
 
@@ -14,29 +15,64 @@ async function registerProject(home: string, project: string) {
   await writeFile(join(record, '.cwd'), project);
 }
 
-test('due reminders survive busy conversations, duplicate ticks, acknowledgement and runtime restarts', async () => {
+test('legacy due-mode tasks notify only after execution, with durable per-user acknowledgement', async () => {
   const home = await mkdtemp(join(tmpdir(), 'pilotdeck-reminders-'));
   const project = join(home, 'project'); await mkdir(project);
   await registerProject(home, project);
   let now = new Date('2026-06-01T08:00:00Z');
+  let busy = true;
   let submissions = 0;
-  const gateway = { getActiveTurnSnapshot: async () => ({ active: true }), closeSession: async () => {},
-    async *submitTurn() { submissions++; } } as unknown as Gateway;
+  const runs = new EventEmitter();
+  const finish = once(runs, 'finish');
+  const gateway = { getActiveTurnSnapshot: async () => ({ active: busy }), closeSession: async () => {},
+    async *submitTurn() {
+      submissions++;
+      yield { type: 'assistant_text_delta', text: 'Meeting reminder ready' };
+      runs.emit('in-progress');
+      await finish;
+    } } as unknown as Gateway;
   const create = () => {
-    const manager = createCronManager({ config: defaultCronConfig(), pilotHome: home, now: () => now });
+    const manager = createCronManager({ config: defaultCronConfig(), pilotHome: home, now: () => now,
+      onTurnEvent: (_sessionKey, _channelKey, event) => {
+        if (event.type === 'agent_status' && event.event === 'cron_settled') runs.emit('settled', event.runId);
+      },
+    });
     manager.bindGateway(gateway); return manager;
   };
   let manager = create();
   try {
     await manager.start();
-    const { task } = await manager.createTask({ name: 'Meeting', message: 'Attend the meeting', reminderTiming: 'due',
+    const { task } = await manager.createTask({ name: 'Meeting', message: 'Attend the meeting',
       projectKey: project, schedule: { type: 'once', runAt: '2026-06-01T09:00:00Z' }, timezone: 'UTC' });
+    await manager.stop();
+    const { tasksFile } = resolveCronPaths({ pilotHome: home, projectKey: project });
+    const stored = JSON.parse(await readFile(tasksFile, 'utf8'));
+    stored.tasks[0].reminderTiming = 'due';
+    await writeFile(tasksFile, JSON.stringify(stored));
+    manager = create(); await manager.start();
+
     now = new Date('2026-06-01T09:00:00Z');
     await manager.runTickOnce(); await manager.runTickOnce();
-    const first = (await manager.listReminders({ scope: '1' })).reminders;
-    assert.equal(first.length, 1); assert.equal(first[0].taskId, task.taskId); assert.equal(first[0].kind, 'due');
-    assert.equal(submissions, 0, 'arrival notification must not wait for model admission');
+    assert.equal((await manager.listReminders({ scope: '1' })).reminders.length, 0);
+    assert.equal(submissions, 0);
     assert.equal((await manager.listTasks()).tasks[0].nextRunAt, task.nextRunAt);
+
+    busy = false;
+    await Promise.all([
+      once(runs, 'in-progress', { signal: AbortSignal.timeout(4000) }),
+      manager.runTickOnce(),
+    ]);
+    assert.equal((await manager.listReminders({ scope: '1' })).reminders.length, 0);
+    const settled = once(runs, 'settled', { signal: AbortSignal.timeout(4000) });
+    runs.emit('finish');
+    const [runId] = await settled;
+    await manager.runTickOnce(); await manager.runTickOnce();
+    const first = (await manager.listReminders({ scope: '1' })).reminders;
+    assert.equal(submissions, 1);
+    assert.equal(first.length, 1);
+    assert.equal(first[0].taskId, task.taskId);
+    assert.equal(first[0].kind, 'completed');
+    assert.equal(first[0].runId, runId);
     // Reading/listing is never acknowledgement.
     assert.equal((await manager.listReminders({ scope: '1' })).reminders.length, 1);
     assert.deepEqual(await manager.dismissReminder({ scope: '1', id: first[0].id }), { dismissed: true });
@@ -45,6 +81,56 @@ test('due reminders survive busy conversations, duplicate ticks, acknowledgement
     await manager.stop(); manager = create(); await manager.start(); await manager.runTickOnce();
     assert.equal((await manager.listReminders({ scope: '1' })).reminders.length, 0);
     assert.deepEqual((await manager.listReminders({ scope: '2' })).reminders.map(item => item.id), [first[0].id]);
+  } finally { runs.emit('finish'); await manager.stop(); await rm(home, { recursive: true, force: true }); }
+});
+
+test('Run Now and the following scheduled execution produce separate result reminders', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'pilotdeck-reminder-run-now-'));
+  const project = join(home, 'project');
+  const runs = new EventEmitter();
+  let now = new Date('2026-06-01T08:00:00Z');
+  const manager = createCronManager({
+    config: defaultCronConfig(), pilotHome: home, now: () => now,
+    onTurnEvent: (_sessionKey, _channelKey, event) => {
+      if (event.type === 'agent_status' && event.event === 'cron_settled') runs.emit('settled', event.runId);
+    },
+  });
+  manager.bindGateway({ closeSession: async () => {}, abortTurn: async () => {}, async *submitTurn() {
+    yield { type: 'assistant_text_delta', text: 'Meeting reminder ready' };
+  } } as unknown as Gateway);
+  try {
+    await mkdir(project);
+    await registerProject(home, project);
+    await manager.start();
+    const runAt = '2026-06-01T09:00:00.000Z';
+    const { task } = await manager.createTask({ name: 'Meeting', message: 'Attend the meeting',
+      projectKey: project, schedule: { type: 'once', runAt }, timezone: 'UTC' });
+
+    const [[manualRunId], manual] = await Promise.all([
+      once(runs, 'settled', { signal: AbortSignal.timeout(4000) }),
+      manager.runTaskNow({ taskId: task.taskId }),
+    ]);
+    assert.equal(manual.started, true);
+    assert.equal(manual.runId, manualRunId);
+    const { reminders: manualReminders } = await manager.listReminders({ scope: '1' });
+    assert.equal(manualReminders.length, 1, 'Run Now must produce one result reminder');
+    const [result] = manualReminders;
+    assert.equal(result.kind, 'completed');
+    assert.equal(result.runId, manualRunId);
+    assert.equal(result.body, 'Meeting reminder ready');
+    assert.equal((await manager.listTasks({ taskId: task.taskId })).tasks[0].nextRunAt, runAt);
+
+    now = new Date(runAt);
+    const [[scheduledRunId]] = await Promise.all([
+      once(runs, 'settled', { signal: AbortSignal.timeout(4000) }),
+      manager.runTickOnce(),
+    ]);
+    const { reminders } = await manager.listReminders({ scope: '1' });
+    assert.deepEqual(reminders.map(reminder => reminder.kind), ['completed', 'completed']);
+    assert.equal(reminders[0].taskId, task.taskId);
+    assert.equal(reminders[0].occurrenceAt, runAt);
+    assert.equal(reminders[0].runId, scheduledRunId);
+    assert.notEqual(reminders[0].id, result.id);
   } finally { await manager.stop(); await rm(home, { recursive: true, force: true }); }
 });
 
@@ -60,9 +146,9 @@ test('result notifications honor findings/failure policy and retain independent 
   } } as unknown as Gateway);
   try {
     await manager.start();
-    for (const [name, policy] of [['report', 'all'], ['quiet', 'findings'], ['success', 'failures'], ['failure', 'failures'], ['due-failure', 'failures']] as const) {
+    for (const [name, policy] of [['report', 'all'], ['quiet', 'findings'], ['success', 'failures'], ['failure', 'failures'], ['all-failure', 'all']] as const) {
       const { task } = await manager.createTask({ name, message: name, projectKey: project,
-        notificationPolicy: policy, reminderTiming: name === 'due-failure' ? 'due' : 'result', schedule: { type: 'cron', expression: '0 9 * * *' }, timezone: 'UTC' });
+        notificationPolicy: policy, schedule: { type: 'cron', expression: '0 9 * * *' }, timezone: 'UTC' });
       await manager.runTaskNow({ taskId: task.taskId });
       if (name === 'report') {
         for (let i = 0; i < 100 && (await manager.listTasks({ taskId: task.taskId })).tasks[0].status === 'running'; i++) await new Promise(resolve => setTimeout(resolve, 5));
