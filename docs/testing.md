@@ -97,13 +97,20 @@ Desktop sidebar drag acceptance waits for `#root[data-pilotdeck-startup]` to cle
 before input. Width probes exceed the 3px drag activation threshold while
 retaining exact boundary-width and title-bar alignment assertions.
 
-The browser suite includes `client-layout.spec.mjs`: workspace, settings, search
-provider labels and onboarding must fit Windows/Linux desktop bridges, Web, PWA
-and mobile viewports. These are current UI contracts, without comparing CSS to
-the same Git revision or fixing decorative pixel positions. Context popovers
-retain category/cache checks and must fit the viewport as their content grows.
-Fork HTTP field mapping and transcript entry IDs use synthetic sessions in
-`ui/server/routes/messages.test.js`; they do not require a running user session.
+The browser suite includes `client-layout.spec.mjs`. It checks horizontal
+overflow in the workspace, settings and onboarding content and scroll
+containers across Windows/Linux desktop bridges, Web, PWA and mobile. The PWA
+case starts a Chromium app window and verifies standalone safe-area padding
+with nonzero test insets. Search provider option IDs must match the shared
+catalog and all labels must resolve. Context popovers retain category/cache
+checks and must fit the viewport as their content grows.
+
+Run `node --import tsx --test ui/e2e/history-fork.test.mjs` to exercise history,
+fork creation and the forked transcript through a real Web server and Gateway.
+Web CI runs this test with synthetic transcripts, temporary storage and
+loopback ports. Route-level failure cases remain in
+`ui/server/routes/messages.test.js`.
+
 Native file-picker acceptance waits for DevTools readiness and uses the pinned
 Chromium browser for its ordinary file-input fallback. Set
 `PILOTDECK_TEST_BROWSER_CHANNEL` to opt into an installed browser such as Edge.
