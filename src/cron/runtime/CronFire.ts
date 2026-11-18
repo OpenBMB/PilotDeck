@@ -83,6 +83,7 @@ export class CronFire {
     let artifacts: CronRunRecord["artifacts"] = [];
     let outcome: CronRunOutcome = "completed";
     let error: CronRunRecord["error"];
+    let permissionFailure: CronRunError | undefined;
     let finishReason: string | undefined;
     let workspaceCwd = task.workspaceCwd ?? task.projectKey;
     const record = (): CronRunRecord => ({
@@ -152,6 +153,7 @@ export class CronFire {
         }
         if (event.type === "assistant_text_delta") output += event.text;
         if (event.type === "file_artifacts") artifacts = [...artifacts, ...event.artifacts].slice(-100);
+        permissionFailure ??= getToolPermissionFailure(event);
         if (event.type === "turn_completed") finishReason = event.finishReason;
         if (unavailableInteraction) {
           outcome = "blocked";
@@ -165,9 +167,16 @@ export class CronFire {
           error = { code: event.code === "turn_timeout" ? "cron_run_timeout" : event.code ?? "cron_run_failed", message: event.message };
         }
       }
-      if (outcome === "completed" && finishReason === "system_aborted") {
-        outcome = "failed";
-        error = { code: "cron_system_aborted", message: "The system interrupted this task." };
+      if (outcome === "completed") {
+        if (finishReason === "aborted" || finishReason?.startsWith("aborted_")) {
+          outcome = "aborted";
+        } else if (finishReason === "system_aborted") {
+          outcome = "failed";
+          error = { code: "cron_system_aborted", message: "The system interrupted this task." };
+        } else if (permissionFailure) {
+          outcome = "failed";
+          error = permissionFailure;
+        }
       }
     } catch (caught) {
       outcome = "failed";
@@ -197,7 +206,9 @@ export class CronFire {
             catch (caught) { this.warn("cron preparation error delivery failed", caught, task.taskId, runId); }
           }
           if (active.stopRequested) outcome = "stopped";
-          if (outcome === "blocked" && error) await this.recordBlockedStatus(task, runId, error);
+          if (error && (outcome === "blocked" || (outcome === "failed" && error === permissionFailure))) {
+            await this.recordPermissionStatus(task, runId, error);
+          }
           const finishedAt = this.deps.now();
           let terminal: CronRunRecord = { ...record(), finishedAt: finishedAt.toISOString(), outcome,
             output: output.trim().slice(-100_000), artifacts, error, deliveryStatus: "pending" };
@@ -233,7 +244,7 @@ export class CronFire {
     return { ...run, deliveryStatus: "skipped", deliveryError: undefined };
   }
 
-  private async recordBlockedStatus(task: CronTask, runId: string, error: CronRunError): Promise<void> {
+  private async recordPermissionStatus(task: CronTask, runId: string, error: CronRunError): Promise<void> {
     const messageKey = error.code === "cron_interaction_required" ? "inputRequired"
       : error.code === "cron_permission_required" ? "required" : "denied";
     const hasTool = !!error.toolName || messageKey === "inputRequired";
@@ -292,4 +303,16 @@ export class CronFire {
   private warn(message: string, error: unknown, taskId: string, runId: string): void {
     this.deps.logger?.warn(message, { taskId, runId, error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+function getToolPermissionFailure(event: GatewayEvent): CronRunError | undefined {
+  const result = event.type === "tool_call_finished" ? event
+    : event.type === "agent_status" && event.event === "subagent_tool_result" ? event.detail : undefined;
+  if (result?.ok !== false) return undefined;
+  const required = result.errorCode === "permission_required";
+  if (!required && result.errorCode !== "permission_denied" && result.errorCode !== "permission_cancelled") return undefined;
+  const toolName = typeof result.toolName === "string" ? result.toolName : undefined;
+  return required
+    ? { code: "cron_permission_required", message: `Authorization is required for ${toolName || "a tool"}.`, toolName }
+    : { code: "cron_permission_denied", message: `Access to ${toolName || "a tool"} was denied.`, toolName };
 }

@@ -31,7 +31,7 @@ type CronFormValues = {
 };
 
 type OnceScheduleDraft = Pick<CronFormValues, 'scheduleDate' | 'scheduleTime'>;
-type RecurringScheduleDraft = Pick<CronFormValues, 'scheduleTime' | 'recurrenceMode' | 'weekdays' | 'dayOfMonth' | 'monthOfYear'>;
+type RecurringScheduleDraft = Pick<CronFormValues, 'recurrenceMode' | 'weekdays' | 'dayOfMonth' | 'monthOfYear'>;
 type TimeRow = { id: number; time: string };
 
 const SIMPLE_RECURRENCE_MODES: {
@@ -363,7 +363,6 @@ export default function CronTaskEditor({
     scheduleTime: initialValues.scheduleTime,
   });
   const [recurringDraft, setRecurringDraft] = useState<RecurringScheduleDraft>({
-    scheduleTime: initialValues.scheduleTime,
     recurrenceMode: initialValues.recurrenceMode,
     weekdays: initialValues.weekdays,
     dayOfMonth: initialValues.dayOfMonth,
@@ -379,10 +378,11 @@ export default function CronTaskEditor({
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const projectOptionExists = projects.some((project) => (project.fullPath || project.name) === projectKey);
-  const { scheduleTime, recurrenceMode, weekdays, dayOfMonth, monthOfYear } = recurringDraft;
+  const { recurrenceMode, weekdays, dayOfMonth, monthOfYear } = recurringDraft;
   const calendarMode = recurrenceMode === 'daily' || recurrenceMode === 'weekly';
   const originalSchedule = editingJob?.schedule;
   const times = timeRows.map(row => row.time);
+  const scheduleTime = times[0];
   const everySeconds = Number(interval.amount) * INTERVAL_SECONDS[interval.unit];
 
   const updateRecurringDraft = (updates: Partial<RecurringScheduleDraft>) => {
@@ -439,6 +439,11 @@ export default function CronTaskEditor({
     setFormError(null);
   };
 
+  const updateTime = (id: number, time: string) => {
+    setTimeRows(rows => rows.map(row => row.id === id ? { ...row, time } : row));
+    setFormError(null);
+  };
+
   const removeTime = (index: number) => {
     focusTimeId.current = timeRows[index + 1]?.id ?? timeRows[index - 1].id;
     setTimeRows(rows => rows.filter((_, rowIndex) => rowIndex !== index));
@@ -458,7 +463,6 @@ export default function CronTaskEditor({
     setScheduleKind(defaults.scheduleKind);
     setOnceDraft({ scheduleDate: defaults.scheduleDate, scheduleTime: defaults.scheduleTime });
     setRecurringDraft({
-      scheduleTime: defaults.scheduleTime,
       recurrenceMode: defaults.recurrenceMode,
       weekdays: defaults.weekdays,
       dayOfMonth: defaults.dayOfMonth,
@@ -475,16 +479,11 @@ export default function CronTaskEditor({
     if (kind === scheduleKind) return;
     setFormError(null);
     if (kind === 'cron' && !hasRecurringDraft) {
-      const nextDraft: RecurringScheduleDraft = {
-        ...recurringDraft,
-        scheduleTime: onceDraft.scheduleTime,
-        recurrenceMode: 'daily',
-      };
-      setRecurringDraft(nextDraft);
+      setRecurringDraft(current => ({ ...current, recurrenceMode: 'daily' }));
       setTimeRows([{ id: nextTimeId.current++, time: onceDraft.scheduleTime }]);
       setHasRecurringDraft(true);
     } else if (kind === 'once' && !hasOnceDraft) {
-      const time = (calendarMode ? times[0] : scheduleTime) || initialValues.scheduleTime;
+      const time = scheduleTime || initialValues.scheduleTime;
       setOnceDraft({
         scheduleDate: getNextFutureDateForTime(time, timezone.trim()),
         scheduleTime: time,
@@ -853,10 +852,7 @@ export default function CronTaskEditor({
                         <DateTimeField type="time" value={row.time}
                           aria-label={index === 0 ? t('cron.create.fields.time', { defaultValue: 'Time' })
                             : t('cron.create.fields.timeNumber', { defaultValue: 'Time {{number}}', number: String(index + 1) })}
-                          onValueChange={time => {
-                            setTimeRows(rows => rows.map(entry => entry.id === row.id ? { ...entry, time } : entry));
-                            setFormError(null);
-                          }}
+                          onValueChange={time => updateTime(row.id, time)}
                           className="pd-form-field" />
                       </div>
                       {timeRows.length > 1 && <button type="button" onClick={() => removeTime(index)}
@@ -873,9 +869,9 @@ export default function CronTaskEditor({
                 </span>
                 <DateTimeField
                   type="time"
-                aria-label={t("cron.create.fields.time")}
+                  aria-label={t('cron.create.fields.time')}
                   value={scheduleTime}
-                  onValueChange={(value) => updateRecurringDraft({ scheduleTime: value })}
+                  onValueChange={time => updateTime(timeRows[0].id, time)}
                   className="pd-form-field mt-1.5"
                 />
               </label>}

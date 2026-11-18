@@ -22,8 +22,10 @@ approval. Pending prompts reappear when the task conversation is reopened
 while the run is active. The run counts toward the configured concurrency
 limit and its existing wall-clock timeout applies while waiting. Full Access
 skips confirmation, and explicit tool denials still apply. Subagents inherit
-the run's permissions. User-initiated chat turns use the chat composer's
-permissions without changing the task's saved execution mode.
+the run's permissions. Tool permission failures produce a failed run and are
+included in failure-only reminders. Stopping a run from the task conversation
+cancels the run without a completion reminder. User-initiated chat turns use
+the chat composer's permissions without changing the task's saved execution mode.
 A task's project identity and execution directory are
 separate. General uses its configuration-home identity and managed workspace,
 never the configuration directory as its working directory.

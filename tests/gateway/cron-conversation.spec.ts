@@ -91,7 +91,7 @@ test('task chat and scheduled execution share history and trusted workspace, wit
   } finally { await cron.stop(); local.dispose(); }
 });
 
-test('saved cron permissions control subagent approval for both scheduled and manual runs', async (t) => {
+test('saved cron permissions control approval, completion reminders, and interruption', async (t) => {
   const { home, project, skills, env } = await syntheticProject(t);
   const previousHome = process.env.PILOT_HOME;
   process.env.PILOT_HOME = home;
@@ -99,11 +99,11 @@ test('saved cron permissions control subagent approval for both scheduled and ma
     if (previousHome === undefined) delete process.env.PILOT_HOME;
     else process.env.PILOT_HOME = previousHome;
   });
-  writePermissionSettings({ askTools: ['synthetic_approval'] }, env);
   const events: GatewayEvent[] = [];
   let now = new Date();
   let modelStep = 0;
   let executed = 0;
+  let useSubagent = true;
   const cron = createCronManager({
     config: defaultCronConfig(), pilotHome: home, now: () => now,
     onTurnEvent(_sessionKey, _channelKey, event) { events.push(event); },
@@ -119,16 +119,17 @@ test('saved cron permissions control subagent approval for both scheduled and ma
       async *stream(): AsyncIterable<CanonicalModelEvent> {
         const step = modelStep++;
         yield { type: 'message_start', role: 'assistant' };
-        if (step === 0 || step === 1) {
-          const input = step === 0 ? { description: 'Get synthetic result', prompt: 'Call synthetic_approval for the requested result.' } : {};
-          const name = step === 0 ? 'agent' : 'synthetic_approval';
+        if (step < (useSubagent ? 2 : 1)) {
+          const delegate = useSubagent && step === 0;
+          const input = delegate ? { description: 'Get synthetic result', prompt: 'Call synthetic_approval for the requested result.' } : {};
+          const name = delegate ? 'agent' : 'synthetic_approval';
           const id = `call-${step}`;
           yield { type: 'tool_call_start', id, name };
           yield { type: 'tool_call_end', toolCall: { id, name, input } };
           yield { type: 'message_end', finishReason: 'tool_call' };
           return;
         }
-        yield { type: 'text_delta', text: 'Synthetic result delivered' };
+        yield { type: 'text_delta', text: executed ? 'Synthetic result delivered' : 'Unable to complete without permission' };
         yield { type: 'message_end', finishReason: 'stop' };
       },
     }; },
@@ -142,49 +143,78 @@ test('saved cron permissions control subagent approval for both scheduled and ma
   };
   cron.bindGateway(local.gateway);
   try {
-    for (const mode of ['default', 'bypassPermissions'] as const) {
-      for (const trigger of ['scheduled', 'manual'] as const) {
-        events.length = 0;
-        modelStep = 0;
-        executed = 0;
-        const runAt = new Date(now.getTime() + (trigger === 'scheduled' ? 60_000 : 86_400_000)).toISOString();
-        const { task } = await cron.createTask({
-          name: `Synthetic ${mode} ${trigger}`, message: 'Get the synthetic result', projectKey: project, mode,
-          schedule: { type: 'once', runAt },
-        });
-        if (trigger === 'scheduled') {
-          now = new Date(runAt);
-          await cron.runTickOnce(project);
+    for (const [mode, trigger, resolution, subagent] of [
+      ['default', 'scheduled', 'allow', true],
+      ['default', 'manual', 'allow', true],
+      ['bypassPermissions', 'scheduled', 'direct', true],
+      ['bypassPermissions', 'manual', 'direct', true],
+      ['default', 'manual', 'deny', false],
+      ['default', 'scheduled', 'deny', true],
+      ['bypassPermissions', 'manual', 'policy-deny', false],
+      ['default', 'scheduled', 'stop', false],
+    ] as const) {
+      events.length = 0;
+      modelStep = 0;
+      executed = 0;
+      useSubagent = subagent;
+      const denied = resolution === 'deny' || resolution === 'policy-deny';
+      writePermissionSettings({
+        askTools: ['synthetic_approval'],
+        disallowedTools: resolution === 'policy-deny' ? ['synthetic_approval'] : [],
+      }, env);
+      const runAt = new Date(now.getTime() + (trigger === 'scheduled' ? 60_000 : 86_400_000)).toISOString();
+      const { task } = await cron.createTask({
+        name: `Synthetic ${mode} ${trigger}`, message: 'Get the synthetic result', projectKey: project, mode,
+        schedule: { type: 'once', runAt }, notificationPolicy: denied ? 'failures' : 'all',
+      });
+      if (trigger === 'scheduled') {
+        now = new Date(runAt);
+        await cron.runTickOnce(project);
+      } else {
+        assert.equal((await local.gateway.cronRunNow({ taskId: task.taskId })).started, true);
+      }
+      const settled = () => events.some(event => event.type === 'agent_status' && event.event === 'cron_settled');
+      await until(() => settled() || events.some(event => event.type === 'permission_request'));
+      const request = events.find(event => event.type === 'permission_request');
+      if (mode === 'default') {
+        assert.equal(request?.toolName, 'synthetic_approval');
+        const waiting = (await cron.listTasks({ taskId: task.taskId })).tasks[0];
+        assert.equal(waiting.status, 'running');
+        assert.equal(waiting.lastRun?.finishedAt, undefined);
+        assert.equal(executed, 0);
+        const history = await local.gateway.readSessionMessages({ sessionKey: task.sessionKey, projectKey: project });
+        assert.equal(history.stream?.runId, waiting.lastRun?.runId);
+        assert.ok(history.stream?.events.some(event => event.type === 'permission_request' && event.requestId === request.requestId));
+        assert.equal(modelStep, subagent ? 2 : 1);
+        if (resolution === 'stop') {
+          await local.gateway.abortTurn({ sessionKey: task.sessionKey, runId: waiting.lastRun?.runId });
         } else {
-          assert.equal((await local.gateway.cronRunNow({ taskId: task.taskId })).started, true);
-        }
-        const settled = () => events.some(event => event.type === 'agent_status' && event.event === 'cron_settled');
-        await until(() => settled() || events.some(event => event.type === 'permission_request'));
-        const request = events.find(event => event.type === 'permission_request');
-        if (mode === 'default') {
-          assert.equal(request?.toolName, 'synthetic_approval');
-          const waiting = (await cron.listTasks({ taskId: task.taskId })).tasks[0];
-          assert.equal(waiting.status, 'running');
-          assert.equal(waiting.lastRun?.finishedAt, undefined);
-          assert.equal(executed, 0);
-          const history = await local.gateway.readSessionMessages({ sessionKey: task.sessionKey, projectKey: project });
-          assert.equal(history.stream?.runId, waiting.lastRun?.runId);
-          assert.ok(history.stream?.events.some(event => event.type === 'permission_request' && event.requestId === request.requestId));
-          assert.equal(modelStep, 2);
           assert.deepEqual(await local.gateway.permissionDecide({
-            sessionKey: task.sessionKey, requestId: request.requestId, decision: 'allow',
+            sessionKey: task.sessionKey, requestId: request.requestId, decision: resolution === 'deny' ? 'deny' : 'allow',
           }), { delivered: true });
-          await until(settled);
-          assert.equal((await cron.listTasks({ taskId: task.taskId })).tasks[0].lastRun?.runId, waiting.lastRun?.runId);
-        } else {
-          assert.equal(request, undefined);
         }
-        const { recentRuns } = await cron.listTasks({ taskId: task.taskId, includeHistory: true });
-        assert.equal(recentRuns?.length, 1);
-        assert.equal(recentRuns[0].trigger, trigger);
-        assert.equal(recentRuns[0].outcome, 'completed');
+        await until(settled);
+        assert.equal((await cron.listTasks({ taskId: task.taskId })).tasks[0].lastRun?.runId, waiting.lastRun?.runId);
+      } else {
+        assert.equal(request, undefined);
+      }
+      const { recentRuns } = await cron.listTasks({ taskId: task.taskId, includeHistory: true });
+      assert.equal(recentRuns?.length, 1);
+      assert.equal(recentRuns[0].trigger, trigger);
+      assert.equal(recentRuns[0].outcome, resolution === 'stop' ? 'aborted' : denied ? 'failed' : 'completed');
+      assert.equal(recentRuns[0].error?.code, denied ? 'cron_permission_denied' : undefined);
+      assert.equal(executed, denied || resolution === 'stop' ? 0 : 1);
+      const reminders = (await cron.listReminders({ scope: '1' })).reminders.filter(reminder => reminder.runId === recentRuns[0].runId);
+      assert.deepEqual(reminders.map(reminder => reminder.kind), resolution === 'stop' ? [] : [denied ? 'failed' : 'completed']);
+      if (denied) {
+        assert.equal(recentRuns[0].error?.toolName, 'synthetic_approval');
+        assert.match(reminders[0].body, /synthetic_approval/);
+      } else if (resolution === 'stop') {
+        const completion = events.find(event => event.type === 'turn_completed');
+        assert.match(completion?.finishReason ?? '', /^aborted(?:_|$)/);
+        assert.ok(!events.some(event => event.type === 'error' && event.code === 'agent_aborted'));
+      } else {
         assert.equal(recentRuns[0].output, 'Synthetic result delivered');
-        assert.equal(executed, 1);
       }
     }
   } finally { await cron.stop(); local.dispose(); }

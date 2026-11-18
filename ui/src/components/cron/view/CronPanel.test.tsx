@@ -443,6 +443,37 @@ describe('CronPanel', () => {
     });
   });
 
+  it.each([
+    ['daily', 'monthly', '40 15 15 * *'],
+    ['weekly', 'yearly', '40 15 15 9 *'],
+  ])('keeps the first execution time when switching from %s to %s', async (from, to, expression) => {
+    setup([]);
+    fireEvent.click(createEntry());
+    await findText('New scheduled task');
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Schedule switch' } });
+    fireEvent.change(screen.getByLabelText('Workspace'), { target: { value: '/project/general' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Recurring' }));
+    const repeatPeriod = screen.getByLabelText('Repeat period');
+    fireEvent.change(repeatPeriod, { target: { value: from } });
+    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '15:40' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add time' }));
+    fireEvent.change(screen.getByLabelText('Time 2'), { target: { value: '10:15' } });
+
+    fireEvent.change(repeatPeriod, { target: { value: to } });
+    expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('15:40');
+    fireEvent.change(repeatPeriod, { target: { value: from } });
+    expect((screen.getByLabelText('Time 2') as HTMLInputElement).value).toBe('10:15');
+    fireEvent.change(repeatPeriod, { target: { value: to } });
+    if (to === 'yearly') fireEvent.change(screen.getByLabelText('Month'), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText('Day of month'), { target: { value: '15' } });
+    fireEvent.change(screen.getByLabelText('Timezone'), { target: { value: 'Asia/Shanghai' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Create Task' }).at(-1)!);
+
+    await waitFor(() => expect(apiMock.cronCreate).toHaveBeenCalledWith(expect.objectContaining({
+      schedule: { type: 'cron', expression, timezone: 'Asia/Shanghai' },
+    })));
+  });
+
   it('creates a yearly cron task', async () => {
     setup([]);
 
