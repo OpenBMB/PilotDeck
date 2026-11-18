@@ -13,6 +13,7 @@ import type {
   CronDeleteResult,
   CronListInput,
   CronListResult,
+  CronReminder,
   CronRunNowInput,
   CronRunNowResult,
   CronStopInput,
@@ -27,14 +28,12 @@ import { resolveCronPaths, type CronPaths } from "../storage/CronPaths.js";
 import { CronTaskStore } from "../storage/CronTaskStore.js";
 import { isValidCronTimezone, resolveCronTimezone } from "../CronTimezone.js";
 import { CronFire, type CronActiveRun, type CronTurnEventHandler } from "./CronFire.js";
-import { taskReminder } from "../storage/CronReminderStore.js";
-import type { CronReminder } from "../protocol/types.js";
-import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION } from "./CronSchedule.js";
+import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION, isValidCalendarSchedule, previewCronSchedule } from "./CronSchedule.js";
 import { CronScheduler } from "./CronScheduler.js";
 import { prepareCronWorkspace } from "./CronWorkspace.js";
-import { previewCronSchedule } from "./CronSchedule.js";
 import { createCronTools } from "../tool/createCronTools.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
+import type { CronTaskDetails, CronTaskDetailsMode } from "./CronTaskDetails.js";
 
 export type CronRuntimeLogger = {
   info: (message: string, data?: Record<string, unknown>) => void;
@@ -56,7 +55,7 @@ export type CreateCronRuntimeOptions = {
   onResultDelivery?: CronResultDeliveryHandler;
   onTurnEvent?: CronTurnEventHandler;
   onTaskChange?: (change: CronTaskChange) => void;
-  generateTaskTitle?: (task: CronTask, signal: AbortSignal) => Promise<string | { title: string; reminderTiming: "due" | "result" } | null>;
+  generateTaskDetails?: (task: CronTask, signal: AbortSignal, mode: CronTaskDetailsMode) => Promise<CronTaskDetails | null>;
   onReminder?: (reminder: CronReminder) => Promise<void>;
   onRunFinished?: () => void;
 };
@@ -72,8 +71,8 @@ export class CronRuntime {
   readonly paths: CronPaths;
 
   private readonly store: CronTaskStore;
-  private readonly generateTaskTitle?: CreateCronRuntimeOptions["generateTaskTitle"];
-  private readonly titleJobs = new Map<string, AbortController>();
+  private readonly generateTaskDetails?: CreateCronRuntimeOptions["generateTaskDetails"];
+  private readonly taskDetailsJobs = new Map<string, AbortController>();
   private readonly now: () => Date;
   private readonly uuid: () => string;
   private readonly logger: CronRuntimeLogger;
@@ -93,7 +92,7 @@ export class CronRuntime {
 
   constructor(options: CreateCronRuntimeOptions) {
     this.config = options.config;
-    this.generateTaskTitle = options.generateTaskTitle;
+    this.generateTaskDetails = options.generateTaskDetails;
     this.projectKey = resolve(options.projectKey);
     this.paths = resolveCronPaths({ pilotHome: options.pilotHome, projectKey: this.projectKey });
     this.store = options.store ?? new CronTaskStore(this.paths);
@@ -177,11 +176,6 @@ export class CronRuntime {
       now: this.now,
       logger: this.logger,
       activeRunCount: () => this.sharedActiveRunCount?.() ?? this.activeRuns.size,
-      onDue: async task => {
-        if (task.reminderTiming === "due" && (task.notificationPolicy ?? "all") === "all") {
-          await this.onReminder?.(taskReminder(task, "due", this.now().toISOString()));
-        }
-      },
     });
   }
 
@@ -208,8 +202,8 @@ export class CronRuntime {
   }
 
   async stop(): Promise<void> {
-    for (const controller of this.titleJobs.values()) controller.abort();
-    this.titleJobs.clear();
+    for (const controller of this.taskDetailsJobs.values()) controller.abort();
+    this.taskDetailsJobs.clear();
     await this.scheduler?.stop();
     if (this.gateway) {
       const activeRuns = [...this.activeRuns.values()];
@@ -240,19 +234,14 @@ export class CronRuntime {
     }
     validateTaskOptions(input);
     if (!input.message?.trim()) throw new Error("Cron task message is required.");
-    const now = this.now();
+    const requestedAt = this.now();
     const taskId = this.uuid();
     const executionMode = "persistent";
     const sessionKey = buildCronSessionKey(taskId);
-    const schedule = normalizeSchedule(input, this.config.timezone, now);
+    const schedule = normalizeSchedule(input, this.config.timezone, requestedAt);
     const timezone = scheduleTimezone(schedule, input.timezone ?? this.config.timezone);
-    const nextRunAt = computeNextRunAt(schedule, now, timezone);
-    if (!nextRunAt) {
-      throw new Error("Cron schedule does not produce a valid future run time.");
-    }
-    if (schedule.type === "once" && nextRunAt.getTime() < now.getTime()) {
-      throw new Error("One-time Cron tasks must be scheduled in the future.");
-    }
+    const nextRunAt = nextCreationRunAt(schedule, requestedAt, timezone);
+    let savedAt = requestedAt;
     const task: CronTask = {
       schemaVersion: 1,
       taskId,
@@ -262,7 +251,6 @@ export class CronRuntime {
       executionMode,
       workspaceCwd: input.workspaceCwd ? resolve(input.workspaceCwd) : this.projectKey,
       notificationPolicy: input.notificationPolicy ?? "all",
-      reminderTiming: input.reminderTiming,
       workspaceMode: input.workspaceMode ?? "local",
       modelSelection: input.modelSelection,
       schedule,
@@ -277,12 +265,34 @@ export class CronRuntime {
       projectKey: input.projectKey ?? this.projectKey,
       mode: input.mode ?? "default",
       timezone,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+      createdAt: requestedAt.toISOString(),
+      updatedAt: requestedAt.toISOString(),
       nextRunAt: nextRunAt.toISOString(),
       revision: 0,
       scheduleComputationVersion: schedule.type === "cron" ? CRON_SCHEDULE_COMPUTATION_VERSION : undefined,
     };
+    if (input.generateInstructions === true && this.generateTaskDetails) {
+      const controller = new AbortController();
+      this.taskDetailsJobs.set(taskId, controller);
+      let generated: CronTaskDetails | null = null;
+      try {
+        generated = await this.generateTaskDetails(task, controller.signal, "title-and-instructions");
+      } catch {
+        if (!controller.signal.aborted) this.logger.warn("cron task instruction generation failed", { taskId });
+      } finally {
+        this.taskDetailsJobs.delete(taskId);
+      }
+      if (controller.signal.aborted) throw new Error("Cron runtime stopped before the task was saved.");
+      const instructions = generated?.instructions?.trim();
+      const title = generated?.title?.trim();
+      if (instructions) {
+        task.message = instructions;
+        if (title && input.name === undefined) task.name = title.slice(0, 120);
+      }
+      savedAt = this.now();
+      task.createdAt = task.updatedAt = savedAt.toISOString();
+      task.nextRunAt = nextCreationRunAt(schedule, savedAt, timezone).toISOString();
+    }
     if (executionMode === "persistent") this.registerTaskSession(task);
     try {
       await this.store.putTask(task);
@@ -302,32 +312,31 @@ export class CronRuntime {
       },
     });
     this.scheduler?.poke();
-    if (!input.name) this.scheduleTitle(task);
-    return { task, nextRuns: previewCronSchedule(schedule, now, timezone) };
+    if (!input.name && input.generateInstructions !== true) this.scheduleTitle(task);
+    return { task, nextRuns: previewCronSchedule(schedule, savedAt, timezone) };
   }
 
   private scheduleTitle(task: CronTask): void {
-    if (!this.generateTaskTitle) return;
-    this.titleJobs.get(task.taskId)?.abort();
+    const generate = this.generateTaskDetails;
+    if (!generate) return;
+    this.taskDetailsJobs.get(task.taskId)?.abort();
     const controller = new AbortController();
-    this.titleJobs.set(task.taskId, controller);
+    this.taskDetailsJobs.set(task.taskId, controller);
     // Naming is independent of admission and must never delay scheduled work.
     void (async () => {
       try {
-        const presentation = await this.generateTaskTitle!(task, controller.signal);
-        const title = (typeof presentation === "string" ? presentation : presentation?.title)?.replace(/\s+/g, " ").trim().slice(0, 120);
+        const generated = await generate(task, controller.signal, "title");
+        const title = generated?.title?.replace(/\s+/g, " ").trim().slice(0, 120);
         if (!title || controller.signal.aborted) return;
         await this.store.updateTask(task.taskId, current => {
           if (controller.signal.aborted || current.message !== task.message || current.name !== task.name) return current;
           // A derived title is metadata: do not invalidate an open schedule edit.
-          return { ...current, name: title,
-            reminderTiming: current.reminderTiming ?? (typeof presentation === "object" ? presentation?.reminderTiming : undefined),
-            updatedAt: this.now().toISOString() };
+          return { ...current, name: title, updatedAt: this.now().toISOString() };
         });
       } catch (error) {
         if (!controller.signal.aborted) this.logger.warn("cron task title generation failed", { taskId: task.taskId });
       } finally {
-        if (this.titleJobs.get(task.taskId) === controller) this.titleJobs.delete(task.taskId);
+        if (this.taskDetailsJobs.get(task.taskId) === controller) this.taskDetailsJobs.delete(task.taskId);
       }
     })();
   }
@@ -368,7 +377,7 @@ export class CronRuntime {
       if ((current.revision ?? 0) !== input.expectedRevision) { reason = "conflict"; return current; }
       const scheduleChanged = JSON.stringify(current.schedule) !== JSON.stringify(schedule) || current.timezone !== timezone;
       const changedConfiguration = scheduleChanged
-        || ["notificationPolicy", "reminderTiming", "mode", "workspaceMode", "modelSelection"].some((key) =>
+        || ["notificationPolicy", "mode", "workspaceMode", "modelSelection"].some((key) =>
           input[key as keyof CronUpdateInput] !== undefined
           && JSON.stringify(input[key as keyof CronUpdateInput]) !== JSON.stringify(current[key as keyof CronTask]));
       if (current.status === "running" && changedConfiguration) { reason = "running"; return current; }
@@ -388,7 +397,6 @@ export class CronRuntime {
         schedule, timezone, nextRunAt, enabled,
         executionMode, targetSessionKey: undefined, sessionKey: current.sessionKey.startsWith('cron:') ? current.sessionKey : buildCronSessionKey(current.taskId),
         notificationPolicy: input.notificationPolicy ?? current.notificationPolicy,
-        reminderTiming: input.reminderTiming ?? current.reminderTiming,
         mode: input.mode ?? current.mode, workspaceMode, modelSelection: input.modelSelection === null ? undefined : input.modelSelection ?? current.modelSelection,
         status: current.status === "running" ? "running" : !enabled
           ? input.enabled === false ? "paused" : current.status : "scheduled",
@@ -398,7 +406,7 @@ export class CronRuntime {
     if (!updated) return { updated: false, reason: "not_found" };
     if (reason) return { updated: false, reason };
     this.scheduler?.poke();
-    if (input.name !== undefined) this.titleJobs.get(updated.taskId)?.abort();
+    if (input.name !== undefined) this.taskDetailsJobs.get(updated.taskId)?.abort();
     else if (messageChanged) this.scheduleTitle(updated);
     return { updated: true, task: updated };
   }
@@ -411,8 +419,8 @@ export class CronRuntime {
     }
     const deleted = await this.store.deleteTask(input.taskId);
     if (deleted) {
-      this.titleJobs.get(input.taskId)?.abort();
-      this.titleJobs.delete(input.taskId);
+      this.taskDetailsJobs.get(input.taskId)?.abort();
+      this.taskDetailsJobs.delete(input.taskId);
       await this.releaseTaskSessionById(input.taskId);
     }
     this.scheduler?.poke();
@@ -524,8 +532,7 @@ export class CronRuntime {
     this.sessionOverrides.set(task.sessionKey, {
       cwd: task.workspaceCwd,
       permissionMode: task.mode ?? "default",
-      // Interactive turns use the ordinary chat capabilities. CronFire applies
-      // canPrompt=false and hides interactive tools on unattended turns only.
+      // CronFire supplies the prompt capability for each execution.
     });
   }
 
@@ -654,6 +661,12 @@ export function normalizeSchedule(input: CronScheduleInput, configTimezone: stri
     if (!computeNextRunAt(normalized, now)) throw new Error("Cron interval must be an integer of at least 60 seconds.");
     return normalized;
   }
+  if (schedule.type === "calendar") {
+    if (!isValidCalendarSchedule(schedule)) throw new Error("Invalid Cron calendar schedule.");
+    return { type: "calendar", times: [...schedule.times].sort(),
+      ...(schedule.weekdays ? { weekdays: [...schedule.weekdays].sort((a, b) => a - b) } : {}),
+      timezone: schedule.timezone };
+  }
   if (schedule.type === "monthly") {
     const normalized = { ...schedule, timezone: schedule.timezone ?? input.timezone ?? configTimezone };
     if (!computeNextRunAt(normalized, now)) throw new Error("Invalid Cron monthly weekday rule.");
@@ -669,6 +682,16 @@ export function normalizeSchedule(input: CronScheduleInput, configTimezone: stri
 function scheduleTimezone(schedule: CronTask["schedule"], fallback: string): string {
   return "timezone" in schedule ? schedule.timezone ?? fallback : fallback;
 }
+
+function nextCreationRunAt(schedule: CronTask["schedule"], now: Date, timezone: string): Date {
+  const next = computeNextRunAt(schedule, now, timezone);
+  if (!next) throw new Error("Cron schedule does not produce a valid future run time.");
+  if (schedule.type === "once" && next.getTime() < now.getTime()) {
+    throw new Error("One-time Cron tasks must be scheduled in the future.");
+  }
+  return next;
+}
+
 function taskName(name: string | undefined, message: string): string {
   const result = (name ?? message.trim().split(/\r?\n/, 1)[0]).trim();
   if (!result || result.length > 120) {
@@ -678,9 +701,8 @@ function taskName(name: string | undefined, message: string): string {
   return result;
 }
 function validateTaskOptions(input: Partial<CronCreateInput> | Partial<CronUpdateInput>): void {
-  if (input.reminderTiming !== undefined && !["due", "result"].includes(input.reminderTiming)) throw new Error("Invalid Cron reminder timing.");
   if (input.executionMode !== undefined && !["independent", "conversation", "persistent"].includes(input.executionMode)) throw new Error("Invalid Cron execution mode.");
-  if (input.mode !== undefined && !["default", "plan", "bypassPermissions"].includes(input.mode)) throw new Error("Invalid Cron permission mode.");
+  if (input.mode !== undefined && !["default", "bypassPermissions"].includes(input.mode)) throw new Error("Invalid Cron permission mode.");
   if (input.notificationPolicy !== undefined && !["all", "findings", "failures"].includes(input.notificationPolicy)) throw new Error("Invalid Cron notification policy.");
   if (input.workspaceMode !== undefined && !["local", "worktree"].includes(input.workspaceMode)) throw new Error("Invalid Cron workspace mode.");
   if (input.name !== undefined && (typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > 120)) throw new Error("Cron task name must contain 1 to 120 characters.");

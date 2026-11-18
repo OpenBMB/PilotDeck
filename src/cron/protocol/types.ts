@@ -1,4 +1,4 @@
-import type { GatewayChannelKey, GatewayMode } from "../../gateway/index.js";
+import type { GatewayChannelKey } from "../../gateway/index.js";
 
 import type { CronTaskSchedule, CronCreateSchedule } from "./schedules.js";
 export type { CronTaskSchedule, CronCreateSchedule, CronSchedule } from "./schedules.js";
@@ -8,6 +8,7 @@ export type CronExecutionMode = "independent" | "conversation" | "persistent";
 /** Legacy mode names remain readable; every task now owns one persistent session. */
 export type CronTaskChange = { taskId: string; projectKey?: string; task?: CronTask };
 export type CronNotificationPolicy = "all" | "findings" | "failures";
+export type CronPermissionMode = "default" | "bypassPermissions";
 export type CronReminder = {
   id: string;
   taskId: string;
@@ -38,12 +39,11 @@ export type CronTask = {
   executionMode?: CronExecutionMode;
   enabled?: boolean;
   notificationPolicy?: CronNotificationPolicy;
-  reminderTiming?: "due" | "result";
   workspaceMode?: "local" | "worktree";
   modelSelection?: { provider: string; model: string };
   statusDetail?: string;
   lastRun?: CronRunRecord;
-  mode?: GatewayMode;
+  mode?: CronPermissionMode;
   timezone?: string;
   createdAt: string;
   updatedAt: string;
@@ -78,6 +78,12 @@ export type CronResultDeliveryHandler = (delivery: CronResultDelivery) => Promis
 
 export type CronRunOutcome = "completed" | "failed" | "aborted" | "stopped" | "blocked";
 
+export type CronRunError = {
+  code: string;
+  message: string;
+  toolName?: string;
+};
+
 export type CronRunRecord = {
   schemaVersion: 1;
   runId: string;
@@ -96,16 +102,14 @@ export type CronRunRecord = {
   deliveryError?: string;
   finishedAt?: string;
   outcome?: CronRunOutcome;
-  error?: {
-    code: string;
-    message: string;
-  };
+  error?: CronRunError;
 };
 
 export type CronCreateInput = {
-  reminderTiming?: "due" | "result";
   name?: string;
   message: string;
+  /** Prepare user-authored instructions before saving. Agent and API instructions are accepted as supplied by default. */
+  generateInstructions?: boolean;
   schedule: CronCreateSchedule;
   sessionKey?: string;
   targetSessionKey?: string;
@@ -117,7 +121,7 @@ export type CronCreateInput = {
   notificationPolicy?: CronNotificationPolicy;
   workspaceMode?: "local" | "worktree";
   modelSelection?: { provider: string; model: string };
-  mode?: GatewayMode;
+  mode?: CronPermissionMode;
   timezone?: string;
 };
 
@@ -127,7 +131,6 @@ export type CronCreateResult = {
 };
 
 export type CronUpdateInput = {
-  reminderTiming?: "due" | "result";
   taskId: string;
   projectKey: string;
   expectedRevision: number;
@@ -139,7 +142,7 @@ export type CronUpdateInput = {
   executionMode?: CronExecutionMode;
   targetSessionKey?: string;
   notificationPolicy?: CronNotificationPolicy;
-  mode?: GatewayMode;
+  mode?: CronPermissionMode;
   workspaceMode?: "local" | "worktree";
   modelSelection?: { provider: string; model: string } | null;
 };

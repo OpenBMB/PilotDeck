@@ -578,16 +578,16 @@ export class InProcessGateway implements Gateway {
         }
         markTiming("configMs");
         if (cancelled) return;
+        const taskExecution = input.sessionKey.startsWith("cron:") && input.channelKey === "cron";
         if (input.sessionKey.startsWith("cron:") && this.options.cron?.prepareConversation) {
           const { task, workspaceCwd } = await this.options.cron.prepareConversation(input);
-          const background = input.channelKey === "cron";
+          const taskMode = task.mode ?? "default";
           input = { ...input, projectKey: task.projectKey, workspaceCwd,
-            canPrompt: background ? false : input.canPrompt ?? true,
-            ...(background ? { mode: task.mode ?? "default", allowPlanModeTools: false } : {}),
+            ...(taskExecution ? { mode: taskMode, canPrompt: taskMode === "default", allowPlanModeTools: false } : {}),
             syntheticMessages: [...(input.syntheticMessages ?? []), { purpose: "scheduled_task_context", text: [
               `This conversation belongs to scheduled task ${task.taskId} in project ${task.projectKey}.`,
               `Latest saved task instructions:\n${task.message}`,
-              background ? "This is a scheduled/manual task execution. Perform the saved task."
+              taskExecution ? "This is a task execution. Perform the saved task."
                 : "This is a user conversation about the task. Answer the latest user request; do not execute the saved task unless asked. Chatting does not change its schedule.",
               "For explicit lasting guidance (e.g. 'from now on' or 'every future run'), use cron_get and then cron_update for this task, merging the guidance with its existing instructions. Preserve its name, schedule, timezone, permissions and workspace unless the user asks to change them. Only confirm that requirements were saved after updated=true; report a failed save honestly. Temporary corrections stay in this conversation.",
               "A successful cron_update saves task instructions, not project memory. Project memory capture and indexing follow the configured asynchronous memory pipeline. Do not claim that a rule has already been stored in durable project memory unless available memory tooling confirms it. Otherwise distinguish saved task requirements from project memory awaiting extraction.",
@@ -690,6 +690,7 @@ export class InProcessGateway implements Gateway {
             permissionRules: {
               ...persistedRules,
               allow: [...sessionAllowRules, ...persistedRules.allow],
+              ask: taskExecution && permissionMode === "bypassPermissions" ? [] : persistedRules.ask,
             },
             ...(syntheticMessages.length > 0 ? { syntheticMessages } : {}),
             ...(modelSelection.selection ? {

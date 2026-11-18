@@ -79,3 +79,15 @@ it('keeps namespaced model-request diagnostics behind the friendly summary', asy
   expect(error.title).not.toContain('raw-provider-response');
   expect(error.details).toContain('trace-123');
 });
+
+it('shows which scheduled-task tool needs authorization and how to respond', async () => {
+  const i18n = await createTestI18n('zh-CN');
+  const error = conversationError({
+    type: 'error', timestamp: 0, content: 'Authorization is required for web_search.',
+    errorCode: 'cron_permission_required',
+    contentI18n: { key: 'alwaysOn:cron.authorization.required', params: { tool: 'web_search' } },
+    userHintI18n: { key: 'alwaysOn:cron.authorization.retry' },
+  }, i18n.getFixedT('zh-CN', 'chat'));
+  expect(error.title).toBe('工具 web_search 需要授权。');
+  expect(error.hint).toContain('立即运行');
+});

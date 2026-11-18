@@ -69,14 +69,14 @@ export class CronReminderStore {
   }
 }
 
-export function taskReminder(task: CronTask, kind: CronReminder["kind"], createdAt: string, run?: CronRunRecord): CronReminder {
-  const occurrenceAt = run?.scheduledAt ?? task.nextRunAt ?? createdAt;
-  const identity = [task.projectKey, task.taskId, kind, run?.runId ?? occurrenceAt];
+export function taskReminder(task: CronTask, kind: Exclude<CronReminder["kind"], "due">, createdAt: string, run: CronRunRecord): CronReminder {
+  const occurrenceAt = run.scheduledAt ?? task.nextRunAt ?? createdAt;
+  const identity = [task.projectKey, task.taskId, kind, run.runId];
   return {
     id: createHash("sha256").update(JSON.stringify(identity)).digest("hex"),
     taskId: task.taskId, projectKey: task.projectKey!, sessionKey: task.sessionKey,
     title: task.name || task.message.split("\n")[0].slice(0, 120),
-    body: (kind === "due" ? task.message : run?.error?.message || run?.output || task.message).slice(0, 1200),
-    kind, createdAt, occurrenceAt, ...(run ? { runId: run.runId } : {}),
+    body: (run.error?.message || run.output || task.message).slice(0, 1200),
+    kind, createdAt, occurrenceAt, runId: run.runId,
   };
 }

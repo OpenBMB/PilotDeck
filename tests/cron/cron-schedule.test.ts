@@ -1,7 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { computeNextCronRunAt, cronDayFieldsUseOr } from "../../src/cron/runtime/CronSchedule.js";
+import { computeNextCronRunAt, computeNextRunAt, cronDayFieldsUseOr, previewCronSchedule } from "../../src/cron/runtime/CronSchedule.js";
+
+test("calendar schedules match complete clock times on selected local weekdays", () => {
+  const schedule = { type: "calendar", times: ["15:40", "10:15"], weekdays: [1, 3], timezone: "Asia/Shanghai" } as const;
+  const after = new Date("2026-06-01T01:00:00.000Z");
+  assert.deepEqual(previewCronSchedule({ ...schedule, times: [...schedule.times], weekdays: [...schedule.weekdays] }, after), [
+    "2026-06-01T02:15:00.000Z", "2026-06-01T07:40:00.000Z", "2026-06-03T02:15:00.000Z",
+  ]);
+  for (const input of [
+    { times: ["24:00"] }, { times: ["10:15", "10:15"] }, { weekdays: [] }, { weekdays: [7] },
+  ]) {
+    assert.equal(computeNextRunAt({ type: "calendar", times: ["10:15"], timezone: "UTC", ...input }, after), undefined);
+  }
+});
+
+test("day intervals advance by 24 elapsed hours across a timezone offset change", () => {
+  const anchorAt = "2026-03-07T14:00:00.000Z";
+  assert.equal(computeNextRunAt({ type: "interval", everySeconds: 86400, anchorAt }, new Date(anchorAt))?.toISOString(),
+    "2026-03-08T14:00:00.000Z");
+  assert.equal(computeNextRunAt({ type: "calendar", times: ["09:00"], timezone: "America/New_York" }, new Date(anchorAt))?.toISOString(),
+    "2026-03-08T13:00:00.000Z");
+});
 
 test("CronSchedule classifies v3 day semantics by syntax rather than expanded ranges", () => {
   for (const expression of ["0 9 1 * 1", "0 9 1 * 0-6", "0 9 1-31 * 1", "0 9 1,* * 1"]) {

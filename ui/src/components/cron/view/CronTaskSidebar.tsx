@@ -53,9 +53,12 @@ export default function CronTaskSidebar({ jobs, projects, selectedId, loading, c
   const renderTask = (job: CronJobOverview) => {
     const unread = Boolean(job.lastRun?.finishedAt && seenRuns[job.id] !== job.lastRun.runId
       && (job.notificationPolicy !== 'failures' || job.lastRun.outcome !== 'completed')
-      && (job.notificationPolicy !== 'findings' || job.lastRun.output?.trim() !== '[NO_UPDATE]'));
+      && (job.notificationPolicy !== 'findings' || job.lastRun.outcome !== 'completed' || job.lastRun.output?.trim() !== '[NO_UPDATE]'));
+    const statusLabel = job.status === 'failed' && job.lastRun?.error?.code === 'cron_permission_required'
+      ? t('cron.authorization.status')
+      : t(`cron.status.${job.status}`, { defaultValue: job.status });
     const summary = job.status === 'running' ? t('cron.status.running', { defaultValue: 'Running' })
-      : ['completed', 'failed', 'missed'].includes(job.status) ? t(`cron.status.${job.status}`, { defaultValue: job.status }) + ' · ' + formatCronTime(job.lastRun?.finishedAt || job.createdAt, job.timezone)
+      : ['completed', 'failed', 'missed'].includes(job.status) ? statusLabel + ' · ' + formatCronTime(job.lastRun?.finishedAt || job.createdAt, job.timezone)
         : cronScheduleLabel(job.schedule, job.timezone, t);
     return <TaskRow key={job.id} job={job} compact={compact} selected={selectedId === job.id} unread={unread}
       summary={`${summary} · ${workspace(job)}`} onSelect={onSelect} onEdit={onEdit} onRefresh={onRefresh} onError={onError} onDeleted={onDeleted} />;

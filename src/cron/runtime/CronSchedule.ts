@@ -1,8 +1,23 @@
-import type { CronCreateSchedule } from "../protocol/schedules.js";
+import type { CronCalendarSchedule, CronCreateSchedule } from "../protocol/schedules.js";
 import { isValidCronTimezone } from "../CronTimezone.js";
 
 export const CRON_SCHEDULE_COMPUTATION_VERSION = 3;
 export function isValidCronExpression(expression: string): boolean { return Boolean(parseCronExpression(expression)); }
+
+export function isValidCalendarTime(time: unknown): time is string {
+  return typeof time === "string" && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/.test(time);
+}
+
+export function isValidCalendarSchedule(value: unknown): value is CronCalendarSchedule {
+  if (!value || typeof value !== "object") return false;
+  const { type, times, weekdays, timezone } = value as Partial<CronCalendarSchedule>;
+  return type === "calendar" && Array.isArray(times) && times.length > 0 && times.length <= 1440
+    && times.every(isValidCalendarTime) && new Set(times).size === times.length
+    && (weekdays === undefined || (Array.isArray(weekdays) && weekdays.length > 0 && weekdays.length <= 7
+      && weekdays.every(day => Number.isInteger(day) && day >= 0 && day <= 6)
+      && new Set(weekdays).size === weekdays.length))
+    && typeof timezone === "string" && isValidCronTimezone(timezone);
+}
 
 /** Whether the expression uses the day-field OR rule introduced in version 3. */
 export function cronDayFieldsUseOr(expression: string): boolean {
@@ -36,7 +51,19 @@ export function computeNextRunAt(
     const anchor = schedule.anchorAt ? Date.parse(schedule.anchorAt) : after.getTime();
     if (!Number.isFinite(anchor)) return undefined;
     const interval = schedule.everySeconds * 1_000;
-    return new Date(anchor + Math.max(1, Math.floor((after.getTime() - anchor) / interval) + 1) * interval);
+    const next = new Date(anchor + Math.max(1, Math.floor((after.getTime() - anchor) / interval) + 1) * interval);
+    return Number.isFinite(next.getTime()) ? next : undefined;
+  }
+  if (schedule.type === "calendar") {
+    if (!isValidCalendarSchedule(schedule)) return undefined;
+    const times = new Set(schedule.times.map(time => Number(time.slice(0, 2)) * 60 + Number(time.slice(3))));
+    const weekdays = schedule.weekdays && new Set(schedule.weekdays);
+    const formatter = createCronDateFormatter(schedule.timezone);
+    return findNextMinute(after, (candidate) => {
+      const parts = readCronDateParts(candidate, formatter);
+      return parts !== undefined && (!weekdays || weekdays.has(parts.dayOfWeek))
+        && times.has(parts.hour * 60 + parts.minute);
+    });
   }
   if (schedule.type === "monthly") {
     if (![1, 2, 3, 4, -1].includes(schedule.ordinal)
@@ -94,12 +121,17 @@ export function computeNextCronRunAt(
   const parsed = parseCronExpression(expression);
   if (!parsed || !isValidCronTimezone(timezone)) return undefined;
   const formatter = createCronDateFormatter(timezone);
-  let candidate = new Date(Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS);
   if (isLeapDayOnlySchedule(parsed)) {
+    const candidate = new Date(Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS);
     return computeNextLeapDayRunAt(candidate, parsed, formatter);
   }
+  return findNextMinute(after, (minute) => matchesCron(minute, parsed, formatter));
+}
+
+function findNextMinute(after: Date, matches: (candidate: Date) => boolean): Date | undefined {
+  let candidate = new Date(Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS);
   for (let index = 0; index < MAX_SEARCH_MINUTES; index += 1) {
-    if (matchesCron(candidate, parsed, formatter)) {
+    if (matches(candidate)) {
       return candidate;
     }
     candidate = new Date(candidate.getTime() + MINUTE_MS);

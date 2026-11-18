@@ -11,31 +11,46 @@ Agent scheduling tools. Defaults are timezone `UTC`, `maxConcurrentRuns: 1`
 (across projects), and `runTimeoutMinutes: 60`. Configuration hot reload rebuilds
 the runtime and interrupts active runs; their records remain available.
 
-New tasks default to the existing restricted permission rules, not Full Access.
-`mode: plan` allows read-only work; `bypassPermissions` is an explicit Full Access
-choice. Scheduled/manual executions set `canPrompt: false`; requests for approval
-or input become visible blocked results. User-initiated chat turns use ordinary
-interactive permissions without changing the task's unattended permission mode.
+New tasks use Default Permissions (`mode: default`). Full Access
+(`mode: bypassPermissions`) is an explicit choice. Existing read-only
+(`mode: plan`) tasks migrate to Default Permissions, and existing Full Access
+tasks keep their mode. This applies to tasks created in the editor or by an Agent.
+
+Every trigger uses the task's saved execution mode. With Default Permissions,
+tools that require approval wait in the task conversation and execute after
+approval. Pending prompts reappear when the task conversation is reopened
+while the run is active. The run counts toward the configured concurrency
+limit and its existing wall-clock timeout applies while waiting. Full Access
+skips confirmation, and explicit tool denials still apply. Subagents inherit
+the run's permissions. User-initiated chat turns use the chat composer's
+permissions without changing the task's saved execution mode.
 A task's project identity and execution directory are
 separate. General uses its configuration-home identity and managed workspace,
 never the configuration directory as its working directory.
 
 ## Timing
 
-Creation accepts `once` (an RFC 3339 instant with an offset), `delay` (positive
-amount and second/minute/hour/day unit), `cron`, `interval`, and `monthly`.
-Delays normalize to one-time instants. Intervals use an integer `everySeconds`
-of at least 60 and a persisted `anchorAt`; late execution never moves the anchor.
-Monthly weekday rules specify `ordinal` (1–4 or -1 for last), Sunday-based
-`weekday` (0–6), `hour`, `minute`, and an IANA `timezone`.
+Agent creation accepts `once` (an RFC 3339 instant with an offset), `delay`
+(positive amount and second/minute/hour/day unit), `calendar`, `cron` and
+`interval`. Delays normalize to one-time instants. New Agent intervals use
+`everySeconds` in positive multiples of 60. The editor accepts whole minutes,
+hours, or days, with a day equal to 24 hours of elapsed time. Intervals persist
+their `anchorAt`, which late execution does not move.
+Calendar schedules use an IANA `timezone`, one or more unique local `HH:mm`
+values in `times`, and optional Sunday-based `weekdays` (0–6). Omitting
+`weekdays` means every day. Each wall-clock time is an exact hour-minute pair.
+Existing monthly weekday rules and intervals with a partial minute remain
+editable and runnable. A legacy monthly weekday rule uses `type: monthly`,
+`ordinal` (1–4 or -1 for last), Sunday-based `weekday` (0–6), `hour`, `minute`,
+and an IANA `timezone`.
 
 Cron uses five numeric fields: minute, hour, day-of-month, month, day-of-week.
 Sunday is 0 or 7. Wildcards, lists, ranges, and wildcard/range steps are supported.
 Names, macros, seconds, malformed numeric tokens and single-value steps reject.
 When neither day field starts with `*`, the day fields match with **OR**; when
 either starts with `*` (including `*/n`), they match with **AND**. Thus
-`0 9 1 * 1` means every Monday or the first day of a month. Use a typed monthly
-weekday rule for the first Monday instead of `0 9 1-7 * 1`.
+`0 9 1 * 1` means every Monday or the first day of a month. Use `calendar` for
+daily or weekly clock times and `cron` for fixed dates each month or year.
 
 Each project waits for its nearest due task, with periodic clock rechecks. Busy
 execution slots leave the original occurrence unchanged. Missed recurring
@@ -110,11 +125,23 @@ Task transcripts are excluded from ordinary lists, counts and search, including
 legacy per-run transcripts; direct task history reads remain supported.
 
 Create/edit use a modal with task instructions, workspace, timing controls and
-an IANA timezone selector. Names and reminder timing are generated asynchronously by a task-only
-model classifier; naming failure retains the instruction-based fallback
-and never delays execution. Description changes regenerate names, while explicit
-Agent/API names remain supported. The editor offers standard recurrence controls
-and preserves existing complex schedules without exposing expression inputs.
+an IANA timezone selector. On Web creation, one task-only model request prepares
+a name and execution instructions in the language of the input. The instructions
+clarify the action, steps and expected result at a level of detail appropriate
+to the task while preserving the user's requirements.
+The request runs before saving, uses the selected execution model or the project's
+default model, and has a 60-second deadline. Failed or unusable generation keeps
+the supplied instructions and logs the reason without recording task text.
+If generation returns usable instructions without a title, the task uses the
+instruction-based name fallback. The schedule still comes from the form and is
+checked again at save time. Edits and other creation paths keep the supplied
+instructions and can generate a missing or updated name asynchronously. Explicit
+names take precedence. The editor offers standard recurrence controls.
+Daily and weekly schedules allow multiple
+time entries. Weekly schedules allow multiple execution days, with every
+selected time applying to every selected day. Existing complex schedules,
+including monthly ordinal weekdays, retain their rules when other task fields
+are edited.
 Permissions, model and task-workspace settings expand on demand. The shared
 calendar/clock picker owns Escape before the editor. Rejected saves retain input, and closing the editor restores focus to its trigger.
 
@@ -182,20 +209,18 @@ the model or sending source-chat messages.
 ## Persistent reminders
 
 Task reminders are independent of ordinary conversation unread indicators and
-notifications. `reminderTiming: due` records a reminder at the intended occurrence
-before execution admission, including when a task conversation is busy. `result`
-(the compatibility default) records completed or failed results, subject to
-`notificationPolicy` and `[NO_UPDATE]` suppression. Stopped runs do not alert.
-Successful due-mode runs do not create a second result reminder; failures remain
-visible according to the notification policy. The naming classifier selects due delivery for simple user reminders and result
-delivery for agent work; Agent creation and the editor can explicitly override it.
+notifications. Scheduled runs and **Run Now** both record reminders after execution
+ends, subject to `notificationPolicy` and `[NO_UPDATE]` suppression. Stopped or
+aborted runs do not alert. A successful manual run keeps the next scheduled
+occurrence. Tasks saved with the former reminder timing setting follow the same
+result-based behavior. Previously stored arrival reminders remain recoverable and
+can still be acknowledged.
 
 All clients use the existing system-notification transport and preferences.
 There are no custom reminder windows or page cards. Web uses the Notifications
 API/Service Worker with `requireInteraction`; Electron uses native notifications,
 Windows reminder Toasts, and a non-expiring timeout where supported. macOS alert
-style and Linux notification-server policy remain user/system controlled. Due
-reminders show a short action message instead of the task's execution instructions.
+style and Linux notification-server policy remain user/system controlled.
 
 Viewing a task does not acknowledge its reminder. The OS may hide a notification
 when activated or after its own timeout; hiding is not business acknowledgement.

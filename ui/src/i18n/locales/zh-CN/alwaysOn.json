@@ -154,6 +154,7 @@
         "scheduleType": "任务类型",
         "date": "日期",
         "time": "时间",
+        "timeNumber": "时间 {{number}}",
         "timezone": "时区",
         "repeatPeriod": "重复周期",
         "executionDay": "执行日",
@@ -163,7 +164,9 @@
         "expression": "Cron 表达式",
         "name": "任务名称",
         "ordinal": "每月第几周",
-        "intervalMinutes": "间隔分钟数"
+        "intervalAmount": "间隔数值",
+        "intervalUnit": "间隔单位",
+        "repeatInterval": "重复间隔"
       },
       "placeholders": {
         "prompt": "描述 PilotDeck 在任务运行时应该做什么。",
@@ -179,12 +182,17 @@
         "weekly": "每周",
         "monthly": "每月",
         "yearly": "每年",
-        "interval": "固定间隔",
+        "interval": "每隔",
         "monthlyWeekday": "每月第几个星期几",
         "existing": "现有安排"
       },
       "options": {
         "everyDay": "每天"
+      },
+      "units": {
+        "minute": "分钟",
+        "hour": "小时",
+        "day": "天"
       },
       "weekdays": {
         "monday": "周一",
@@ -223,6 +231,10 @@
         "monthly": "每月 {{day}} 日 {{time}}",
         "yearly": "每年 {{month}} 月 {{day}} 日 {{time}}",
         "interval": "每隔 {{minutes}} 分钟",
+        "intervalSeconds": "每隔 {{count}} 秒",
+        "intervalMinutes": "每隔 {{count}} 分钟",
+        "intervalHours": "每隔 {{count}} 小时",
+        "intervalDays": "每隔 {{count}} 天",
         "monthlyWeekday": "每月指定星期几的 {{time}}"
       },
       "validation": {
@@ -235,10 +247,14 @@
         "runAtInvalid": "所选运行时间在该时区中不存在。",
         "runAtFuture": "运行时间必须晚于当前时间。",
         "expressionInvalid": "Cron 表达式格式无效。",
-        "interval": "请输入正整数分钟。",
+        "interval": "请输入正整数间隔。",
+        "duplicateTime": "每个执行时间只能添加一次。",
+        "weekdaysRequired": "请至少选择一个执行日。",
         "projectUnavailable": "该工作区已不可用，请重新选择已有项目后重试。"
       },
       "actions": {
+        "addTime": "添加时间",
+        "removeTime": "移除时间 {{number}}",
         "expandAdvanced": "展开",
         "collapseAdvanced": "收起",
         "submit": "创建任务"
@@ -282,6 +298,16 @@
       "4": "第四个",
       "-1": "最后一个"
     },
+    "authorization": {
+      "status": "需要授权",
+      "required": "工具 {{tool}} 需要授权。",
+      "requiredGeneric": "有工具需要授权。",
+      "denied": "工具 {{tool}} 的访问权限被拒绝。",
+      "deniedGeneric": "有工具的访问权限被拒绝。",
+      "inputRequired": "此任务需要你提供信息。",
+      "retry": "打开任务，点击「立即运行」后处理请求。",
+      "reviewPermissions": "请检查任务的执行权限，再重新运行。"
+    },
     "execution": {
       "title": "执行方式与结果",
       "notifications": "任务提醒",
@@ -290,15 +316,12 @@
       "failures": "仅失败时提醒",
       "advanced": "高级执行设置",
       "permissions": "执行权限",
-      "restricted": "遵循已有权限规则",
-      "readOnly": "只读",
-      "fullAccess": "完全访问",
       "workspace": "执行工作区",
       "local": "项目工作目录",
       "worktree": "隔离 Git 工作区（基于已提交版本）",
       "model": "执行模型",
       "defaultModel": "使用项目默认模型",
-      "permissionNotice": "任务在后台无法询问授权；超出所选权限的操作会标记为需要处理。",
+      "permissionNotice": "使用默认权限时，需要授权的工具会在任务对话中等待确认。",
       "fullAccessNotice": "完全访问允许任务在后台修改文件、运行命令，执行前不会再次询问。",
       "worktreeNotice": "需要 Git。任务专属工作树从已提交的 HEAD 创建，并在后续执行中持续复用，不包含项目未提交的修改。",
       "resultsNotice": "每个任务拥有专属任务上下文，周期执行持续使用同一上下文。过程与结果仅显示在定时任务中。",
@@ -379,13 +402,7 @@
       "openTask": "查看任务",
       "everyMinute": "每分钟"
     },
-    "detailsFor": "查看任务详情：{{name}}",
-    "reminders": {
-      "timing": "提醒时机",
-      "auto": "自动判断",
-      "onDue": "到点提醒",
-      "onResult": "执行完成后提醒"
-    }
+    "detailsFor": "查看任务详情：{{name}}"
   },
   "sessionMissing": "此对话记录已不存在。"
 }

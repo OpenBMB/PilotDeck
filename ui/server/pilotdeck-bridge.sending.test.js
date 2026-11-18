@@ -9,7 +9,7 @@ const mock = await vi.hoisted(async () => {
     return { gateway: null, home, previousHome };
 });
 vi.mock('./services/gatewayConnectionCache.js', () => ({ createGatewayConnectionCache: () => ({ get: async () => mock.gateway, invalidate: () => {} }) }));
-import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage, runChatViaGateway, createAlwaysOnTurnEventForwarder, steerQueuedInputViaGateway } from './pilotdeck-bridge.js';
+import { enqueueInputViaGateway, getInputQueueStateViaGateway, serializeQueuedInputForStorage, runChatViaGateway, createAlwaysOnTurnEventForwarder, grantSessionPermissionViaGateway, steerQueuedInputViaGateway } from './pilotdeck-bridge.js';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,6 +20,18 @@ import { anonymousRequestId, withRequestContext } from '../../src/network/reques
 import { requestLimiters } from './middleware/rateLimits.js';
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const item = id => ({ id, runId: id, command: 'fixture', displayText: id, options: { projectPath: '/tmp/sending-project' } });
+
+it('preserves the Gateway grant acknowledgement for a scheduled task conversation', async () => {
+    const entry = 'bash:printf:*';
+    const grantSessionPermission = vi.fn().mockResolvedValue({ granted: true, entry });
+    mock.gateway = { grantSessionPermission };
+
+    expect(await grantSessionPermissionViaGateway('cron:fixture', entry)).toEqual({ granted: true, entry });
+    expect(grantSessionPermission).toHaveBeenCalledWith({ sessionKey: 'cron:fixture', entry });
+    expect(await grantSessionPermissionViaGateway('new-session-fixture', entry)).toEqual({ granted: false });
+    grantSessionPermission.mockResolvedValueOnce({ granted: false });
+    expect(await grantSessionPermissionViaGateway('cron:fixture', entry)).toEqual({ granted: false });
+});
 
 it('serializes authenticated HTTP attribution before crossing the gateway boundary', async () => {
     const calls = [];

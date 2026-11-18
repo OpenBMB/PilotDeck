@@ -5,14 +5,21 @@ import { join } from "node:path";
 import test from "node:test";
 import type { Gateway, GatewayEvent, GatewaySubmitTurnInput } from "../../src/gateway/index.js";
 import type { CronCreateInput, CronResultDeliveryHandler, CronTask } from "../../src/cron/protocol/types.js";
-import { createCronRuntime, defaultCronConfig, CronTaskStore, resolveCronPaths } from "../../src/cron/index.js";
+import { createCronRuntime, defaultCronConfig, CronTaskStore, resolveCronPaths, type CreateCronRuntimeOptions } from "../../src/cron/index.js";
 import { computeNextRunAt, computeNextCronRunAt, previewCronSchedule } from "../../src/cron/runtime/CronSchedule.js";
 import { CronScheduler } from "../../src/cron/runtime/CronScheduler.js";
 import type { CronFire } from "../../src/cron/runtime/CronFire.js";
 import { createCronManager } from "../../src/cron/runtime/CronManager.js";
+import { generateCronTaskDetails } from "../../src/cron/runtime/CronTaskDetails.js";
+import { migrateCronStores } from "../../src/cron/storage/CronStoreMigration.js";
 import type { PilotDeckToolRuntimeContext } from "../../src/tool/index.js";
 
-async function fixture(options: { submit?: (input: GatewaySubmitTurnInput) => AsyncIterable<GatewayEvent>; delivery?: CronResultDeliveryHandler; max?: number; title?: (task: CronTask, signal: AbortSignal) => Promise<string | null> } = {}) {
+async function fixture(options: {
+  submit?: (input: GatewaySubmitTurnInput) => AsyncIterable<GatewayEvent>;
+  delivery?: CronResultDeliveryHandler;
+  max?: number;
+  details?: CreateCronRuntimeOptions["generateTaskDetails"];
+} = {}) {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-cron-lifecycle-"));
   const home = join(root, "state");
   const project = join(root, "workspace");
@@ -31,7 +38,7 @@ async function fixture(options: { submit?: (input: GatewaySubmitTurnInput) => As
     abortTurn: async () => undefined,
   } as unknown as Gateway;
   const runtime = createCronRuntime({ config: { ...defaultCronConfig(), maxConcurrentRuns: options.max ?? 1 }, pilotHome: home,
-    projectKey: project, store, now: () => now, onResultDelivery: options.delivery, generateTaskTitle: options.title });
+    projectKey: project, store, now: () => now, onResultDelivery: options.delivery, generateTaskDetails: options.details });
   runtime.bindGateway(gateway);
   const create = (input: Partial<CronCreateInput> = {}) => runtime.createTask({ name: "Daily report", message: "Generate a report",
     schedule: { type: "cron", expression: "0 9 * * *", timezone: "UTC" }, projectKey: project, ...input });
@@ -61,11 +68,34 @@ test("manual runs keep the original task, schedule and prompt snapshot, using on
     assert.equal(f.inputs[0].sessionKey, f.inputs[1].sessionKey);
     assert.equal(f.inputs[0].sessionKey, task.sessionKey);
     assert.deepEqual(f.inputs.map(input => input.mode), ["default", "default"]);
-    assert.ok(f.inputs.every(input => input.canPrompt === false));
+    assert.ok(f.inputs.every(input => input.canPrompt === true));
     const runs = await f.store.listRuns(10, task.taskId);
     assert.equal(runs.length, 2);
     assert.ok(runs.every(run => run.trigger === "manual" && run.message === task.message && run.output === "Synthetic report"));
     assert.equal(f.closed.includes(f.inputs[0].sessionKey), false);
+  } finally { await f.close(); }
+});
+
+test("a persisted calendar task runs at each exact time and advances to the next selected weekday", async () => {
+  const f = await fixture();
+  try {
+    const { task } = await f.create({ schedule: { type: "calendar", times: ["15:40", "10:15"],
+      weekdays: [3, 1], timezone: "Asia/Shanghai" } });
+    const first = "2026-06-03T02:15:00.000Z";
+    const second = "2026-06-03T07:40:00.000Z";
+    assert.equal(task.nextRunAt, first);
+    assert.deepEqual((await f.store.getTask(task.taskId))?.schedule,
+      { type: "calendar", times: ["10:15", "15:40"], weekdays: [1, 3], timezone: "Asia/Shanghai" });
+    f.setNow(first);
+    await f.runtime.runTickOnce(); await f.idle();
+    assert.equal((await f.store.getTask(task.taskId))?.nextRunAt, second);
+    f.setNow("2026-06-03T02:40:00.000Z");
+    await f.runtime.runTickOnce(); await f.idle();
+    assert.equal(f.inputs.length, 1);
+    f.setNow(second);
+    await f.runtime.runTickOnce(); await f.idle();
+    assert.equal((await f.store.getTask(task.taskId))?.nextRunAt, "2026-06-08T02:15:00.000Z");
+    assert.deepEqual(f.inputs.map(input => input.sessionKey), [task.sessionKey, task.sessionKey]);
   } finally { await f.close(); }
 });
 
@@ -144,18 +174,51 @@ test("task results never call the source-chat delivery handler, including legacy
   } finally { await f.close(); }
 });
 
-test("permission interactions stop unattended work with a visible blocked result", async () => {
+test("an unexpected interaction in a Full Access run produces a visible blocked result", async () => {
   const f = await fixture({ submit: async function* () {
-    yield { type: "permission_request", requestId: "permission-1" } as GatewayEvent;
+    yield { type: "permission_request", requestId: "permission-1", toolName: "web_search", payload: {} };
   } });
+  const abortReasons: string[] = [];
+  const statusCodes: unknown[] = [];
+  f.gateway.abortTurn = async ({ reason }) => { abortReasons.push(reason!); };
+  f.gateway.recordAgentStatusMessage = async ({ status }) => {
+    statusCodes.push(status.detail?.code);
+    return { recorded: true };
+  };
   try {
-    const { task } = await f.create();
-    await f.runtime.runTaskNow({ taskId: task.taskId });
+    const { task } = await f.create({ mode: "bypassPermissions" });
+    f.setNow(task.nextRunAt!);
+    await f.runtime.runTickOnce();
     await f.idle();
     const result = await f.store.getTask(task.taskId);
     assert.equal(result?.status, "failed");
     assert.equal(result?.enabled, false);
     assert.equal(result?.lastRun?.outcome, "blocked");
+    assert.equal(result?.lastRun?.error?.toolName, "web_search");
+    assert.deepEqual(statusCodes, ["cron_permission_required"]);
+    assert.deepEqual(abortReasons, ["system:interaction_required"]);
+  } finally { await f.close(); }
+});
+
+test("legacy read-only tasks migrate to default permissions and Full Access is preserved", async () => {
+  const f = await fixture();
+  try {
+    const { task: oldDefault } = await f.create();
+    const { task: oldReadOnly } = await f.create();
+    const { task: fullAccess } = await f.create({ mode: "bypassPermissions" });
+    const { tasksFile } = resolveCronPaths({ pilotHome: f.home, projectKey: f.project });
+    await writeFile(tasksFile, JSON.stringify({ schemaVersion: 1,
+      tasks: [oldDefault, { ...oldReadOnly, mode: "plan" }, fullAccess] }));
+    await migrateCronStores({ pilotHome: f.home });
+    await migrateCronStores({ pilotHome: f.home });
+    const saved = JSON.parse(await readFile(tasksFile, "utf8")).tasks as CronTask[];
+    const modes = new Map(saved.map(task => [task.taskId, task.mode]));
+    assert.equal(modes.get(oldDefault.taskId), "default");
+    assert.equal(modes.get(oldReadOnly.taskId), "default");
+    assert.equal(modes.get(fullAccess.taskId), "bypassPermissions");
+    await f.runtime.runTaskNow({ taskId: oldReadOnly.taskId }); await f.idle();
+    await f.runtime.runTaskNow({ taskId: fullAccess.taskId }); await f.idle();
+    assert.deepEqual(f.inputs.map(({ mode, canPrompt }) => [mode, canPrompt]), [["default", true], ["bypassPermissions", false]]);
   } finally { await f.close(); }
 });
 
@@ -218,12 +281,12 @@ test("legacy conversation inputs create an owned task session without touching t
   const checked: string[] = [];
   f.gateway.getActiveTurnSnapshot = async ({ sessionKey }) => { checked.push(sessionKey); return { sessionKey, active: sessionKey === "web:source", events: [] }; };
   try {
-    const { task } = await f.create({ executionMode: "conversation", sessionKey: "web:source", channelKey: "web", mode: "plan" });
+    const { task } = await f.create({ executionMode: "conversation", sessionKey: "web:source", channelKey: "web", mode: "bypassPermissions" });
     assert.equal(task.executionMode, "persistent"); assert.equal(task.targetSessionKey, undefined);
     assert.equal(task.originSessionKey, "web:source"); assert.match(task.sessionKey, /^cron:/);
     await f.runtime.runTaskNow({ taskId: task.taskId }); await f.idle();
     assert.ok(checked.length > 0 && checked.every(key => key === task.sessionKey)); assert.equal(f.inputs[0].sessionKey, task.sessionKey);
-    assert.equal(f.inputs[0].channelKey, "cron"); assert.equal(f.inputs[0].mode, "plan");
+    assert.equal(f.inputs[0].channelKey, "cron"); assert.equal(f.inputs[0].mode, "bypassPermissions");
     assert.equal(f.closed.includes("web:source"), false);
   } finally { await f.close(); }
 });
@@ -286,6 +349,33 @@ test("Agent tools preserve General identity and execution directory, and manage 
   } finally { await manager.stop(); await f.close(); }
 });
 
+for (const [label, schedule, dueAt] of [
+  ["monthly ordinal weekday", { type: "monthly", ordinal: 1, weekday: 1, hour: 9, minute: 0, timezone: "UTC" }, "2026-06-01T09:00:00.000Z"],
+  ["partial-minute interval", { type: "interval", everySeconds: 90, anchorAt: "2026-06-01T08:00:00.000Z" }, "2026-06-01T08:01:30.000Z"],
+] as const) {
+  test(`an existing ${label} can still be edited and run`, async () => {
+    const f = await fixture();
+    try {
+      const { task } = await f.create({ schedule });
+      const update = f.runtime.getTools().find(tool => tool.name === "cron_update")!;
+      const message = "Run the updated report";
+      await update.execute({ taskId: task.taskId, expectedRevision: task.revision, message, schedule: task.schedule },
+        { cwd: f.project, projectKey: f.project, sessionId: "web:fixture" } as PilotDeckToolRuntimeContext);
+      const saved = await f.store.getTask(task.taskId);
+      assert.equal(saved?.message, message);
+      assert.deepEqual(saved?.schedule, task.schedule);
+      assert.equal(saved?.nextRunAt, dueAt);
+      f.setNow(dueAt);
+      await f.runtime.runTickOnce();
+      await f.idle();
+      assert.equal(f.inputs[0]?.message, message);
+      const executed = await f.store.getTask(task.taskId);
+      assert.equal(executed?.lastRun?.outcome, "completed");
+      assert.deepEqual(executed?.schedule, task.schedule);
+    } finally { await f.close(); }
+  });
+}
+
 test("durable task changes publish ordered revisions for creation, execution, pause and deletion", async () => {
   const f = await fixture();
   const events: Array<{ taskId: string; status?: string; revision?: number; output?: string }> = [];
@@ -321,7 +411,11 @@ test("startup migrates legacy task modes without adopting or closing ordinary co
 test("model naming is asynchronous metadata and never delays execution or invalidates an open edit", async () => {
   let resolveTitle!: (title: string | null) => void;
   let titleInput: CronTask | undefined;
-  const f = await fixture({ title: task => { titleInput = task; return new Promise(resolve => { resolveTitle = resolve; }); } });
+  const f = await fixture({ details: async task => {
+    titleInput = task;
+    const title = await new Promise<string | null>(resolve => { resolveTitle = resolve; });
+    return title ? { title } : null;
+  } });
   try {
     const { task } = await f.create({ name: undefined, message: "Produce a short daily project summary" });
     assert.equal(titleInput?.message, task.message);
@@ -342,21 +436,140 @@ test("model naming is asynchronous metadata and never delays execution or invali
 });
 
 test("stale model names cannot overwrite newer instructions or recreate deleted tasks", async () => {
-  const requests: { signal: AbortSignal; resolve: (title: string | null) => void }[] = [];
-  const f = await fixture({ title: (_task, signal) => new Promise(resolve => { requests.push({ signal, resolve }); }) });
+  const requests: { signal: AbortSignal; resolve: (details: { title: string }) => void }[] = [];
+  const f = await fixture({ details: (_task, signal) => new Promise(resolve => { requests.push({ signal, resolve }); }) });
   try {
     const { task } = await f.create({ name: undefined, message: "Old instruction" });
     const edit = await f.runtime.updateTask({ taskId: task.taskId, projectKey: f.project, expectedRevision: task.revision!,
       message: 'New instruction', schedule: task.schedule });
     assert.equal(edit.updated, true); assert.equal(requests.length, 2); assert.equal(requests[0].signal.aborted, true);
-    requests[0].resolve('Stale old title'); await new Promise(resolve => setImmediate(resolve));
+    requests[0].resolve({ title: 'Stale old title' }); await new Promise(resolve => setImmediate(resolve));
     assert.notEqual((await f.store.getTask(task.taskId))?.name, 'Stale old title');
     await f.runtime.deleteTask({ taskId: task.taskId });
     assert.equal(requests[1].signal.aborted, true);
-    requests[1].resolve('Late title'); await new Promise(resolve => setImmediate(resolve));
+    requests[1].resolve({ title: 'Late title' }); await new Promise(resolve => setImmediate(resolve));
     assert.equal(await f.store.getTask(task.taskId), undefined);
     await f.create({ name: 'Agent-supplied title' });
     assert.equal(requests.length, 2);
+  } finally { await f.close(); }
+});
+
+test("Web task instructions are prepared once before saving and used by an immediate run", async () => {
+  let complete!: (response: string) => void;
+  const pending = new Promise<string>(resolve => { complete = resolve; });
+  const requests: string[] = [];
+  const original = "提醒我喝水";
+  const instructions = "提醒用户喝水。";
+  const f = await fixture({ details: (task, signal, mode) => generateCronTaskDetails({
+    text: task.message, taskId: task.taskId, sessionId: task.sessionKey, signal, mode,
+    model: { provider: "fixture", model: "model" },
+    modelRuntime: {
+      async complete(request) {
+        const [block] = request.messages[0].content;
+        assert.equal(block.type, "text");
+        if (block.type === "text") requests.push(block.text);
+        return { role: "assistant", content: [{ type: "text", text: await pending }], finishReason: "stop" };
+      },
+    },
+  }) });
+  try {
+    const creating = f.create({ name: undefined, message: original, generateInstructions: true });
+    assert.deepEqual(requests, [original]);
+    assert.deepEqual((await f.runtime.listTasks()).tasks, []);
+
+    complete('<think>Prepare the reminder.</think>\n```JSON\n' +
+      JSON.stringify({ title: "喝水提醒", instructions, schedule: { type: "delay", amount: 5 } }) + '\n```');
+    const { task } = await creating;
+    assert.equal(task.name, "喝水提醒");
+    assert.equal((await f.store.getTask(task.taskId))?.message, instructions);
+    assert.equal(task.nextRunAt, "2026-06-01T09:00:00.000Z");
+    assert.equal((await f.runtime.runTaskNow({ taskId: task.taskId })).started, true);
+    await f.idle();
+    assert.equal(f.inputs[0].message, instructions);
+    assert.deepEqual(requests, [original]);
+  } finally { complete(""); await f.close(); }
+});
+
+test("Web creation saves the original input when the model fails or returns unusable instructions", async () => {
+  const replies = ["not JSON", JSON.stringify({ title: "Unusable title", instructions: " " })];
+  const failures: string[] = [];
+  let calls = 0;
+  const f = await fixture({ details: (task, signal, mode) => generateCronTaskDetails({
+    text: task.message, taskId: task.taskId, sessionId: task.sessionKey, signal, mode,
+    onFallback: reason => failures.push(reason),
+    model: { provider: "fixture", model: "model" },
+    modelRuntime: {
+      async complete() {
+        const reply = replies[calls++];
+        if (reply === undefined) throw new Error("Fixture provider error");
+        return { role: "assistant", content: [{ type: "text", text: reply }], finishReason: "stop" };
+      },
+    },
+  }) });
+  try {
+    for (const message of ["Remind me to stretch", "Remind me to take a break", "Remind me to hydrate"]) {
+      const { task } = await f.create({ name: undefined, message, generateInstructions: true });
+      assert.equal(task.name, message);
+      assert.equal((await f.store.getTask(task.taskId))?.message, message);
+    }
+    assert.equal(calls, 3);
+    assert.deepEqual(failures, ["invalid_response", "invalid_response", "provider_error"]);
+  } finally { await f.close(); }
+});
+
+test("Web creation keeps valid generated instructions when the model omits the title", async () => {
+  const message = "Remind me to drink water";
+  const instructions = "Tell the user it is time to drink water using a single sentence.";
+  const f = await fixture({ details: (task, signal, mode) => generateCronTaskDetails({
+    text: task.message, taskId: task.taskId, sessionId: task.sessionKey, signal, mode,
+    model: { provider: "fixture", model: "model" },
+    modelRuntime: { async complete() {
+      return { role: "assistant", content: [{ type: "text", text: JSON.stringify({ instructions }) }], finishReason: "stop" };
+    } },
+  }) });
+  try {
+    const { task } = await f.create({ name: undefined, message, generateInstructions: true });
+    assert.equal(task.name, message);
+    assert.equal(task.message, instructions);
+  } finally { await f.close(); }
+});
+
+test("Web instruction generation falls back to the original input after its one-minute deadline", async t => {
+  const deadline = new AbortController();
+  const timeout = t.mock.method(AbortSignal, "timeout", () => deadline.signal);
+  let modelSignal: AbortSignal | undefined;
+  const failures: string[] = [];
+  const f = await fixture({ details: (task, signal, mode) => generateCronTaskDetails({
+    text: task.message, taskId: task.taskId, sessionId: task.sessionKey, signal, mode,
+    onFallback: reason => failures.push(reason),
+    model: { provider: "fixture", model: "model" },
+    modelRuntime: { complete(_request, options) {
+      modelSignal = options?.signal;
+      return new Promise(() => {});
+    } },
+  }) });
+  try {
+    const message = "提醒我起来走走";
+    const creating = f.create({ name: undefined, message, generateInstructions: true });
+    assert.deepEqual(timeout.mock.calls.map(call => call.arguments), [[60_000]]);
+    deadline.abort(new DOMException("Fixture deadline", "TimeoutError"));
+    const { task } = await creating;
+    assert.equal(modelSignal?.aborted, true);
+    assert.deepEqual(failures, ["deadline_exceeded"]);
+    assert.equal((await f.store.getTask(task.taskId))?.message, message);
+  } finally { await f.close(); }
+});
+
+test("a one-time schedule that expires while generating instructions is rejected by the save", async () => {
+  const f = await fixture({ details: async () => {
+    f.setNow("2026-06-01T08:00:02Z");
+    return { title: "Break reminder", instructions: "Tell the user to take a break now." };
+  } });
+  try {
+    await assert.rejects(f.create({ message: "Reminder", generateInstructions: true,
+      schedule: { type: "once", runAt: "2026-06-01T08:00:01.000Z" },
+    }), /scheduled in the future/);
+    assert.deepEqual((await f.runtime.listTasks()).tasks, []);
   } finally { await f.close(); }
 });
 
@@ -413,7 +626,7 @@ test('lasting instruction updates during execution preserve its snapshot and fee
 
 test('Agent instruction updates preserve an omitted task name instead of regenerating it', async () => {
   let titles = 0;
-  const f = await fixture({ title: async () => { titles++; return 'Unexpected replacement title'; } });
+  const f = await fixture({ details: async () => { titles++; return { title: 'Unexpected replacement title' }; } });
   try {
     const { task } = await f.create();
     const tool = f.runtime.getTools().find(tool => tool.name === 'cron_update')!;

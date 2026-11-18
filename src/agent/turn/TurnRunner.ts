@@ -334,6 +334,7 @@ export class TurnRunner {
           yield event;
         }
 
+        runResult.result = classifySystemAbort(runResult.result, options.abortSignal);
         const unappliedSteers = closeSteerMailbox();
         const artifacts = await finishArtifacts(runResult.result);
         if (artifacts.length > 0) {
@@ -342,12 +343,12 @@ export class TurnRunner {
         for (const event of unappliedSteers) yield event;
         await this.transcript.recordTurnResult(options.sessionId, options.turnId, runResult.result);
         await this.finalizeSessionMetadata(options, sessionTitle);
-        if (turnCompletedEvent) yield turnCompletedEvent;
+        if (turnCompletedEvent) yield { ...turnCompletedEvent, result: runResult.result };
         return runResult;
       } catch (error) {
         const unappliedSteers = closeSteerMailbox();
         const normalized = normalizeAgentError(error);
-        const result = this.createErrorResult(options, normalized);
+        const result = classifySystemAbort(this.createErrorResult(options, normalized), options.abortSignal);
         const artifacts = await finishArtifacts(result);
         if (artifacts.length > 0) {
           yield { type: "file_artifacts", sessionId: options.sessionId, turnId: options.turnId, artifacts };
@@ -590,6 +591,14 @@ function allHumanText(messages: CanonicalMessage[]): string | null {
     }
   }
   return parts.length > 0 ? parts.join("\n") : null;
+}
+
+function classifySystemAbort(result: AgentTurnResult, signal?: AbortSignal): AgentTurnResult {
+  const reason = signal?.reason;
+  if (result.stopReason.startsWith("aborted_") && typeof reason === "string" && /^(system|timeout):/.test(reason)) {
+    return { ...result, stopReason: "system_aborted" };
+  }
+  return result;
 }
 
 function linkAbortSignal(

@@ -2475,19 +2475,18 @@ export async function decidePermissionViaGateway(requestId, decision, options = 
 }
 
 export async function grantSessionPermissionViaGateway(sessionId, entry) {
-    const gw = await ensureGateway();
     if (!isPilotDeckSessionKey(sessionId) || typeof entry !== 'string' || !entry.trim()) {
-        return false;
+        return { granted: false };
     }
     try {
-        const result = await gw.grantSessionPermission({
+        const gw = await ensureGateway();
+        return await gw.grantSessionPermission({
             sessionKey: sessionId,
             entry,
         });
-        return Boolean(result?.granted);
     } catch (error) {
         console.warn('[pilotdeck-bridge] grantSessionPermission failed:', error);
-        return false;
+        return { granted: false };
     }
 }
 

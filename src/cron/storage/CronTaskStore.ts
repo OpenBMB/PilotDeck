@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import type { GatewayEvent } from "../../gateway/index.js";
 import type { CronRunRecord, CronTask, CronTaskChange } from "../protocol/types.js";
 import { cronRunEventsPath, type CronPaths } from "./CronPaths.js";
-import { isValidCronExpression } from "../runtime/CronSchedule.js";
+import { isValidCalendarSchedule, isValidCronExpression } from "../runtime/CronSchedule.js";
 import { isValidCronTimezone } from "../CronTimezone.js";
 
 type CronTaskFile = {
@@ -252,9 +252,10 @@ function normalizeTask(value: unknown): CronTask | undefined {
   if (candidate.schedule.type === "cron" && typeof candidate.schedule.expression !== "string") {
     return undefined;
   }
-  if (!["once", "cron", "interval", "monthly"].includes(candidate.schedule.type)) return undefined;
+  if (!["once", "cron", "calendar", "interval", "monthly"].includes(candidate.schedule.type)) return undefined;
   if (candidate.schedule.type === "once" && !Number.isFinite(Date.parse(candidate.schedule.runAt))) return undefined;
   if (candidate.schedule.type === "cron" && !isValidCronExpression(candidate.schedule.expression)) return undefined;
+  if (candidate.schedule.type === "calendar" && !isValidCalendarSchedule(candidate.schedule)) return undefined;
   if (candidate.schedule.type === "monthly" && (![1, 2, 3, 4, -1].includes(candidate.schedule.ordinal)
     || !Number.isInteger(candidate.schedule.weekday) || candidate.schedule.weekday < 0 || candidate.schedule.weekday > 6
     || !Number.isInteger(candidate.schedule.hour) || candidate.schedule.hour < 0 || candidate.schedule.hour > 23
@@ -275,7 +276,6 @@ function normalizeTask(value: unknown): CronTask | undefined {
     workspaceCwd: typeof candidate.workspaceCwd === "string" ? candidate.workspaceCwd : undefined,
     targetSessionKey: candidate.targetSessionKey,
     notificationPolicy: candidate.notificationPolicy ?? "all",
-    reminderTiming: candidate.reminderTiming === "due" || candidate.reminderTiming === "result" ? candidate.reminderTiming : undefined,
     workspaceMode: candidate.workspaceMode ?? "local",
     modelSelection: candidate.modelSelection,
     statusDetail: candidate.statusDetail,
@@ -283,7 +283,7 @@ function normalizeTask(value: unknown): CronTask | undefined {
     sessionKey: candidate.sessionKey,
     channelKey: candidate.channelKey,
     projectKey: typeof candidate.projectKey === "string" ? candidate.projectKey : undefined,
-    mode: candidate.mode,
+    mode: candidate.mode === "bypassPermissions" ? "bypassPermissions" : "default",
     timezone: typeof candidate.timezone === "string" ? candidate.timezone : undefined,
     createdAt: candidate.createdAt,
     updatedAt: candidate.updatedAt,

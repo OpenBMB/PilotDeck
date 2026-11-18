@@ -154,6 +154,7 @@
         "scheduleType": "Schedule Type",
         "date": "Date",
         "time": "Time",
+        "timeNumber": "Time {{number}}",
         "timezone": "Timezone",
         "repeatPeriod": "Repeat period",
         "executionDay": "Execution day",
@@ -163,7 +164,9 @@
         "expression": "Cron expression",
         "name": "Task name",
         "ordinal": "Week of month",
-        "intervalMinutes": "Interval in minutes"
+        "intervalAmount": "Interval amount",
+        "intervalUnit": "Interval unit",
+        "repeatInterval": "Repeat interval"
       },
       "placeholders": {
         "prompt": "Describe what PilotDeck should do when this task runs.",
@@ -179,12 +182,17 @@
         "weekly": "Weekly",
         "monthly": "Monthly",
         "yearly": "Yearly",
-        "interval": "Fixed interval",
+        "interval": "Every…",
         "monthlyWeekday": "Weekday of month",
         "existing": "Existing schedule"
       },
       "options": {
         "everyDay": "Every day"
+      },
+      "units": {
+        "minute": "Minutes",
+        "hour": "Hours",
+        "day": "Days"
       },
       "weekdays": {
         "monday": "Monday",
@@ -223,6 +231,14 @@
         "monthly": "Monthly on day {{day}} at {{time}}",
         "yearly": "Yearly on {{month}}/{{day}} at {{time}}",
         "interval": "Every {{minutes}} minutes",
+        "intervalSeconds_one": "Every {{count}} second",
+        "intervalSeconds_other": "Every {{count}} seconds",
+        "intervalMinutes_one": "Every {{count}} minute",
+        "intervalMinutes_other": "Every {{count}} minutes",
+        "intervalHours_one": "Every {{count}} hour",
+        "intervalHours_other": "Every {{count}} hours",
+        "intervalDays_one": "Every {{count}} day",
+        "intervalDays_other": "Every {{count}} days",
         "monthlyWeekday": "Selected weekday of each month at {{time}}"
       },
       "validation": {
@@ -235,10 +251,14 @@
         "runAtInvalid": "Run time does not exist in the selected timezone.",
         "runAtFuture": "Run time must be in the future.",
         "expressionInvalid": "Cron expression format is invalid.",
-        "interval": "Enter a positive number of minutes.",
+        "interval": "Enter a positive whole-number interval.",
+        "duplicateTime": "Each time can only be added once.",
+        "weekdaysRequired": "Choose at least one execution day.",
         "projectUnavailable": "This workspace is unavailable. Select an existing project and try again."
       },
       "actions": {
+        "addTime": "Add time",
+        "removeTime": "Remove time {{number}}",
         "expandAdvanced": "Expand",
         "collapseAdvanced": "Collapse",
         "submit": "Create Task"
@@ -282,6 +302,16 @@
       "4": "Fourth",
       "-1": "Last"
     },
+    "authorization": {
+      "status": "Needs authorization",
+      "required": "{{tool}} requires authorization.",
+      "requiredGeneric": "A tool requires authorization.",
+      "denied": "Access to {{tool}} was denied.",
+      "deniedGeneric": "Access to a tool was denied.",
+      "inputRequired": "This task needs your input.",
+      "retry": "Open the task and choose Run Now to retry and respond.",
+      "reviewPermissions": "Review the task's execution permissions before running it again."
+    },
     "execution": {
       "title": "Execution and results",
       "notifications": "Task reminders",
@@ -290,15 +320,12 @@
       "failures": "Failures only",
       "advanced": "Advanced execution settings",
       "permissions": "Permissions",
-      "restricted": "Restricted by existing permission rules",
-      "readOnly": "Read only",
-      "fullAccess": "Full Access",
       "workspace": "Execution workspace",
       "local": "Project working directory",
       "worktree": "Isolated Git worktree from committed HEAD",
       "model": "Model",
       "defaultModel": "Use project default",
-      "permissionNotice": "Tasks cannot ask for approval while unattended. Actions outside the selected permissions need your attention.",
+      "permissionNotice": "Default Permissions waits for approval in the task conversation when a tool needs it.",
       "fullAccessNotice": "Full Access permits background file changes and commands without asking.",
       "worktreeNotice": "Requires Git. A dedicated worktree starts from committed HEAD and is reused by this task; local uncommitted changes are excluded.",
       "resultsNotice": "Every task has its own conversation. Recurring runs continue in the same task context. Results stay in Scheduled Tasks.",
@@ -379,13 +406,7 @@
       "openTask": "Open task",
       "everyMinute": "Every minute"
     },
-    "detailsFor": "View task details: {{name}}",
-    "reminders": {
-      "timing": "Reminder timing",
-      "auto": "Automatic",
-      "onDue": "At the scheduled time",
-      "onResult": "After execution"
-    }
+    "detailsFor": "View task details: {{name}}"
   },
   "sessionMissing": "This chat record no longer exists."
 }

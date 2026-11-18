@@ -46,9 +46,10 @@ export function conversationError(message: ChatMessage, t: TFunction) {
   const descriptorKey = typeof descriptor?.key === 'string' ? descriptor.key.replace(/^chat:/, '') : '';
   // These server messages are already concise. Model-request failures embed the
   // provider response and belong in the disclosure along with the raw details.
-  const concise = kind !== 'auth' && descriptorKey.startsWith('agentStatus.')
-    && !descriptorKey.startsWith('agentStatus.modelRequestFailed.');
-  const title = concise ? translated(t, descriptor, t('conversationError.generic.title'))
+  const scheduledAuthorization = descriptorKey.startsWith('alwaysOn:cron.authorization.');
+  const concise = scheduledAuthorization || (kind !== 'auth' && descriptorKey.startsWith('agentStatus.')
+    && !descriptorKey.startsWith('agentStatus.modelRequestFailed.'));
+  const title = concise ? translated(t, descriptor, scheduledAuthorization ? raw : t('conversationError.generic.title'))
     : t(`conversationError.${kind}.title`);
   const hint = concise ? translated(t, message.userHintI18n, text(message.userHint)) || t(`conversationError.${kind}.hint`)
     : t(`conversationError.${kind}.hint`);

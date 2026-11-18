@@ -8,16 +8,10 @@ import { createCronManager, defaultCronConfig } from '../../src/cron/index.js';
 import { SessionConfigOverrides } from '../../src/always-on/runtime/SessionConfigOverrides.js';
 import { createModelRuntime, type CanonicalModelEvent, type CanonicalModelRequest } from '../../src/model/index.js';
 import { createProjectId } from '../../src/pilot/paths.js';
+import type { GatewayEvent } from '../../src/gateway/index.js';
+import { writePermissionSettings } from '../../src/permission/settings.js';
 
-test('task chat and scheduled execution share history and trusted workspace, with per-turn interaction capabilities', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'pilotdeck-task-dialog-'));
-  const project = join(home, 'project'), skills = join(home, 'skills');
-  await mkdir(project); await mkdir(skills);
-  const projectRecord = join(home, 'projects', createProjectId(project));
-  await mkdir(projectRecord, { recursive: true });
-  await writeFile(join(projectRecord, '.cwd'), project);
-  const configPath = join(home, 'pilotdeck.yaml');
-  await writeFile(configPath, `schemaVersion: 1
+const SYNTHETIC_CONFIG = `schemaVersion: 1
 agent: { model: test/model }
 model:
   providers:
@@ -31,12 +25,28 @@ extension:
 runtime: { python: { enabled: false } }
 memory: { enabled: false }
 telemetry: { enabled: false }
-`);
+`;
+
+async function syntheticProject(t: test.TestContext) {
+  const home = await mkdtemp(join(tmpdir(), 'pilotdeck-task-dialog-'));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const project = join(home, 'project'), skills = join(home, 'skills');
+  await mkdir(project); await mkdir(skills);
+  const projectRecord = join(home, 'projects', createProjectId(project));
+  await mkdir(projectRecord, { recursive: true });
+  const configPath = join(home, 'pilotdeck.yaml');
+  await writeFile(join(projectRecord, '.cwd'), project);
+  await writeFile(configPath, SYNTHETIC_CONFIG);
+  return { home, project, skills, env: { PILOT_HOME: home, PILOTDECK_CONFIG_PATH: configPath } };
+}
+
+test('task chat and scheduled execution share history and trusted workspace, with per-turn interaction capabilities', async (t) => {
+  const { home, project, skills, env } = await syntheticProject(t);
   const sessionOverrides = new SessionConfigOverrides();
   const cron = createCronManager({ config: defaultCronConfig(), pilotHome: home, sessionOverrides });
   const requests: CanonicalModelRequest[] = [];
   const local = createLocalGateway({ pilotHome: home, projectRoot: project, builtinSkillsRoot: skills,
-    env: { PILOT_HOME: home, PILOTDECK_CONFIG_PATH: configPath }, cron, sessionOverrides, extraTools: cron.getTools(),
+    env, cron, sessionOverrides, extraTools: cron.getTools(),
     __testModelFactory(snapshot) { return { ...createModelRuntime(snapshot.config.model),
       async *stream(request): AsyncIterable<CanonicalModelEvent> {
         requests.push(request);
@@ -72,11 +82,110 @@ telemetry: { enabled: false }
     assert.ok((await cron.listTasks({ taskId: task.taskId })).tasks[0].lastRun?.finishedAt);
     assert.equal(requests.length, 2);
     assert.ok(JSON.stringify(requests[1].messages).includes('Remember CONTEXT_TOKEN'));
-    assert.ok(!requests[1].tools?.some(tool => tool.name === 'ask_user_question'));
+    assert.ok(requests[1].tools?.some(tool => tool.name === 'ask_user_question'));
     const denied = [];
     for await (const event of local.gateway.submitTurn({ sessionKey: task.sessionKey, projectKey: join(home, 'other'),
       channelKey: 'web', message: 'Invalid owner' })) denied.push(event);
     assert.ok(denied.some(event => event.type === 'error'));
     assert.equal(requests.length, 2);
-  } finally { await cron.stop(); local.dispose(); await rm(home, { recursive: true, force: true }); }
+  } finally { await cron.stop(); local.dispose(); }
+});
+
+test('saved cron permissions control subagent approval for both scheduled and manual runs', async (t) => {
+  const { home, project, skills, env } = await syntheticProject(t);
+  const previousHome = process.env.PILOT_HOME;
+  process.env.PILOT_HOME = home;
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.PILOT_HOME;
+    else process.env.PILOT_HOME = previousHome;
+  });
+  writePermissionSettings({ askTools: ['synthetic_approval'] }, env);
+  const events: GatewayEvent[] = [];
+  let now = new Date();
+  let modelStep = 0;
+  let executed = 0;
+  const cron = createCronManager({
+    config: defaultCronConfig(), pilotHome: home, now: () => now,
+    onTurnEvent(_sessionKey, _channelKey, event) { events.push(event); },
+  });
+  const local = createLocalGateway({ pilotHome: home, projectRoot: project, builtinSkillsRoot: skills, env, cron,
+    extraTools: [{
+      name: 'synthetic_approval', kind: 'custom', description: 'Return a synthetic result after approval.',
+      inputSchema: { type: 'object', properties: {} },
+      isReadOnly: () => false, isConcurrencySafe: () => true,
+      async execute() { executed++; return { content: [{ type: 'text', text: 'Approved synthetic result' }] }; },
+    }],
+    __testModelFactory(snapshot) { return { ...createModelRuntime(snapshot.config.model),
+      async *stream(): AsyncIterable<CanonicalModelEvent> {
+        const step = modelStep++;
+        yield { type: 'message_start', role: 'assistant' };
+        if (step === 0 || step === 1) {
+          const input = step === 0 ? { description: 'Get synthetic result', prompt: 'Call synthetic_approval for the requested result.' } : {};
+          const name = step === 0 ? 'agent' : 'synthetic_approval';
+          const id = `call-${step}`;
+          yield { type: 'tool_call_start', id, name };
+          yield { type: 'tool_call_end', toolCall: { id, name, input } };
+          yield { type: 'message_end', finishReason: 'tool_call' };
+          return;
+        }
+        yield { type: 'text_delta', text: 'Synthetic result delivered' };
+        yield { type: 'message_end', finishReason: 'stop' };
+      },
+    }; },
+  });
+  const until = async (condition: () => boolean) => {
+    const deadline = Date.now() + 5_000;
+    while (!condition()) {
+      assert.ok(Date.now() < deadline, JSON.stringify(events.map(event => event.type === 'agent_status' ? event.event : event.type)));
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  };
+  cron.bindGateway(local.gateway);
+  try {
+    for (const mode of ['default', 'bypassPermissions'] as const) {
+      for (const trigger of ['scheduled', 'manual'] as const) {
+        events.length = 0;
+        modelStep = 0;
+        executed = 0;
+        const runAt = new Date(now.getTime() + (trigger === 'scheduled' ? 60_000 : 86_400_000)).toISOString();
+        const { task } = await cron.createTask({
+          name: `Synthetic ${mode} ${trigger}`, message: 'Get the synthetic result', projectKey: project, mode,
+          schedule: { type: 'once', runAt },
+        });
+        if (trigger === 'scheduled') {
+          now = new Date(runAt);
+          await cron.runTickOnce(project);
+        } else {
+          assert.equal((await local.gateway.cronRunNow({ taskId: task.taskId })).started, true);
+        }
+        const settled = () => events.some(event => event.type === 'agent_status' && event.event === 'cron_settled');
+        await until(() => settled() || events.some(event => event.type === 'permission_request'));
+        const request = events.find(event => event.type === 'permission_request');
+        if (mode === 'default') {
+          assert.equal(request?.toolName, 'synthetic_approval');
+          const waiting = (await cron.listTasks({ taskId: task.taskId })).tasks[0];
+          assert.equal(waiting.status, 'running');
+          assert.equal(waiting.lastRun?.finishedAt, undefined);
+          assert.equal(executed, 0);
+          const history = await local.gateway.readSessionMessages({ sessionKey: task.sessionKey, projectKey: project });
+          assert.equal(history.stream?.runId, waiting.lastRun?.runId);
+          assert.ok(history.stream?.events.some(event => event.type === 'permission_request' && event.requestId === request.requestId));
+          assert.equal(modelStep, 2);
+          assert.deepEqual(await local.gateway.permissionDecide({
+            sessionKey: task.sessionKey, requestId: request.requestId, decision: 'allow',
+          }), { delivered: true });
+          await until(settled);
+          assert.equal((await cron.listTasks({ taskId: task.taskId })).tasks[0].lastRun?.runId, waiting.lastRun?.runId);
+        } else {
+          assert.equal(request, undefined);
+        }
+        const { recentRuns } = await cron.listTasks({ taskId: task.taskId, includeHistory: true });
+        assert.equal(recentRuns?.length, 1);
+        assert.equal(recentRuns[0].trigger, trigger);
+        assert.equal(recentRuns[0].outcome, 'completed');
+        assert.equal(recentRuns[0].output, 'Synthetic result delivered');
+        assert.equal(executed, 1);
+      }
+    }
+  } finally { await cron.stop(); local.dispose(); }
 });

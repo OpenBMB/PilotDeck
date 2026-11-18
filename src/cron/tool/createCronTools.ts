@@ -3,7 +3,7 @@ import { createCronCreateTool } from "./CronCreateTool.js";
 import { createCronListTool } from "./CronListTool.js";
 import { createCronDeleteTool } from "./CronDeleteTool.js";
 import { createCronStopTool } from "./CronStopTool.js";
-import { CRON_SCHEDULE_SCHEMA } from "./CronSchemas.js";
+import { CRON_UPDATE_SCHEDULE_SCHEMA } from "./CronSchemas.js";
 import type { CronToolRuntime } from "./CronToolRuntime.js";
 import type { CronUpdateInput, CronListInput, CronRunNowInput } from "../protocol/types.js";
 import { previewCronSchedule } from "../runtime/CronSchedule.js";
@@ -26,13 +26,14 @@ export function createCronTools(runtime: CronToolRuntime): PilotDeckToolDefiniti
     },
   }, {
     name: "cron_update", title: "Update Scheduled Task", kind: "session",
-    description: "Edit a task using the revision from cron_get. Omitted fields remain unchanged. enabled=false pauses future occurrences; enabled=true resumes. Stopping a running execution is separate (cron_stop). Finished one-time tasks need a new future schedule to resume; use cron_run_now to retry immediately.",
+    description: "Edit a task using the revision from cron_get. Omit schedule to keep its current rule, including an existing monthly weekday rule. enabled=false pauses future occurrences; enabled=true resumes. Use cron_stop to stop the current run. A finished one-time task needs a new future schedule to resume; use cron_run_now to retry immediately.",
     inputSchema: { type: "object", required: ["taskId", "expectedRevision"], additionalProperties: false, properties: {
       ...identity, expectedRevision: { type: "integer", minimum: 0 }, name: { type: "string", minLength: 1, maxLength: 120 },
-      message: { type: "string", minLength: 1 }, schedule: CRON_SCHEDULE_SCHEMA, timezone: { type: "string" }, enabled: { type: "boolean" },
-      reminderTiming: { type: "string", enum: ["due", "result"], description: "due for meeting or event reminders that must alert at the scheduled time; result for research/work notifications after execution." },
+      message: { type: "string", minLength: 1 }, schedule: CRON_UPDATE_SCHEDULE_SCHEMA, timezone: { type: "string" }, enabled: { type: "boolean" },
       notificationPolicy: { type: "string", enum: ["all", "findings", "failures"] },
-      mode: { type: "string", enum: ["default", "plan", "bypassPermissions"] }, workspaceMode: { type: "string", enum: ["local", "worktree"] },
+      mode: { type: "string", enum: ["default", "bypassPermissions"],
+        description: "Change task permissions only when the user requests it. Full Access requires an explicit request." },
+      workspaceMode: { type: "string", enum: ["local", "worktree"] },
       modelSelection: { anyOf: [{ type: "null" }, { type: "object", required: ["provider", "model"], additionalProperties: false,
         properties: { provider: { type: "string" }, model: { type: "string" } } }] },
     } },
@@ -50,7 +51,7 @@ export function createCronTools(runtime: CronToolRuntime): PilotDeckToolDefiniti
     },
   }, {
     name: "cron_run_now", title: "Run Scheduled Task", kind: "session",
-    description: "Start one execution under the existing task ID. Keeps its normal schedule and history together, and also works for paused or finished tasks. Refuses overlapping executions. Results remain in the dedicated task conversation.",
+    description: "Start one execution under the existing task ID, including paused or finished tasks. Keeps the schedule and saved permissions. Refuses overlapping executions. Approvals and results appear in the dedicated task conversation.",
     inputSchema: { type: "object", required: ["taskId"], additionalProperties: false,
       properties: { ...identity } },
     isReadOnly: () => false, isConcurrencySafe: () => false,

@@ -1,9 +1,8 @@
 import type { Gateway, GatewayEvent } from "../../gateway/index.js";
-import type { CronResultDeliveryHandler, CronRunRecord, CronRunOutcome, CronTask } from "../protocol/types.js";
+import type { CronReminder, CronResultDeliveryHandler, CronRunError, CronRunRecord, CronRunOutcome, CronTask } from "../protocol/types.js";
 import type { CronTaskStore } from "../storage/CronTaskStore.js";
 import { computeNextRunAt, CRON_SCHEDULE_COMPUTATION_VERSION } from "./CronSchedule.js";
 import { taskReminder } from "../storage/CronReminderStore.js";
-import type { CronReminder } from "../protocol/types.js";
 import { createVisibleErrorStatusDetail } from "../../status/agentStatus.js";
 
 export type CronActiveRun = {
@@ -84,6 +83,7 @@ export class CronFire {
     let artifacts: CronRunRecord["artifacts"] = [];
     let outcome: CronRunOutcome = "completed";
     let error: CronRunRecord["error"];
+    let finishReason: string | undefined;
     let workspaceCwd = task.workspaceCwd ?? task.projectKey;
     const record = (): CronRunRecord => ({
       schemaVersion: 1, runId, taskId: task.taskId, sessionKey, projectKey: task.projectKey,
@@ -123,12 +123,17 @@ export class CronFire {
       // Preparation and workspace persistence can yield to a successful stop.
       // Keep this check adjacent to submission, with no intervening await.
       if (active.stopRequested) return;
+      const mode = task.mode ?? "default";
+      const canPrompt = mode === "default";
+      const syntheticMessages = task.notificationPolicy === "findings" ? [{
+        purpose: "scheduled_task_result_policy",
+        text: "If there are no new findings or actions to report, reply with exactly [NO_UPDATE].",
+      }] : [];
       for await (const event of this.deps.gateway.submitTurn({
         sessionKey, channelKey: "cron",
-        projectKey: task.projectKey, workspaceCwd, message: task.message, mode: task.mode ?? "default",
-        canPrompt: false, allowPlanModeTools: false, runId, timeoutMs: this.deps.runTimeoutMs,
-        ...(task.notificationPolicy === "findings" ? { syntheticMessages: [{ purpose: "scheduled_task_result_policy",
-          text: "If there are no new findings or actions to report, reply with exactly [NO_UPDATE]." }] } : {}),
+        projectKey: task.projectKey, workspaceCwd, message: task.message, mode,
+        canPrompt, allowPlanModeTools: false, runId, timeoutMs: this.deps.runTimeoutMs,
+        syntheticMessages,
         ...(task.modelSelection ? { modelOverride: { mode: "model", ...task.modelSelection } } : {}),
       })) {
         // A user can win admission between the status read and the task claim.
@@ -140,23 +145,29 @@ export class CronFire {
         }
         await beginExecution();
         await this.deps.store.appendRunEvent(runId, event);
-        try { this.deps.onTurnEvent?.(sessionKey, "cron", event); }
-        catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
+        const unavailableInteraction = !canPrompt && (event.type === "permission_request" || event.type === "elicitation_request");
+        if (!unavailableInteraction) {
+          try { this.deps.onTurnEvent?.(sessionKey, "cron", event); }
+          catch (caught) { this.warn("cron turn event delivery failed", caught, task.taskId, runId); }
+        }
         if (event.type === "assistant_text_delta") output += event.text;
         if (event.type === "file_artifacts") artifacts = [...artifacts, ...event.artifacts].slice(-100);
-        if (event.type === "tool_call_finished" && !event.ok && /permission[_ ](?:required|denied)|cannot prompt/i.test(event.resultPreview ?? "")) {
+        if (event.type === "turn_completed") finishReason = event.finishReason;
+        if (unavailableInteraction) {
           outcome = "blocked";
-          error = { code: "cron_permission_required", message: "This task needs additional permission. Review its permission setting and retry." };
-        }
-        if (event.type === "permission_request" || event.type === "elicitation_request") {
-          outcome = "blocked";
-          error = { code: "cron_interaction_required", message: "This task needs input or permission. Update its settings and retry." };
+          error = event.type === "permission_request"
+            ? { code: "cron_permission_required", message: `Authorization is required for ${event.toolName}.`, toolName: event.toolName }
+            : { code: "cron_interaction_required", message: "This task needs your input." };
           void this.deps.gateway.abortTurn({ sessionKey, runId, reason: "system:interaction_required" }).catch(() => undefined);
         }
         if (event.type === "error" && outcome !== "blocked") {
           outcome = event.code === "agent_aborted" ? "aborted" : "failed";
           error = { code: event.code === "turn_timeout" ? "cron_run_timeout" : event.code ?? "cron_run_failed", message: event.message };
         }
+      }
+      if (outcome === "completed" && finishReason === "system_aborted") {
+        outcome = "failed";
+        error = { code: "cron_system_aborted", message: "The system interrupted this task." };
       }
     } catch (caught) {
       outcome = "failed";
@@ -186,6 +197,7 @@ export class CronFire {
             catch (caught) { this.warn("cron preparation error delivery failed", caught, task.taskId, runId); }
           }
           if (active.stopRequested) outcome = "stopped";
+          if (outcome === "blocked" && error) await this.recordBlockedStatus(task, runId, error);
           const finishedAt = this.deps.now();
           let terminal: CronRunRecord = { ...record(), finishedAt: finishedAt.toISOString(), outcome,
             output: output.trim().slice(-100_000), artifacts, error, deliveryStatus: "pending" };
@@ -195,7 +207,7 @@ export class CronFire {
           terminal = await this.deliverResult(task, terminal);
           await this.deps.store.appendRun(terminal).catch((caught) => this.warn("cron delivery record write failed", caught, task.taskId, runId));
           await this.finishTask(task, snapshot, terminal, trigger).catch((caught) => this.warn("cron task post-run update failed", caught, task.taskId, runId));
-          if ((task.reminderTiming !== "due" || outcome !== "completed") && outcome !== "stopped" && outcome !== "aborted"
+          if (outcome !== "stopped" && outcome !== "aborted"
             && (outcome !== "completed" || task.notificationPolicy !== "failures")
             && !(outcome === "completed" && task.notificationPolicy === "findings" && output.trim() === "[NO_UPDATE]")) {
             await this.deps.onReminder?.(taskReminder(task, outcome === "completed" ? "completed" : "failed", finishedAt.toISOString(), terminal))
@@ -219,6 +231,36 @@ export class CronFire {
   async deliverResult(task: CronTask, run: CronRunRecord): Promise<CronRunRecord> {
     // Results belong to the task transcript. Never append them to a source chat.
     return { ...run, deliveryStatus: "skipped", deliveryError: undefined };
+  }
+
+  private async recordBlockedStatus(task: CronTask, runId: string, error: CronRunError): Promise<void> {
+    const messageKey = error.code === "cron_interaction_required" ? "inputRequired"
+      : error.code === "cron_permission_required" ? "required" : "denied";
+    const hasTool = !!error.toolName || messageKey === "inputRequired";
+    const status = {
+      event: "cron_blocked",
+      kind: "error" as const,
+      text: error.message,
+      detail: createVisibleErrorStatusDetail({
+        message: error.message,
+        messageI18n: {
+          key: `alwaysOn:cron.authorization.${messageKey}${hasTool ? "" : "Generic"}`,
+          params: error.toolName ? { tool: error.toolName } : undefined,
+        },
+        code: error.code,
+        userHint: "Review the task's execution permissions before running it again.",
+        userHintI18n: { key: "alwaysOn:cron.authorization.reviewPermissions" },
+        scope: "turn",
+        source: "gateway",
+      }),
+    };
+    await this.deps.gateway.recordAgentStatusMessage?.({ sessionKey: task.sessionKey, projectKey: task.projectKey, turnId: runId, status })
+      .catch(caught => this.warn("cron blocked status persistence failed", caught, task.taskId, runId));
+    const event: GatewayEvent = { type: "agent_status", event: status.event, detail: status.detail, runId };
+    await this.deps.store.appendRunEvent(runId, event)
+      .catch(caught => this.warn("cron blocked event persistence failed", caught, task.taskId, runId));
+    try { this.deps.onTurnEvent?.(task.sessionKey, "cron", event); }
+    catch (caught) { this.warn("cron blocked status delivery failed", caught, task.taskId, runId); }
   }
 
   private async finishTask(task: CronTask, snapshot: CronTask, run: CronRunRecord, trigger: "scheduled" | "manual"): Promise<void> {
