@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Code2, Globe2, Pencil, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../../../../lib/utils";
@@ -5,6 +6,7 @@ import type { McpServerForm } from "../types/mcp";
 import { Field, KeyValueEditor, StringListEditor } from "./FormEditors";
 
 type McpServerFormCardProps = {
+  oauthControls?: ReactNode;
   server: McpServerForm;
   editing: boolean;
   saving?: boolean;
@@ -17,6 +19,7 @@ type McpServerFormCardProps = {
 
 export default function McpServerFormCard({
   server,
+  oauthControls,
   editing,
   saving = false,
   onChange,
@@ -150,9 +153,10 @@ export default function McpServerFormCard({
                 value={server.url}
                 onChange={(event) => onChange({ url: event.target.value })}
                 placeholder="https://example.com/mcp"
-                disabled={!editing}
+                disabled={!editing || Boolean(server.oauth)}
               />
             </Field>
+            {!editing && oauthControls}
             <KeyValueEditor
               label={t("mcpConfig.fields.headers")}
               rows={server.headers}
