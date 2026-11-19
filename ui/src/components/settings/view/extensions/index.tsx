@@ -16,6 +16,7 @@ import { authenticatedFetch } from "../../../../utils/api";
 import { cn } from "../../../../lib/utils";
 import type { SettingsProject } from "../../shared/types";
 import { showSettingsSuccess } from "../../shared/SettingsSuccessToast";
+import McpOAuthControls from "./components/McpOAuthControls";
 import McpServerFormCard from "./components/McpServerFormCard";
 import AdvancedJsonEditor, {
   McpCodeIcon,
@@ -430,6 +431,17 @@ export default function McpServersSection({
     );
   };
 
+  const addQccPreset = async () => {
+    setSavingScope('global'); setError(null);
+    try {
+      const response = await authenticatedFetch('/api/mcp/oauth/qcc-preset', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      await load();
+    } catch (err) { setError((err as Error).message); }
+    finally { setSavingScope(null); }
+  };
+
   const renderDetail = (scope: Scope) => {
     if (parseErrors[scope]) {
       return (
@@ -469,6 +481,7 @@ export default function McpServersSection({
     return (
       <McpServerFormCard
         server={server}
+        oauthControls={<McpOAuthControls key={`${scope}:${server.name}`} scope={scope} name={server.name} projectPath={projectPath || undefined} onComplete={() => void load()} />}
         editing={editingIds[scope] === server.id}
         saving={savingScope === scope}
         onChange={(patch) => updateServer(scope, server.id, patch)}
@@ -500,6 +513,10 @@ export default function McpServersSection({
                 <span>{t("mcpConfig.globalLocation")}</span>
               </p>
             </div>
+            <button className="button secondary compact" type="button" onClick={() => void addQccPreset()}
+              disabled={Boolean(savingScope) || Boolean(editingIds.global)}>
+              {t('mcpOAuth.addQcc')}
+            </button>
             <span className="mcp-config-count">
               {t("mcpConfig.serverUnit", { count: serverDrafts.global.length })}
             </span>
