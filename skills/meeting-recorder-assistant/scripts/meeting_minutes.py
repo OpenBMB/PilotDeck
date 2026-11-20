@@ -173,7 +173,6 @@ def extract_next_meeting(text: str) -> Optional[str]:
     date_patterns = [
         r'下次会议[：:]\s*([^\n]+)',
         r'next meeting[：:]\s*([^\n]+)',
-        r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
     ]
     
     for pattern in date_patterns:
