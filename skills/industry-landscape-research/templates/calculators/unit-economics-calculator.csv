@@ -1,0 +1,26 @@
+Section,Field,Value,Formula,Healthy Threshold,Notes
+INPUTS,ARPU (月均),100,manual,行业相关,客单月均收入（USD）
+INPUTS,Gross Margin %,75%,manual,SaaS ≥70%,毛利率
+INPUTS,Monthly Churn %,2.5%,manual,SaaS <3%,月流失率
+INPUTS,New Customers (Q),200,manual,N/A,本季度新增客户数
+INPUTS,S&M Spend (Q),300000,manual,N/A,本季度销售营销支出
+INPUTS,Beginning ARR,3000000,manual,N/A,期初 ARR
+INPUTS,Ending ARR,3800000,manual,N/A,期末 ARR
+INPUTS,Churned ARR,150000,manual,N/A,本期流失 ARR
+INPUTS,Net Loss,500000,manual,N/A,净亏损（绝对额）
+INPUTS,EBITDA Margin %,-15%,manual,Rule of 40 用,EBITDA 利润率
+INPUTS,Revenue Growth YoY %,60%,manual,Rule of 40 用,营收同比增速
+CALCULATED,LTV,3000,= ARPU × Margin / Churn,SaaS ≥ 3 × CAC,客户终身价值
+CALCULATED,CAC,1500,= S&M / New Customers,SaaS $1000-3000,获客成本
+CALCULATED,LTV/CAC ratio,2.0,= LTV / CAC,≥ 3 健康,长期效率
+CALCULATED,CAC Payback (月),20,= CAC / (ARPU × Margin),≤18 个月,回本期
+CALCULATED,Magic Number,1.07,= (Ending ARR - Beginning ARR) / S&M,≥1 健康,投入产出
+CALCULATED,NRR (近似),121.7%,= (Ending - Churned - Downgrade) / Beginning,≥110% 强,净留存
+CALCULATED,GRR (近似),95.0%,= (Ending - Churned) / Beginning,≥90%,总留存
+CALCULATED,Rule of 40,45%,= Growth + EBITDA,≥40%,综合健康
+CALCULATED,Burn Multiple,0.63,= Net Loss / (Ending ARR - Beginning ARR),<1.5 健康,烧钱效率
+VERDICT,Overall Health,Healthy,manual judgment based on above,N/A,综合判断
+PRESET,SaaS Vertical,---,Use rows 2-12,LTV/CAC≥3 NRR≥110%,Vertical SaaS 用此预设
+PRESET,Marketplace,---,Replace ARPU with AOV × Frequency,Take Rate 6-15%,Marketplace 用此预设
+PRESET,Consumer App,---,Replace ARPU with ARPPU/ARPDAU,Retention D30 ≥20%,Consumer 用
+PRESET,DeepTech,---,Replace LTV with Contract value,Capital Efficiency,DeepTech 长周期
