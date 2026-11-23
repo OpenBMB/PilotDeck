@@ -37,6 +37,7 @@
     "postbuild": "node scripts/write-web-build-metadata.mjs dist"
   },
   "devDependencies": {
+    "@pilotdeck/native-sandbox": "workspace:*",
     "@types/node": "^25.0.0",
     "@types/ws": "^8.18.1",
     "ink-testing-library": "^4.0.0",
@@ -45,7 +46,6 @@
   },
   "dependencies": {
     "@pilotdeck/config": "workspace:*",
-    "@pilotdeck/native-sandbox": "workspace:*",
     "@google/genai": "^2.10.0",
     "@larksuiteoapi/node-sdk": "^1.65.0",
     "@modelcontextprotocol/sdk": "^1.29.0",

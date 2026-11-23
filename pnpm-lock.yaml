@@ -20,9 +20,6 @@ importers:
       '@pilotdeck/config':
         specifier: workspace:*
         version: link:packages/config
-      '@pilotdeck/native-sandbox':
-        specifier: workspace:*
-        version: link:packages/native-sandbox
       '@playwright/mcp':
         specifier: 0.0.75
         version: 0.0.75
@@ -96,6 +93,9 @@ importers:
         specifier: ^2.8.4
         version: 2.9.0
     devDependencies:
+      '@pilotdeck/native-sandbox':
+        specifier: workspace:*
+        version: link:packages/native-sandbox
       '@types/node':
         specifier: ^25.0.0
         version: 25.9.1
