@@ -17,10 +17,10 @@ export function getTokenizer(): Tiktoken {
 
 function cacheKeyFor(text: string): string {
   if (text.length <= SHORT_TEXT_KEY_LIMIT) {
-    return text;
+    return `s:${text}`;
   }
   const digest = createHash("sha256").update(text).digest("base64url");
-  return `${text.length}:${digest}`;
+  return `l:${text.length}:${digest}`;
 }
 
 /**

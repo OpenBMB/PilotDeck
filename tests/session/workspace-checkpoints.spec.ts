@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { WorkspaceCheckpoints, CheckpointStore, getCheckpointStore } from "../../src/session/checkpoints/WorkspaceCheckpoints.js";
+import { getCheckpointWorkerPool, resolveCheckpointObjectPath } from "../../src/session/checkpoints/checkpointWorkerPool.js";
 import type { Checkpoint, RestoreOperation } from "../../src/session/checkpoints/types.js";
 import { createBashTool } from "../../src/tool/builtin/bash.js";
 
@@ -417,4 +418,13 @@ test("worker pool capture handles larger workspaces and preserves exact file con
   if (binaryEntry?.kind === "file") {
     assert.equal(binaryEntry.binary, true);
   }
+
+  const mainThreadVersion = await f.store.captureFile("src/file-0.txt");
+  const workerVersion = await getCheckpointWorkerPool().captureFile({
+    target: f.file("src/file-0.txt"),
+    objectsDir: resolveCheckpointObjectPath(f.store.directory),
+    maxFileBytes: 10 * 1024 * 1024,
+    save: true,
+  });
+  assert.deepEqual(workerVersion, mainThreadVersion);
 });

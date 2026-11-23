@@ -79,3 +79,58 @@ test("SandboxedCommandRunner falls back gracefully when backend is unsupported o
   }
 });
 
+test("SandboxedCommandRunner state machine handles mock native binding streaming, abort, and errors", async () => {
+  let killedId = 0;
+  const runner = new SandboxedCommandRunner({
+    binding: {
+      sandboxBackend: () => "windows-job",
+      startSandboxed(_opts, onEvent) {
+        queueMicrotask(() => {
+          onEvent(null, { kind: "stdout", data: Buffer.from("out-1") });
+          onEvent(null, { kind: "stderr", data: Buffer.from("err-1") });
+          onEvent(null, { kind: "exit", exitCode: 0 });
+        });
+        return 42;
+      },
+      killSandboxed(id) {
+        killedId = id;
+        return true;
+      },
+    },
+  });
+
+  const out: string[] = [];
+  const res = await runner.run("echo test", {
+    cwd: process.cwd(),
+    timeoutMs: 5000,
+    onStdout: (c) => out.push(c),
+  });
+  assert.equal(res.exitCode, 0);
+  assert.equal(res.stdout, "out-1");
+  assert.equal(res.stderr, "err-1");
+  assert.deepEqual(out, ["out-1"]);
+
+  const controller = new AbortController();
+  const abortRunner = new SandboxedCommandRunner({
+    binding: {
+      sandboxBackend: () => "windows-job",
+      startSandboxed(_opts, onEvent) {
+        setTimeout(() => onEvent(null, { kind: "exit", exitCode: null }), 10);
+        return 99;
+      },
+      killSandboxed(id) {
+        killedId = id;
+        return true;
+      },
+    },
+  });
+  const abortPromise = abortRunner.run("sleep", {
+    cwd: process.cwd(),
+    timeoutMs: 5000,
+    signal: controller.signal,
+  });
+  controller.abort();
+  await abortPromise;
+  assert.equal(killedId, 99);
+});
+

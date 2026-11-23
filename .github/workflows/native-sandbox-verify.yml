@@ -12,6 +12,14 @@ on:
       - "src/cli/createLocalGateway.ts"
       - "tests/tool/sandboxed-command-runner.spec.ts"
       - "tests/context/tokenizer.spec.ts"
+      - "tests/context/token-budget-manager.spec.ts"
+      - "tests/context/token-accounting-runtime.spec.ts"
+      - "tests/session/workspace-checkpoints.spec.ts"
+      - "tests/runtime/python-runtime.spec.ts"
+      - "tests/cli/createLocalGateway.test.ts"
+      - "tests/gateway/python-reload.spec.ts"
+      - "tests/tool/sandboxed-command-runner.spec.ts"
+      - "tests/context/tokenizer.spec.ts"
       - "tests/session/workspace-checkpoints.spec.ts"
   push:
     branches: [main]
@@ -22,6 +30,14 @@ on:
       - "src/session/checkpoints/**"
       - "src/context/budget/**"
       - "src/cli/createLocalGateway.ts"
+      - "tests/tool/sandboxed-command-runner.spec.ts"
+      - "tests/context/tokenizer.spec.ts"
+      - "tests/context/token-budget-manager.spec.ts"
+      - "tests/context/token-accounting-runtime.spec.ts"
+      - "tests/session/workspace-checkpoints.spec.ts"
+      - "tests/runtime/python-runtime.spec.ts"
+      - "tests/cli/createLocalGateway.test.ts"
+      - "tests/gateway/python-reload.spec.ts"
 
 permissions:
   contents: read

@@ -29,4 +29,9 @@ test("token counting cache returns identical counts for repeated short and long 
   const secondLong = countTokens(longText);
   assert.equal(firstLong, secondLong);
   assert.ok(firstLong > firstShort);
+
+  const exact256 = "a".repeat(256);
+  const exact257 = "a".repeat(257);
+  assert.equal(countTokens(exact256), countTokens(exact256));
+  assert.equal(countTokens(exact257), countTokens(exact257));
 });

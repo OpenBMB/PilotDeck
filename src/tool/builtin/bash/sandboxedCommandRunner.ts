@@ -64,6 +64,8 @@ export function isNativeSandboxAvailable(): boolean {
 export type SandboxedCommandRunnerOptions = {
   allowNetwork?: boolean;
   fallbackRunner?: PilotDeckCommandRunner;
+  /** @internal Testing seam to inject a mock native binding. */
+  binding?: NativeSandboxBinding | null;
 };
 
 const ABORT_FORCE_RESOLVE_MS = 15_000;
@@ -71,14 +73,16 @@ const ABORT_FORCE_RESOLVE_MS = 15_000;
 export class SandboxedCommandRunner implements PilotDeckCommandRunner {
   private readonly fallback: PilotDeckCommandRunner;
   private readonly allowNetwork: boolean;
+  private readonly injectedBinding?: NativeSandboxBinding | null;
 
   constructor(options: SandboxedCommandRunnerOptions = {}) {
     this.allowNetwork = options.allowNetwork ?? false;
     this.fallback = options.fallbackRunner ?? new NodeShellCommandRunner();
+    this.injectedBinding = options.binding;
   }
 
   run(command: string, options: PilotDeckCommandOptions): Promise<PilotDeckCommandResult> {
-    const binding = loadNativeSandbox();
+    const binding = this.injectedBinding !== undefined ? this.injectedBinding : loadNativeSandbox();
     if (!binding || binding.sandboxBackend() === "unsupported") {
       return this.fallback.run(command, options);
     }
@@ -87,8 +91,8 @@ export class SandboxedCommandRunner implements PilotDeckCommandRunner {
     const shell = resolveDefaultCommandShell({ env: options.env });
     const env = options.env
       ? Object.fromEntries(
-          Object.entries(options.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-        )
+        Object.entries(options.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+      )
       : undefined;
 
     return new Promise((resolve, reject) => {

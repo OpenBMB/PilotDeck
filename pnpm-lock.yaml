@@ -20,6 +20,9 @@ importers:
       '@pilotdeck/config':
         specifier: workspace:*
         version: link:packages/config
+      '@pilotdeck/native-sandbox':
+        specifier: workspace:*
+        version: link:packages/native-sandbox
       '@playwright/mcp':
         specifier: 0.0.75
         version: 0.0.75
@@ -132,6 +135,8 @@ importers:
         version: 5.9.3
 
   packages/config: {}
+
+  packages/native-sandbox: {}
 
   ui:
     dependencies:

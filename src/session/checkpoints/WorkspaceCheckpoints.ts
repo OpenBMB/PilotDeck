@@ -289,16 +289,22 @@ export class CheckpointStore {
         const batch = candidates.slice(offset, offset + BATCH_SIZE);
         if (bytes >= MAX_WORKSPACE_BYTES) {
           for (const { relative, target } of batch) {
-            const info = await fs.lstat(target);
-            files[relative] = { kind: "unprotected", reason: "Workspace exceeds the 256 MB checkpoint budget.", fingerprint: digest(Buffer.from(JSON.stringify([info.dev, info.ino, info.mode, info.size, info.mtimeMs, info.ctimeMs]))) };
+            try {
+              const info = await fs.lstat(target);
+              files[relative] = { kind: "unprotected", reason: "Workspace exceeds the 256 MB checkpoint budget.", fingerprint: digest(Buffer.from(JSON.stringify([info.dev, info.ino, info.mode, info.size, info.mtimeMs, info.ctimeMs]))) };
+            } catch (error) {
+              if (!hasCode(error, "ENOENT")) {
+                files[relative] = { kind: "unprotected", reason: error instanceof Error ? error.message : "Cannot capture file." };
+              }
+            }
           }
           continue;
         }
-        const results = await Promise.all(batch.map(async ({ relative, target }) => {
+        const results = await Promise.all(batch.map(async ({ relative }) => {
           try {
-            await this.resolveFile(relative);
+            const resolvedTarget = await this.resolveFile(relative);
             const version = await pool.captureFile({
-              target,
+              target: resolvedTarget,
               objectsDir,
               maxFileBytes: MAX_FILE_BYTES,
               save: true,

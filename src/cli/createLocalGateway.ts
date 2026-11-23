@@ -102,7 +102,7 @@ import {
 import { createRegisteredWebProjectResolver, describeWebProject, listRegisteredWebProjects, listWebProjects } from "../web/server/listProjects.js";
 import { BackgroundTaskRuntime, type BackgroundTaskCompletionEvent } from "../task/runtime/BackgroundTaskRuntime.js";
 import { createBuiltinRegistry, createPlanFileManager, filterAvailableTools } from "../tool/index.js";
-import { SandboxedCommandRunner } from "../tool/builtin/bash/sandboxedCommandRunner.js";
+import { SandboxedCommandRunner, getSandboxBackend, isNativeSandboxAvailable } from "../tool/builtin/bash/sandboxedCommandRunner.js";
 import type {
   PilotDeckElicitationChannel,
   PilotDeckToolDefinition,
@@ -1119,7 +1119,17 @@ class ProjectRuntimeRegistry {
       },
       backgroundTasks: { runtime: backgroundTasks },
       ...(this.options.env.PILOTDECK_SANDBOX === "1"
-        ? { bash: { runner: new SandboxedCommandRunner() } }
+        ? (() => {
+            if (!isNativeSandboxAvailable()) {
+              // eslint-disable-next-line no-console
+              console.warn(
+                `[pilotdeck] PILOTDECK_SANDBOX=1 requested, but native sandbox backend is '${getSandboxBackend()}'; ` +
+                  `foreground bash will fall back to unsandboxed NodeShellCommandRunner.`,
+              );
+            }
+            // Note: Covers foreground `bash` tool only (Windows backend provides Job Object process-tree containment).
+            return { bash: { runner: new SandboxedCommandRunner() } };
+          })()
         : {}),
       readSkill: {
         loader: (name) => pluginRuntime.loadSkillPrompt(name),
@@ -1232,27 +1242,37 @@ class ProjectRuntimeRegistry {
     if (this.disposed || this.options.env.PILOTDECK_DISABLE_PREWARM === "1") {
       return;
     }
+    runtime.users++;
     setImmediate(() => {
-      if (this.disposed) return;
+      if (this.disposed) {
+        runtime.users--;
+        this.collectRetired();
+        return;
+      }
       void (async () => {
         try {
-          runtime.python ??= await this.python.resolve(
-            runtime.snapshot.config.runtime?.python.enabled ?? true,
-          );
-        } catch {
-          // Python initialization errors are handled via PythonRuntimeManager.
-        }
-        if (this.disposed) return;
-        try {
-          await runtime.pluginRuntime.refresh();
-          if (this.disposed) return;
-          await this.ensureMcpReady(runtime);
-        } catch {
-          // MCP startup errors are already logged inside ensureMcpReady.
-        } finally {
-          if (this.disposed) {
-            runtime.mcpRuntime?.stop().catch(() => { });
+          try {
+            runtime.python ??= await this.python.resolve(
+              runtime.snapshot.config.runtime?.python.enabled ?? true,
+            );
+          } catch {
+            // Python initialization errors are handled via PythonRuntimeManager.
           }
+          if (this.disposed) return;
+          try {
+            await runtime.pluginRuntime.refresh();
+            if (this.disposed) return;
+            await this.ensureMcpReady(runtime);
+          } catch {
+            // MCP startup errors are already logged inside ensureMcpReady.
+          } finally {
+            if (this.disposed) {
+              runtime.mcpRuntime?.stop().catch(() => { });
+            }
+          }
+        } finally {
+          runtime.users--;
+          this.collectRetired();
         }
       })();
     }).unref();

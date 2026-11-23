@@ -35,7 +35,12 @@ async function putObjectIfMissing(objectsDir, content) {
   const hash = digest(content);
   const destination = path.join(objectsDir, hash);
   try {
-    await fs.access(destination);
+    const existing = await fs.readFile(destination);
+    if (digest(existing) !== hash) {
+      const err = new Error("Checkpoint content is missing or corrupt.");
+      err.code = "CORRUPT_BACKUP";
+      throw err;
+    }
     return hash;
   } catch (error) {
     if (!hasCode(error, "ENOENT")) throw error;

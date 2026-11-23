@@ -105,15 +105,18 @@ pub fn start_sandboxed(
       })
     });
 
+    // Wait for the primary child and close its Job Object first so any
+    // grandchild processes holding pipe handles are terminated and pipes reach EOF
+    // before joining the reader threads.
+    let exit_result = child.wait();
+    platform::cleanup_process(id);
+
     if let Some(handle) = stdout_handle {
       let _ = handle.join();
     }
     if let Some(handle) = stderr_handle {
       let _ = handle.join();
     }
-
-    let exit_result = child.wait();
-    platform::cleanup_process(id);
 
     match exit_result {
       Ok(status) => {
