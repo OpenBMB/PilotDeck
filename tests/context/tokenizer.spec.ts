@@ -16,3 +16,17 @@ for (const marker of ["<|endoftext|>", "<|endofprompt|>"]) {
     assert.ok(countTokens(sample) > countTokens(marker));
   });
 }
+
+test("token counting cache returns identical counts for repeated short and long texts", () => {
+  const shortText = "Repeated short prefix message";
+  const longText = `${"重复中文前缀和代码片段 const x = 1; ".repeat(20)}unique-tail`;
+  const firstShort = countTokens(shortText);
+  const secondShort = countTokens(shortText);
+  assert.equal(firstShort, secondShort);
+  assert.ok(firstShort > 0);
+
+  const firstLong = countTokens(longText);
+  const secondLong = countTokens(longText);
+  assert.equal(firstLong, secondLong);
+  assert.ok(firstLong > firstShort);
+});

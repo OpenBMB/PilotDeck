@@ -102,6 +102,7 @@ import {
 import { createRegisteredWebProjectResolver, describeWebProject, listRegisteredWebProjects, listWebProjects } from "../web/server/listProjects.js";
 import { BackgroundTaskRuntime, type BackgroundTaskCompletionEvent } from "../task/runtime/BackgroundTaskRuntime.js";
 import { createBuiltinRegistry, createPlanFileManager, filterAvailableTools } from "../tool/index.js";
+import { SandboxedCommandRunner } from "../tool/builtin/bash/sandboxedCommandRunner.js";
 import type {
   PilotDeckElicitationChannel,
   PilotDeckToolDefinition,
@@ -285,6 +286,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     onProjectActivated: (activeProjectRoot) => extensionWatchManager.watchProject(activeProjectRoot),
   });
   const defaultRuntime = registry.resolve();
+  registry.prewarm(defaultRuntime);
   const memoryDiagnosticsEnabled = isGatewayMemoryDiagnosticsEnabled(
     env,
     defaultRuntime.snapshot.config.gateway?.memoryDiagnostics,
@@ -339,7 +341,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
       baseInput: { sessionId: "", transcriptPath: "", cwd: projectRoot },
       payload: { changedPaths, changeClasses },
       matchQuery: "ConfigChange",
-    }).catch(() => {});
+    }).catch(() => { });
     boundServer?.broadcastNotification("config_changed", { changedPaths, changeClasses });
   });
 
@@ -355,16 +357,16 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     onSessionEvict: (sessionKey) => registry.evictSessionMcp(sessionKey),
     onSessionIdleEvict: memoryDiagnosticsEnabled
       ? (_sessionKey, snapshot) => {
-          logGatewayMemoryDiagnostic({
-            event: "session_idle_evicted",
-            sessionCount: router?.cachedSessionCount(),
-            session: {
-              sessionKey: snapshot.sessionKey,
-              projectKey: snapshot.context.projectKey,
-              messageCount: snapshot.messageCount,
-            },
-          });
-        }
+        logGatewayMemoryDiagnostic({
+          event: "session_idle_evicted",
+          sessionCount: router?.cachedSessionCount(),
+          session: {
+            sessionKey: snapshot.sessionKey,
+            projectKey: snapshot.context.projectKey,
+            messageCount: snapshot.messageCount,
+          },
+        });
+      }
       : undefined,
   });
   const skillManager = new SkillManager({ pilotHome, builtinSkillsRoot, env });
@@ -447,7 +449,7 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         if (repositoryStore.busy) throw new CheckpointError("WORKSPACE_BUSY", "The repository is being modified. Stop active turns and background tasks before operating Git.");
         return repositoryStore.withExclusive(async () => {
           const common = input.repositoryOperation?.operation === "init" ? undefined : await repositoryCommonDirectory(root);
-          const release = common ? await acquireWorkspaceOperation(common, { owner: operationContext.getStore()?.owner }) : () => {};
+          const release = common ? await acquireWorkspaceOperation(common, { owner: operationContext.getStore()?.owner }) : () => { };
           const action = input.repositoryOperation;
           const invalidates = action?.operation === "checkout" || (action?.operation === "legacy" && ["checkout", "create-branch", "pull", "discard", "delete-untracked"].includes(action.legacyAction ?? ""));
           try { return await runRepositoryOperation(projectKey, action!); }
@@ -568,19 +570,19 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
         attachments: await uploadStore.verifyAttachment(upload.uploadId, input.projectKey, upload.attachmentIds),
       })));
       return resolved.flatMap(({ uploadId, attachments }) => attachments.map((attachment) => ({
-          type: attachment.mimeType?.startsWith("image/") ? "image" as const : "file" as const,
-          name: attachment.name,
-          path: attachment.path,
-          mimeType: attachment.mimeType,
-          bytes: attachment.bytes,
-          metadata: {
-            channelKey: "web",
-            uploadId,
-            attachmentId: attachment.attachmentId,
-            relativePath: attachment.relativePath,
-            sha256: attachment.sha256,
-          },
-        })));
+        type: attachment.mimeType?.startsWith("image/") ? "image" as const : "file" as const,
+        name: attachment.name,
+        path: attachment.path,
+        mimeType: attachment.mimeType,
+        bytes: attachment.bytes,
+        metadata: {
+          channelKey: "web",
+          uploadId,
+          attachmentId: attachment.attachmentId,
+          relativePath: attachment.relativePath,
+          sha256: attachment.sha256,
+        },
+      })));
     },
     setSessionCwd: (sessionKey, cwd) => registry.setSessionCwd(sessionKey, cwd),
     readSessionMessages: (input) =>
@@ -712,11 +714,13 @@ export function createLocalGateway(options: CreateLocalGatewayOptions = {}): Cre
     registry,
     generateTaskDetails: async (task, signal, mode) => {
       const runtime = registry.resolve(task.projectKey);
-      return generateCronTaskDetails({ text: task.message, sessionId: task.sessionKey, taskId: task.taskId,
+      return generateCronTaskDetails({
+        text: task.message, sessionId: task.sessionKey, taskId: task.taskId,
         signal, mode, modelRuntime: runtime.model, model: task.modelSelection ?? runtime.snapshot.config.agent.model,
         onFallback: mode === "title-and-instructions" ? reason => {
           console.warn("[cron] Task instruction generation used the original input", { taskId: task.taskId, reason });
-        } : undefined });
+        } : undefined
+      });
     },
     dispose: () => {
       registry.shutdown();
@@ -852,12 +856,14 @@ class ProjectRuntimeRegistry {
 
   private _extraTools: PilotDeckToolDefinition[];
   private _sessionOverrides: SessionConfigOverrides | undefined;
+  private disposed = false;
   private readonly sharedSessionStore = new SessionRouterStore({
     now: () => this.options.now().getTime(),
   });
 
   constructor(private readonly options: ProjectRuntimeRegistryOptions) {
-    this.python = new PythonRuntimeManager({ pilotHome: options.pilotHome, env: options.env,
+    this.python = new PythonRuntimeManager({
+      pilotHome: options.pilotHome, env: options.env,
       onError: error => console.warn('[pilotdeck] Bundled Python initialization failed:', error instanceof Error ? error.message : String(error)),
     });
     this._extraTools = options.extraTools ? [...options.extraTools] : [];
@@ -872,7 +878,7 @@ class ProjectRuntimeRegistry {
     const mcp = this.sessionMcpRuntimes.get(sessionKey);
     if (mcp) {
       this.sessionMcpRuntimes.delete(sessionKey);
-      mcp.stop().catch(() => {});
+      mcp.stop().catch(() => { });
     }
   }
 
@@ -920,9 +926,9 @@ class ProjectRuntimeRegistry {
       if (runtime.users || this.taskRuntimeUsers.has(runtime.backgroundTasks)
         || runtime.backgroundTasks.list({ status: ['pending', 'running'] }).length || runtime.memoryMaintenanceInFlight) continue;
       this.retired.delete(runtime);
-      runtime.mcpRuntime?.stop().catch(() => {});
+      runtime.mcpRuntime?.stop().catch(() => { });
       runtime.memoryService?.close();
-      runtime.router.shutdown().catch(() => {});
+      runtime.router.shutdown().catch(() => { });
     }
   }
 
@@ -1011,20 +1017,21 @@ class ProjectRuntimeRegistry {
 
   /** Force resource cleanup only when the owning Gateway is shutting down. */
   shutdown(): void {
+    this.disposed = true;
     for (const runtime of this.retired) {
-      runtime.mcpRuntime?.stop().catch(() => {});
+      runtime.mcpRuntime?.stop().catch(() => { });
       runtime.memoryService?.close();
-      runtime.router.shutdown().catch(() => {});
+      runtime.router.shutdown().catch(() => { });
     }
     this.retired.clear();
     for (const [, mcp] of this.sessionMcpRuntimes) {
-      mcp.stop().catch(() => {});
+      mcp.stop().catch(() => { });
     }
     this.sessionMcpRuntimes.clear();
     for (const runtime of this.runtimes.values()) {
-      runtime.mcpRuntime?.stop().catch(() => {});
+      runtime.mcpRuntime?.stop().catch(() => { });
       runtime.memoryService?.close();
-      runtime.router.shutdown().catch(() => {});
+      runtime.router.shutdown().catch(() => { });
     }
     this.runtimes.clear();
     this.activeBackgroundTaskCount();
@@ -1111,6 +1118,9 @@ class ProjectRuntimeRegistry {
         getConfig: () => loadPilotConfig({ projectRoot, env: this.options.env }).config.tools?.imageGeneration,
       },
       backgroundTasks: { runtime: backgroundTasks },
+      ...(this.options.env.PILOTDECK_SANDBOX === "1"
+        ? { bash: { runner: new SandboxedCommandRunner() } }
+        : {}),
       readSkill: {
         loader: (name) => pluginRuntime.loadSkillPrompt(name),
         lister: () => pluginRuntime.getAllSkills(),
@@ -1122,14 +1132,14 @@ class ProjectRuntimeRegistry {
         ? { webSearch: false as const }
         : webSearchConfig
           ? {
-              webSearch: {
-                ...(webSearchConfig.provider ? { provider: webSearchConfig.provider } : {}),
-                ...(webSearchConfig.searchEngine ? { searchEngine: webSearchConfig.searchEngine } : {}),
-                ...(webSearchConfig.apiKey ? { apiKey: webSearchConfig.apiKey } : {}),
-                ...(webSearchConfig.endpoint ? { endpoint: webSearchConfig.endpoint } : {}),
-                ...(webSearchConfig.customProvider ? { customProvider: webSearchConfig.customProvider } : {}),
-              },
-            }
+            webSearch: {
+              ...(webSearchConfig.provider ? { provider: webSearchConfig.provider } : {}),
+              ...(webSearchConfig.searchEngine ? { searchEngine: webSearchConfig.searchEngine } : {}),
+              ...(webSearchConfig.apiKey ? { apiKey: webSearchConfig.apiKey } : {}),
+              ...(webSearchConfig.endpoint ? { endpoint: webSearchConfig.endpoint } : {}),
+              ...(webSearchConfig.customProvider ? { customProvider: webSearchConfig.customProvider } : {}),
+            },
+          }
           : {}),
     });
     for (const tool of this._extraTools) {
@@ -1212,6 +1222,40 @@ class ProjectRuntimeRegistry {
         this.scheduleMemoryMaintenance(projectKey);
       }
     });
+  }
+
+  /**
+   * Warm up Python runtime and shared MCP servers in the background so the
+   * first turn does not pay cold-start initialization latency.
+   */
+  prewarm(runtime: ProjectRuntime): void {
+    if (this.disposed || this.options.env.PILOTDECK_DISABLE_PREWARM === "1") {
+      return;
+    }
+    setImmediate(() => {
+      if (this.disposed) return;
+      void (async () => {
+        try {
+          runtime.python ??= await this.python.resolve(
+            runtime.snapshot.config.runtime?.python.enabled ?? true,
+          );
+        } catch {
+          // Python initialization errors are handled via PythonRuntimeManager.
+        }
+        if (this.disposed) return;
+        try {
+          await runtime.pluginRuntime.refresh();
+          if (this.disposed) return;
+          await this.ensureMcpReady(runtime);
+        } catch {
+          // MCP startup errors are already logged inside ensureMcpReady.
+        } finally {
+          if (this.disposed) {
+            runtime.mcpRuntime?.stop().catch(() => { });
+          }
+        }
+      })();
+    }).unref();
   }
 
   /**
@@ -1395,7 +1439,7 @@ class ProjectRuntimeRegistry {
       const ownedMcp = sessionMcp;
       ownResource(() => {
         if (this.sessionMcpRuntimes.get(context.sessionKey) === ownedMcp) this.sessionMcpRuntimes.delete(context.sessionKey);
-        ownedMcp.stop().catch(() => {});
+        ownedMcp.stop().catch(() => { });
       });
       try {
         const statuses = await sessionMcp.start();
@@ -1490,16 +1534,16 @@ class ProjectRuntimeRegistry {
     const liveRuleSet = this.getLiveRuleSet(context.sessionKey);
     const hookSettings: typeof contributions.hooks = gw
       ? {
-          ...contributions.hooks,
-          PermissionRequest: [
-            ...(contributions.hooks.PermissionRequest ?? []),
-            {
-              hooks: [
-                { type: "callback", name: GATEWAY_PERMISSION_CALLBACK_NAME },
-              ],
-            },
-          ],
-        }
+        ...contributions.hooks,
+        PermissionRequest: [
+          ...(contributions.hooks.PermissionRequest ?? []),
+          {
+            hooks: [
+              { type: "callback", name: GATEWAY_PERMISSION_CALLBACK_NAME },
+            ],
+          },
+        ],
+      }
       : contributions.hooks;
     const hookRuntime = new HookRuntime(hookSettings);
     if (gw) {
@@ -1669,27 +1713,27 @@ class ProjectRuntimeRegistry {
         ? createAutoElicitationChannel()
         : gw
           ? new GatewayElicitationChannel({
-              sessionKey: context.sessionKey,
-              bus: gw.getElicitationBus(),
-              emit: (event) => gw.emitForSession(context.sessionKey, event),
-              dispatchHook: (hookEvent, payload) => {
-                lifecycle.dispatch({
-                  event: hookEvent as import("../extension/hooks/protocol/events.js").PilotDeckHookEvent,
-                  baseInput: { sessionId: context.sessionKey, transcriptPath: "", cwd: projectRoot },
-                  payload,
-                  matchQuery: hookEvent,
-                }).catch(() => {});
-              },
-              emitAgentEvent: (_type, payload) => {
-                eventBuf.emitter({
-                  type: "elicitation_requested",
-                  sessionId: context.sessionKey,
-                  turnId: "",
-                  requestId: payload.requestId,
-                  toolName: payload.toolName,
-                });
-              },
-            })
+            sessionKey: context.sessionKey,
+            bus: gw.getElicitationBus(),
+            emit: (event) => gw.emitForSession(context.sessionKey, event),
+            dispatchHook: (hookEvent, payload) => {
+              lifecycle.dispatch({
+                event: hookEvent as import("../extension/hooks/protocol/events.js").PilotDeckHookEvent,
+                baseInput: { sessionId: context.sessionKey, transcriptPath: "", cwd: projectRoot },
+                payload,
+                matchQuery: hookEvent,
+              }).catch(() => { });
+            },
+            emitAgentEvent: (_type, payload) => {
+              eventBuf.emitter({
+                type: "elicitation_requested",
+                sessionId: context.sessionKey,
+                turnId: "",
+                requestId: payload.requestId,
+                toolName: payload.toolName,
+              });
+            },
+          })
           : undefined;
       const subagentTranscript: AgentSubagentTranscriptHooks = {
         recordSubagentStarted: (args) =>
@@ -1824,9 +1868,9 @@ class ProjectRuntimeRegistry {
         ...(subagentMaxContextTokens !== undefined ? { maxContextTokens: subagentMaxContextTokens } : {}),
         ...(subagentMaxOutputTokens !== undefined
           ? {
-              maxOutputTokens: readPositiveIntegerEnv(this.options.env.PILOTDECK_MAX_OUTPUT_TOKENS)
-                ?? subagentMaxOutputTokens,
-            }
+            maxOutputTokens: readPositiveIntegerEnv(this.options.env.PILOTDECK_MAX_OUTPUT_TOKENS)
+              ?? subagentMaxOutputTokens,
+          }
           : {}),
       };
     }
@@ -1991,8 +2035,8 @@ export function buildBrowserUseArgs(
     "--timeout-action",
     String(
       readPositiveIntegerEnv(env.PILOTDECK_BROWSER_TIMEOUT_ACTION_MS)
-        ?? readPositiveIntegerEnv(env.PILOTDECK_BROWSER_ACTION_TIMEOUT_MS)
-        ?? DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
+      ?? readPositiveIntegerEnv(env.PILOTDECK_BROWSER_ACTION_TIMEOUT_MS)
+      ?? DEFAULT_BROWSER_ACTION_TIMEOUT_MS,
     ),
   );
   args = appendCliArg(
@@ -2000,8 +2044,8 @@ export function buildBrowserUseArgs(
     "--timeout-navigation",
     String(
       readPositiveIntegerEnv(env.PILOTDECK_BROWSER_TIMEOUT_NAVIGATION_MS)
-        ?? readPositiveIntegerEnv(env.PILOTDECK_BROWSER_NAVIGATION_TIMEOUT_MS)
-        ?? DEFAULT_BROWSER_NAVIGATION_TIMEOUT_MS,
+      ?? readPositiveIntegerEnv(env.PILOTDECK_BROWSER_NAVIGATION_TIMEOUT_MS)
+      ?? DEFAULT_BROWSER_NAVIGATION_TIMEOUT_MS,
     ),
   );
 

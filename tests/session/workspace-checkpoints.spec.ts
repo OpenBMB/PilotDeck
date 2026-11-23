@@ -390,3 +390,31 @@ test("retention removes unused content but keeps backups referenced by restore o
   const undo = await f.store.undoPreview("session", operation.id); await f.store.restore("session", undo.id);
   assert.equal(await readFile(f.file("a.txt"), "utf8"), "version-3");
 });
+
+test("worker pool capture handles larger workspaces and preserves exact file contents and exclusions", async t => {
+  const f = await fixture(t);
+  await mkdir(f.file("src"));
+  await mkdir(f.file("node_modules"));
+  await writeFile(f.file("node_modules/ignored.js"), "ignored\n");
+  for (let i = 0; i < 20; i++) {
+    await writeFile(f.file(`src/file-${i}.txt`), `content-${i}\n`);
+  }
+  await writeFile(f.file("src/binary.bin"), Buffer.from([0, 10, 20, 30]));
+  const before = await f.store.capture("session", "turn-worker", "before");
+  await f.store.save(before);
+
+  assert.equal(before.files["node_modules/ignored.js"], undefined);
+  for (let i = 0; i < 20; i++) {
+    const entry = before.files[`src/file-${i}.txt`];
+    assert.equal(entry?.kind, "file");
+    if (entry?.kind === "file") {
+      assert.equal(entry.binary, false);
+      assert.equal((await f.store.readObject(entry.hash)).toString("utf8"), `content-${i}\n`);
+    }
+  }
+  const binaryEntry = before.files["src/binary.bin"];
+  assert.equal(binaryEntry?.kind, "file");
+  if (binaryEntry?.kind === "file") {
+    assert.equal(binaryEntry.binary, true);
+  }
+});

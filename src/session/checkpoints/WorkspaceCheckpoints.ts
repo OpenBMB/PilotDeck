@@ -6,6 +6,7 @@ import { getPilotProjectChatDir } from "../../pilot/paths.js";
 import { buildStructuredPatch } from "../../tool/builtin/filesystem/structuredPatch.js";
 import { resolveRealWritePath } from "../../tool/builtin/filesystem/pathSafety.js";
 import { acquireWorkspaceOperation, canonicalWorkspacePath, hasWorkspaceTurn, operationContext, registerWorkspaceTurn, workspaceOperationState } from "./WorkspaceCoordinator.js";
+import { getCheckpointWorkerPool, resolveCheckpointObjectPath } from "./checkpointWorkerPool.js";
 
 import type { FileVersion, FileChange, Checkpoint, CheckpointSummary, RestorePlan, RestoreOperation, CheckpointRequest } from "./types.js";
 export type { FileVersion, FileChange, Checkpoint, CheckpointSummary, RestorePlan, RestoreOperation, CheckpointRequest } from "./types.js";
@@ -25,11 +26,15 @@ function mergeTrackedEdit(tracked: Map<string, TrackedEdit>, relative: string, e
     || (previous.afterRevision !== undefined && previous.afterRevision !== edit.beforeRevision) || previous.workspaceRevision !== edit.workspaceRevision);
   if (!previous) { tracked.set(relative, edit); return; }
   if (previous?.uncertain || edit.uncertain || interrupted) {
-    const segment = (value: TrackedEdit): FileChange => ({ path: relative, before: value.before, after: value.after ?? ABSENT,
-      source: value.source ?? "file_tool", added: 0, removed: 0, beforeRevision: value.beforeRevision, afterRevision: value.afterRevision });
+    const segment = (value: TrackedEdit): FileChange => ({
+      path: relative, before: value.before, after: value.after ?? ABSENT,
+      source: value.source ?? "file_tool", added: 0, removed: 0, beforeRevision: value.beforeRevision, afterRevision: value.afterRevision
+    });
     tracked.set(relative, { ...edit, uncertain: true, segments: [...(previous?.segments ?? (previous ? [segment(previous)] : [])), ...(edit.segments ?? [segment(edit)])] });
-  } else tracked.set(relative, { ...edit, before: previous?.before ?? edit.before, beforeRevision: previous?.beforeRevision ?? edit.beforeRevision,
-    source: previous?.source === "file_tool" || edit.source === "file_tool" ? "file_tool" : edit.source });
+  } else tracked.set(relative, {
+    ...edit, before: previous?.before ?? edit.before, beforeRevision: previous?.beforeRevision ?? edit.beforeRevision,
+    source: previous?.source === "file_tool" || edit.source === "file_tool" ? "file_tool" : edit.source
+  });
 }
 
 export class CheckpointError extends Error {
@@ -68,7 +73,7 @@ export class CheckpointStore {
     let state = storageActivity.get(this.directory);
     if (!state) { state = { pins: 0 }; storageActivity.set(this.directory, state); }
     state.pins++;
-    await state.gc?.catch(() => {});
+    await state.gc?.catch(() => { });
     let released = false;
     return () => { if (!released) { released = true; state!.pins--; } };
   }
@@ -94,7 +99,7 @@ export class CheckpointStore {
   }
   async scopeRevision(): Promise<string> {
     const revisions: string[] = [];
-    for (let scope = this.workspace;; scope = path.dirname(scope)) {
+    for (let scope = this.workspace; ; scope = path.dirname(scope)) {
       const file = path.join(path.dirname(this.directory), "file-heads", `scope-${digest(Buffer.from(scope))}.json`);
       try { revisions.push(await fs.readFile(file, "utf8")); }
       catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
@@ -140,7 +145,7 @@ export class CheckpointStore {
       const handle = await fs.open(temporary, "wx", 0o600);
       try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
       if (update) await fs.rename(temporary, destination); else await fs.link(temporary, destination);
-    } finally { await fs.unlink(temporary).catch(() => {}); }
+    } finally { await fs.unlink(temporary).catch(() => { }); }
   }
   async readCheckpoint(id: string, sessionId: string): Promise<Checkpoint> {
     const checkpoint = JSON.parse(await fs.readFile(this.recordPath("manifests", id), "utf8")) as Checkpoint;
@@ -211,9 +216,11 @@ export class CheckpointStore {
       let before;
       try { before = await fs.lstat(target); }
       catch (error) { if (hasCode(error, "ENOENT")) return ABSENT; throw error; }
-      const unprotected = async (reason: string): Promise<FileVersion> => ({ kind: "unprotected", reason,
+      const unprotected = async (reason: string): Promise<FileVersion> => ({
+        kind: "unprotected", reason,
         fingerprint: digest(Buffer.from(JSON.stringify([before.dev, before.ino, before.mode, before.size, before.mtimeMs, before.ctimeMs,
-          before.isSymbolicLink() ? await fs.readlink(target) : null]))) });
+        before.isSymbolicLink() ? await fs.readlink(target) : null])))
+      });
       if (!before.isFile() || before.isSymbolicLink()) return unprotected("Symbolic links and non-regular files are not restored automatically.");
       if (before.size > MAX_FILE_BYTES) return unprotected("File exceeds the 10 MB checkpoint limit.");
       let content: Buffer;
@@ -233,13 +240,16 @@ export class CheckpointStore {
       try { after = await fs.lstat(target); } catch (error) { if (hasCode(error, "ENOENT")) continue; throw error; }
       if (before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) continue;
       const hash = save ? await this.putObject(content) : digest(content);
-      return { kind: "file", hash, size: content.length, mode: before.mode & 0o777, binary: content.includes(0),
-        fingerprint: digest(Buffer.from(JSON.stringify([before.dev, before.ino, before.size, before.mode, before.mtimeMs, before.ctimeMs]))) };
+      return {
+        kind: "file", hash, size: content.length, mode: before.mode & 0o777, binary: content.includes(0),
+        fingerprint: digest(Buffer.from(JSON.stringify([before.dev, before.ino, before.size, before.mode, before.mtimeMs, before.ctimeMs])))
+      };
     }
     return { kind: "unprotected", reason: "File changed while its checkpoint was being captured." };
   }
   async capture(sessionId: string, turnId: string, phase: Checkpoint["phase"], context?: CanonicalMessage[]): Promise<Checkpoint> {
     const files: Record<string, FileVersion> = {};
+    const candidates: Array<{ relative: string; target: string }> = [];
     let bytes = 0;
     const walk = async (directory: string): Promise<void> => {
       const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -254,18 +264,65 @@ export class CheckpointStore {
           continue;
         }
         if (entry.name.startsWith(".pilotdeck-restore-")) continue;
+        candidates.push({ relative, target });
+      }
+    };
+    await walk(this.workspace);
+
+    const WORKER_THRESHOLD = 16;
+    const BATCH_SIZE = 16;
+    if (candidates.length < WORKER_THRESHOLD) {
+      for (const { relative, target } of candidates) {
         if (bytes >= MAX_WORKSPACE_BYTES) {
           const info = await fs.lstat(target);
-          files[relative] = { kind: "unprotected", reason: "Workspace exceeds the 256 MB checkpoint budget.", fingerprint: digest(Buffer.from(JSON.stringify([info.dev, info.ino, info.mode, info.size, info.mtimeMs, info.ctimeMs]))) }; continue;
+          files[relative] = { kind: "unprotected", reason: "Workspace exceeds the 256 MB checkpoint budget.", fingerprint: digest(Buffer.from(JSON.stringify([info.dev, info.ino, info.mode, info.size, info.mtimeMs, info.ctimeMs]))) };
+          continue;
         }
         try { files[relative] = await this.captureFile(relative); }
         catch (error) { files[relative] = { kind: "unprotected", reason: error instanceof Error ? error.message : "Cannot capture file." }; }
         if (files[relative].kind === "file") bytes += (files[relative] as Extract<FileVersion, { kind: "file" }>).size;
       }
+    } else {
+      const pool = getCheckpointWorkerPool();
+      const objectsDir = resolveCheckpointObjectPath(this.directory);
+      for (let offset = 0; offset < candidates.length; offset += BATCH_SIZE) {
+        const batch = candidates.slice(offset, offset + BATCH_SIZE);
+        if (bytes >= MAX_WORKSPACE_BYTES) {
+          for (const { relative, target } of batch) {
+            const info = await fs.lstat(target);
+            files[relative] = { kind: "unprotected", reason: "Workspace exceeds the 256 MB checkpoint budget.", fingerprint: digest(Buffer.from(JSON.stringify([info.dev, info.ino, info.mode, info.size, info.mtimeMs, info.ctimeMs]))) };
+          }
+          continue;
+        }
+        const results = await Promise.all(batch.map(async ({ relative, target }) => {
+          try {
+            await this.resolveFile(relative);
+            const version = await pool.captureFile({
+              target,
+              objectsDir,
+              maxFileBytes: MAX_FILE_BYTES,
+              save: true,
+            });
+            return { relative, version };
+          } catch (error) {
+            return {
+              relative,
+              version: { kind: "unprotected", reason: error instanceof Error ? error.message : "Cannot capture file." } as FileVersion,
+            };
+          }
+        }));
+        for (const { relative, version } of results) {
+          files[relative] = version;
+          if (version.kind === "file") {
+            bytes += version.size;
+          }
+        }
+      }
+    }
+    return {
+      version: 1, id: randomUUID(), sessionId, turnId, workspace: this.workspace, createdAt: new Date().toISOString(), phase, status: "complete", files,
+      ...(context ? { contextHash: await this.putObject(Buffer.from(JSON.stringify(context))) } : {})
     };
-    await walk(this.workspace);
-    return { version: 1, id: randomUUID(), sessionId, turnId, workspace: this.workspace, createdAt: new Date().toISOString(), phase, status: "complete", files,
-      ...(context ? { contextHash: await this.putObject(Buffer.from(JSON.stringify(context))) } : {}) };
   }
   async save(checkpoint: Checkpoint, update = false): Promise<void> { await this.writeRecord("manifests", checkpoint, update); }
   async list(sessionId: string): Promise<Checkpoint[]> {
@@ -283,11 +340,15 @@ export class CheckpointStore {
   }
   summary(checkpoint: Checkpoint): CheckpointSummary {
     const { files, contextHash: _context, changes, ...rest } = checkpoint;
-    return { ...rest, unprotected: new Set([...Object.keys(files).filter(relative => files[relative].kind === "unprotected"), ...(changes ?? []).filter(change => change.uncertain || change.before.kind === "unprotected" || change.after.kind === "unprotected").map(change => change.path)]).size,
-      changes: (changes ?? []).map(({ before, after, segments: _segments, ...change }) => ({ ...change,
+    return {
+      ...rest, unprotected: new Set([...Object.keys(files).filter(relative => files[relative].kind === "unprotected"), ...(changes ?? []).filter(change => change.uncertain || change.before.kind === "unprotected" || change.after.kind === "unprotected").map(change => change.path)]).size,
+      changes: (changes ?? []).map(({ before, after, segments: _segments, ...change }) => ({
+        ...change,
         operation: before.kind === "absent" ? "created" : after.kind === "absent" ? "deleted" : "updated",
         restorable: !change.uncertain && before.kind !== "unprotected" && after.kind !== "unprotected",
-        binary: (before.kind === "file" && before.binary) || (after.kind === "file" && after.binary) })) };
+        binary: (before.kind === "file" && before.binary) || (after.kind === "file" && after.binary)
+      }))
+    };
   }
   async changes(before: Checkpoint, after: Checkpoint, tracked = new Map<string, TrackedEdit>()): Promise<FileChange[]> {
     const aliases = await this.fileAliases([...Object.keys(before.files), ...Object.keys(after.files), ...tracked.keys()]);
@@ -321,9 +382,11 @@ export class CheckpointStore {
           added += stats[0]?.added ?? 0; removed += stats[0]?.removed ?? 0;
         }
       }
-      changes.push({ path: relative, before: left, after: right, source: tool?.after ? tool.source ?? "file_tool" : "observed", added, removed,
+      changes.push({
+        path: relative, before: left, after: right, source: tool?.after ? tool.source ?? "file_tool" : "observed", added, removed,
         ...(tool?.uncertain ? { uncertain: true } : {}), ...(tool?.beforeRevision !== undefined ? { beforeRevision: tool.beforeRevision } : {}),
-        ...(tool?.afterRevision !== undefined ? { afterRevision: tool.afterRevision } : {}), ...(tool?.segments ? { segments: tool.segments } : {}) });
+        ...(tool?.afterRevision !== undefined ? { afterRevision: tool.afterRevision } : {}), ...(tool?.segments ? { segments: tool.segments } : {})
+      });
       if (tool?.workspaceRevision !== undefined) changes[changes.length - 1].workspaceRevision = tool.workspaceRevision;
     }
     return changes.sort((a, b) => a.path.localeCompare(b.path));
@@ -351,8 +414,10 @@ export class CheckpointStore {
       if (earlier && (!same(earlier.after, change.before) || (earlier.afterRevision !== undefined && change.beforeRevision !== undefined && earlier.afterRevision !== change.beforeRevision)
         || (earlier.workspaceRevision !== undefined && change.workspaceRevision !== undefined && earlier.workspaceRevision !== change.workspaceRevision))) {
         cumulative.set(change.path, { ...change, uncertain: true, segments: [...(earlier.segments ?? [earlier]), ...(change.segments ?? [change])] });
-      } else cumulative.set(change.path, { ...change, before: earlier?.before ?? change.before, beforeRevision: earlier?.beforeRevision ?? change.beforeRevision,
-        ...((earlier?.uncertain || change.uncertain) ? { uncertain: true, segments: [...(earlier?.segments ?? (earlier ? [earlier] : [])), ...(change.segments ?? [change])] } : {}) });
+      } else cumulative.set(change.path, {
+        ...change, before: earlier?.before ?? change.before, beforeRevision: earlier?.beforeRevision ?? change.beforeRevision,
+        ...((earlier?.uncertain || change.uncertain) ? { uncertain: true, segments: [...(earlier?.segments ?? (earlier ? [earlier] : [])), ...(change.segments ?? [change])] } : {})
+      });
     }
     const combined = [...cumulative.values()].filter(change => change.uncertain || !same(change.before, change.after));
     const left = { ...checkpoint, journalVersion: undefined, files: Object.fromEntries(combined.map(change => [change.path, change.before])) };
@@ -368,10 +433,12 @@ export class CheckpointStore {
     if (!change) throw new CheckpointError("FILE_NOT_RECORDED", "File is not part of this checkpoint.");
     const text = async (version: FileVersion) => version.kind === "file" && !version.binary && version.size <= 500_000 ? (await this.readObject(version.hash)).toString("utf8") : null;
     const oldContent = change.before.kind === "absent" ? "" : await text(change.before), newContent = change.after.kind === "absent" ? "" : await text(change.after);
-    const segments = change.segments ? await Promise.all(change.segments.map(async item => ({ ...item,
+    const segments = change.segments ? await Promise.all(change.segments.map(async item => ({
+      ...item,
       oldContent: item.before.kind === "absent" ? "" : await text(item.before), newContent: item.after.kind === "absent" ? "" : await text(item.after),
       hunks: (item.before.kind === "absent" || await text(item.before) !== null) && (item.after.kind === "absent" || await text(item.after) !== null)
-        ? buildStructuredPatch(item.before.kind === "absent" ? null : await text(item.before), item.after.kind === "absent" ? "" : (await text(item.after))!) : null }))) : undefined;
+        ? buildStructuredPatch(item.before.kind === "absent" ? null : await text(item.before), item.after.kind === "absent" ? "" : (await text(item.after))!) : null
+    }))) : undefined;
     return { ...change, segments, oldContent, newContent, hunks: oldContent !== null && newContent !== null ? buildStructuredPatch(change.before.kind === "absent" ? null : oldContent, newContent) : null };
   }
   async preview(sessionId: string, checkpointId: string, scope: CheckpointRequest["scope"] = "turn", mode: RestorePlan["mode"] = "files", context: Pick<RestorePlan, "contextBeforeHash" | "visibleSequences" | "visibleBeforeSequences"> = {}, activeTurns?: Set<string>): Promise<RestorePlan> {
@@ -383,11 +450,13 @@ export class CheckpointStore {
     for (const change of await this.selectChanges(checkpoint, scope, activeTurns)) {
       const current = await this.captureFile(change.path, false);
       const revision = await this.revision(change.path);
-      plan.files.push({ path: change.path, expected: current, target: change.before, source: change.source,
+      plan.files.push({
+        path: change.path, expected: current, target: change.before, source: change.source,
         expectedRevision: revision,
         status: change.uncertain || change.before.kind === "unprotected" || change.after.kind === "unprotected" || current.kind === "unprotected" ? "unprotected" : same(current, change.before) ? "unchanged"
           : sameOnDisk(current, change.after) && (change.afterRevision === undefined || change.afterRevision === revision)
-            && (change.workspaceRevision === undefined || change.workspaceRevision === plan.workspaceRevision) ? "ready" : "conflict" });
+            && (change.workspaceRevision === undefined || change.workspaceRevision === plan.workspaceRevision) ? "ready" : "conflict"
+      });
     }
     await this.writeRecord("plans", plan);
     return plan;
@@ -474,7 +543,7 @@ export class CheckpointStore {
       const current = await fs.lstat(target).catch(error => { if (hasCode(error, "ENOENT")) return undefined; throw error; });
       if (current?.isSymbolicLink() || (current && !current.isFile())) throw new CheckpointError("UNSAFE_PATH", "Restore target is no longer a regular file.");
       await fs.rename(temporary, target);
-    } finally { await fs.unlink(temporary).catch(() => {}); }
+    } finally { await fs.unlink(temporary).catch(() => { }); }
   }
   async undoPreview(sessionId: string, operationId: string, context: Pick<RestorePlan, "contextBeforeHash" | "visibleBeforeSequences"> & { mode?: RestorePlan["mode"] } = {}): Promise<RestorePlan> {
     const operation = JSON.parse(await fs.readFile(this.recordPath("operations", operationId), "utf8")) as RestoreOperation;
@@ -490,10 +559,12 @@ export class CheckpointStore {
       const original = operation.files.find(file => file.path === relative)!;
       const current = await this.captureFile(relative, false);
       const revision = await this.revision(relative);
-      plan.files.push({ path: relative, expected: current, target: original.expected, source: original.source,
+      plan.files.push({
+        path: relative, expected: current, target: original.expected, source: original.source,
         expectedRevision: revision,
         status: same(current, original.expected) ? "unchanged" : sameOnDisk(current, original.result ?? original.target) && (original.resultRevision === undefined || original.resultRevision === revision)
-          && (operation.workspaceRevision === undefined || operation.workspaceRevision === plan.workspaceRevision) ? "ready" : "conflict" });
+          && (operation.workspaceRevision === undefined || operation.workspaceRevision === plan.workspaceRevision) ? "ready" : "conflict"
+      });
     }
     await this.writeRecord("plans", plan);
     return plan;
@@ -618,7 +689,7 @@ type CommandFrame = {
 /** Session-owned journals; only actual mutations acquire filesystem leases. */
 export class WorkspaceCheckpoints {
   private active?: ActiveHistory;
-  constructor(private readonly workspace: string, private readonly pilotHome: string) {}
+  constructor(private readonly workspace: string, private readonly pilotHome: string) { }
   private frame(): CommandFrame | undefined {
     const frame = operationContext.getStore()?.command as CommandFrame | undefined;
     return frame?.history === this ? frame : undefined;
@@ -635,8 +706,10 @@ export class WorkspaceCheckpoints {
     const unpin = await store.pin();
     try {
       await store.recoverInterrupted(sessionId);
-      const before: Checkpoint = { version: 1, journalVersion: 2, id: randomUUID(), sessionId, turnId, workspace: store.workspace,
-        createdAt: new Date().toISOString(), phase: "before", status: "complete", files: {}, contextHash: await store.putObject(Buffer.from(JSON.stringify(messages))) };
+      const before: Checkpoint = {
+        version: 1, journalVersion: 2, id: randomUUID(), sessionId, turnId, workspace: store.workspace,
+        createdAt: new Date().toISOString(), phase: "before", status: "complete", files: {}, contextHash: await store.putObject(Buffer.from(JSON.stringify(messages)))
+      };
       await store.save(before);
       this.active = { store, before, tracked: new Map(), pending: new Map(), commands: new Set(), closing: false, status: "complete", releaseTurn, unpin, publishing: Promise.resolve() };
     } catch (error) { unpin(); releaseTurn(); throw error; }
@@ -675,9 +748,11 @@ export class WorkspaceCheckpoints {
     if (before.kind === "unprotected" && !options.allowUnprotected) throw new CheckpointError("BACKUP_UNAVAILABLE", `Cannot protect ${relative}: ${before.reason}`);
     const revision = await active.store.revision(relative), frame = this.frame();
     if (frame && !frame.baselines.has(relative)) frame.baselines.set(relative, { before, revision });
-    const edit: EditRecord = { id: randomUUID(), before, beforeRevision: revision, beforeId: active.before.id, path: relative,
+    const edit: EditRecord = {
+      id: randomUUID(), before, beforeRevision: revision, beforeId: active.before.id, path: relative,
       workspaceRevision: await active.store.scopeRevision(),
-      sessionId: active.before.sessionId, turnId: active.before.turnId, createdAt: new Date().toISOString(), ...(frame ? { parentOperationId: frame.id } : {}) };
+      sessionId: active.before.sessionId, turnId: active.before.turnId, createdAt: new Date().toISOString(), ...(frame ? { parentOperationId: frame.id } : {})
+    };
     await active.store.saveEdit(edit);
     active.pending.set(relative, edit);
   }
@@ -692,7 +767,8 @@ export class WorkspaceCheckpoints {
       edit.after = content.length > MAX_FILE_BYTES ? { kind: "unprotected", reason: "File exceeds the 10 MB checkpoint limit." } : {
         kind: "file", hash: await active.store.putObject(content), size: content.length, binary: content.includes(0),
         mode: disk.kind === "file" ? disk.mode : edit.before.kind === "file" ? edit.before.mode : 0o644,
-        ...(disk.kind === "file" && disk.hash === digest(content) ? { fingerprint: disk.fingerprint } : {}) };
+        ...(disk.kind === "file" && disk.hash === digest(content) ? { fingerprint: disk.fingerprint } : {})
+      };
     }
     edit.source = "file_tool"; edit.afterRevision = edit.id;
     await active.store.saveEdit(edit, true);
@@ -705,14 +781,16 @@ export class WorkspaceCheckpoints {
   }
   async trackCommand(options: { background?: boolean; signal?: AbortSignal } = {}): Promise<() => Promise<void>> {
     const frame = await this.startCommand(options);
-    return frame ? () => this.finishCommand(frame) : async () => {};
+    return frame ? () => this.finishCommand(frame) : async () => { };
   }
   private async startCommand(options: { background?: boolean; signal?: AbortSignal }): Promise<CommandFrame | undefined> {
     const active = this.current();
     if (!active) return;
     const owner = operationContext.getStore()?.owner ?? {};
-    const release = await acquireWorkspaceOperation(active.store.workspace, { owner, signal: options.signal,
-      label: options.background ? "等待后台写任务结束" : "等待项目命令执行完成" });
+    const release = await acquireWorkspaceOperation(active.store.workspace, {
+      owner, signal: options.signal,
+      label: options.background ? "等待后台写任务结束" : "等待项目命令执行完成"
+    });
     const unpin = await active.store.pin();
     try {
       const before = await active.store.capture(active.before.sessionId, active.before.turnId, "command");
@@ -746,10 +824,12 @@ export class WorkspaceCheckpoints {
           const attributable = owned && !owned.uncertain && sameOnDisk(left, owned.before) && sameOnDisk(right, owned.after ?? ABSENT)
             && beforeRevision === owned.beforeRevision && owned.afterRevision === await active.store.revision(relative)
             && frame.workspaceRevision === owned.workspaceRevision;
-          const edit: EditRecord = { id: randomUUID(), beforeId: active.before.id, path: relative, before: left, after: right, beforeRevision,
+          const edit: EditRecord = {
+            id: randomUUID(), beforeId: active.before.id, path: relative, before: left, after: right, beforeRevision,
             workspaceRevision: frame.workspaceRevision,
             source: attributable ? "file_tool" : "observed", createdAt: new Date().toISOString(), sessionId: active.before.sessionId, turnId: active.before.turnId,
-            ...(frame.parent ? { parentOperationId: frame.parent.id } : {}), ...(!attributable || active.closing ? { uncertain: true } : {}) };
+            ...(frame.parent ? { parentOperationId: frame.parent.id } : {}), ...(!attributable || active.closing ? { uncertain: true } : {})
+          };
           edit.afterRevision = edit.id;
           await active.store.saveEdit(edit); await active.store.advance(relative, edit.id);
           if (!attributable && same(left, right)) continue;
@@ -772,15 +852,17 @@ export class WorkspaceCheckpoints {
   }
   private async publish(active: ActiveHistory): Promise<CheckpointSummary> {
     const publishing = active.publishing.then(async () => {
-      const after: Checkpoint = { ...active.before, id: randomUUID(), phase: "after", createdAt: new Date().toISOString(), contextHash: undefined,
-        beforeId: active.before.id, status: active.status, files: {}, ...(active.lastCheckpoint ? { supersedesId: active.lastCheckpoint } : {}) };
+      const after: Checkpoint = {
+        ...active.before, id: randomUUID(), phase: "after", createdAt: new Date().toISOString(), contextHash: undefined,
+        beforeId: active.before.id, status: active.status, files: {}, ...(active.lastCheckpoint ? { supersedesId: active.lastCheckpoint } : {})
+      };
       const pending = [...active.commands].some(frame => !frame.finishing);
       const tracked = pending ? new Map([...active.tracked].map(([relative, edit]) => [relative, { ...edit, uncertain: true }])) : active.tracked;
       after.changes = await active.store.changes(active.before, after, tracked);
       await active.store.save(after); active.lastCheckpoint = after.id;
       return active.store.summary(after);
     });
-    active.publishing = publishing.catch(() => {});
+    active.publishing = publishing.catch(() => { });
     return publishing;
   }
   async finishTurn(status: "complete" | "incomplete"): Promise<CheckpointSummary | undefined> {
@@ -793,7 +875,7 @@ export class WorkspaceCheckpoints {
       if (this.active === active) this.active = undefined;
       active.releaseTurn();
       active.unpin();
-      await active.store.prune().catch(() => {});
+      await active.store.prune().catch(() => { });
     }
   }
 }
