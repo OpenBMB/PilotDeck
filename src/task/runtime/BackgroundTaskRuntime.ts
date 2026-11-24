@@ -372,6 +372,12 @@ export class BackgroundTaskRuntime {
     return entry.output.readSlice(offset, maxBytes);
   }
 
+  getStartupOutput(taskId: string): string {
+    const entry = this.entries.get(taskId);
+    if (!entry) throw new Error(`Unknown taskId: ${taskId}`);
+    return entry.output.readStartup();
+  }
+
   /** Convenience used in tests: `await runtime.waitFor(taskId)`. */
   async waitFor(taskId: string): Promise<PilotDeckBackgroundBashTask> {
     const entry = this.entries.get(taskId);

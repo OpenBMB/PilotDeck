@@ -11,6 +11,7 @@ test("web handoff advertises only available capabilities and preserves source-on
   assert.match(prompt, /Web application delivery:/);
   assert.match(prompt, /clickable Markdown URL/);
   assert.match(prompt, /source-only/);
+  assert.match(prompt, /index\.html/);
   assert.match(prompt, /HTTP success alone does not prove the app renders/);
   assert.match(prompt, /remote\/Docker/);
   for (const missing of tools) {
