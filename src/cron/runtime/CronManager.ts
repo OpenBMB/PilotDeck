@@ -209,7 +209,7 @@ export class CronManager {
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
     const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
     if (!runtime) return { deleted: false };
-    return runtime.deleteTask(input);
+    return runtime.deleteTask({ ...input, projectKey: runtime.projectKey });
   }
 
   async stopTask(input: CronStopInput): Promise<CronStopResult> {
@@ -289,18 +289,18 @@ export class CronManager {
   ): Promise<CronRuntime | undefined> {
     if (projectKey) {
       const runtime = await this.ensureRuntime(projectKey);
-      return (await runtime.listTasks()).tasks.some((task) => task.taskId === taskId)
-        ? runtime
-        : undefined;
+      return (await runtime.hasTask(taskId)) ? runtime : undefined;
     }
     const matches: CronRuntime[] = [];
     for (const runtime of this.runtimes.values()) {
-      if ((await runtime.listTasks()).tasks.some((task) => task.taskId === taskId)) {
+      if (await runtime.hasTask(taskId)) {
         matches.push(runtime);
       }
     }
     if (matches.length > 1) {
-      throw new Error(`Cron task id is ambiguous across projects: ${taskId}`);
+      throw Object.assign(new Error(`Cron task id is ambiguous across projects: ${taskId}`), {
+        code: "cron_task_ambiguous",
+      });
     }
     return matches[0];
   }

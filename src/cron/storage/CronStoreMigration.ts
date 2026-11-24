@@ -92,12 +92,12 @@ export async function migrateCronStores(input: {
       bucket.records = dedupeRuns(bucket.records);
     }
 
-    await stageDestinationData(snapshots, finalTasks, finalRuns, input.logger);
+    await stageDestinationData(snapshots, finalTasks, finalRuns);
     await migrateRunEvents(snapshots, runTargets, input.logger);
     await writeFinalSnapshots(snapshots, finalTasks, finalRuns);
     await writeFile(
-      resolve(rootDir, "store-migration-v1.json"),
-      `${JSON.stringify({ version: 1, completedAt: new Date().toISOString() }, null, 2)}\n`,
+      resolve(rootDir, "store-migration-v2.json"),
+      `${JSON.stringify({ version: 2, completedAt: new Date().toISOString() }, null, 2)}\n`,
       "utf-8",
     );
   } finally {
@@ -130,8 +130,8 @@ async function readTasks(
   path: string,
 ): Promise<Pick<StoreSnapshot, "tasks" | "taskFileWritable">> {
   try {
-    const parsed = JSON.parse(await readFile(path, "utf-8")) as { tasks?: unknown };
-    if (!Array.isArray(parsed.tasks)) {
+    const parsed = JSON.parse(await readFile(path, "utf-8")) as { schemaVersion?: unknown; tasks?: unknown } | null;
+    if (parsed?.schemaVersion !== 1 || !Array.isArray(parsed.tasks)) {
       return { tasks: [], taskFileWritable: false };
     }
     return { tasks: parsed.tasks, taskFileWritable: true };
@@ -223,27 +223,31 @@ async function stageDestinationData(
   snapshots: StoreSnapshot[],
   finalTasks: Map<string, unknown[]>,
   finalRuns: Map<string, { records: JsonRecord[]; invalidLines: string[] }>,
-  logger?: CronRuntimeLogger,
 ): Promise<void> {
   const originals = new Map(snapshots.map((snapshot) => [snapshot.dir, snapshot]));
   for (const [dir, tasks] of finalTasks) {
     const original = originals.get(dir);
     if (original && !original.taskFileWritable) continue;
-    await writeTaskFile(
-      dir,
-      dedupeTasks([...(original?.tasks ?? []), ...tasks], logger, dir),
-    );
+    // Preserve every source record until all destinations have been written.
+    const existing = original?.tasks ?? [];
+    const additions = findUnstagedRecords(existing, tasks);
+    if (additions.length > 0) await writeTaskFile(dir, [...existing, ...additions]);
   }
   for (const [dir, bucket] of finalRuns) {
     const original = originals.get(dir);
+    const existing = original?.runs ?? [];
+    const additions = findUnstagedRecords(existing, bucket.records);
+    if (additions.length === 0) continue;
     await writeRunFile(dir, {
-      records: dedupeRuns([...(original?.runs ?? []), ...bucket.records]),
-      invalidLines: [...new Set([
-        ...(original?.invalidRunLines ?? []),
-        ...bucket.invalidLines,
-      ])],
+      records: [...existing, ...additions],
+      invalidLines: original?.invalidRunLines ?? [],
     });
   }
+}
+
+function findUnstagedRecords<T>(existing: T[], records: T[]): T[] {
+  const saved = new Set(existing.map((record) => JSON.stringify(record)));
+  return records.filter((record) => !saved.has(JSON.stringify(record)));
 }
 
 async function writeFinalSnapshots(

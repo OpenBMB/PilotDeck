@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { GatewayEvent } from "../../gateway/index.js";
 import type { CronRunRecord, CronTask, CronTaskChange } from "../protocol/types.js";
 import { cronRunEventsPath, type CronPaths } from "./CronPaths.js";
@@ -34,8 +34,8 @@ export class CronTaskStore {
     return (await this.readTaskFile()).tasks;
   }
 
-  async getTask(taskId: string): Promise<CronTask | undefined> {
-    return (await this.listTasks()).find((task) => task.taskId === taskId);
+  async getTask(taskId: string, projectKey?: string): Promise<CronTask | undefined> {
+    return this.findTask(await this.listTasks(), taskId, projectKey);
   }
 
   async putTask(task: CronTask): Promise<void> {
@@ -83,16 +83,23 @@ export class CronTaskStore {
     });
   }
 
-  async deleteTask(taskId: string): Promise<boolean> {
+  async deleteTask(taskId: string, projectKey?: string): Promise<boolean> {
     return this.mutateTaskFile(async (file) => {
-      const tasks = file.tasks.filter((task) => task.taskId !== taskId);
-      if (tasks.length === file.tasks.length) {
-        return false;
-      }
+      const task = this.findTask(file.tasks, taskId, projectKey);
+      if (!task) return false;
+      const tasks = file.tasks.filter((entry) => entry.taskId !== taskId);
       await this.writeTaskFile({ schemaVersion: 1, tasks: sortTasks(tasks) });
-      this.changed(taskId, undefined, file.tasks.find(task => task.taskId === taskId)?.projectKey);
+      this.changed(taskId, undefined, task.projectKey);
       return true;
     });
+  }
+
+  private findTask(tasks: CronTask[], taskId: string, projectKey?: string): CronTask | undefined {
+    const task = tasks.find((entry) => entry.taskId === taskId);
+    if (task && (projectKey === undefined || resolve(task.projectKey ?? this.paths.projectKey) === projectKey)) {
+      return task;
+    }
+    return undefined;
   }
 
   async appendRun(record: CronRunRecord): Promise<void> {

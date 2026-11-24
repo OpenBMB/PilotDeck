@@ -411,13 +411,19 @@ export class CronRuntime {
     return { updated: true, task: updated };
   }
 
+  async hasTask(taskId: string): Promise<boolean> {
+    return Boolean(await this.store.getTask(taskId, this.projectKey));
+  }
+
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
+    if (input.projectKey !== undefined && resolve(input.projectKey) !== this.projectKey) return { deleted: false };
     let stoppedRunId: string | undefined;
     if (input.stopRunning) {
+      if (!await this.hasTask(input.taskId)) return { deleted: false };
       const stopped = await this.stopTask({ taskId: input.taskId });
       stoppedRunId = stopped.runId;
     }
-    const deleted = await this.store.deleteTask(input.taskId);
+    const deleted = await this.store.deleteTask(input.taskId, this.projectKey);
     if (deleted) {
       this.taskDetailsJobs.get(input.taskId)?.abort();
       this.taskDetailsJobs.delete(input.taskId);

@@ -1169,7 +1169,8 @@ describe('CronPanel', () => {
   });
 
   it('deletes a cron job after confirmation and refreshes', async () => {
-    setup([makeJob({ id: 'job-delete', prompt: 'Delete this job' })]);
+    const projectKey = 'C:\\work\\演示';
+    setup([makeJob({ id: 'job-delete', prompt: 'Delete this job', projectKey })]);
 
     await findText('Delete this job');
     fireEvent.click(taskAction('Delete'));
@@ -1179,7 +1180,7 @@ describe('CronPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => {
-      expect(apiMock.cronDelete).toHaveBeenCalledWith('job-delete');
+      expect(apiMock.cronDelete).toHaveBeenCalledWith('job-delete', projectKey);
       expect(apiMock.cronDelete).toHaveBeenCalledTimes(1);
       expect(apiMock.allCronJobs).toHaveBeenCalledTimes(1);
     });

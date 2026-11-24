@@ -208,8 +208,11 @@ export const api = {
     authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/run-now`, { method: 'POST', ...(payload ? { body: JSON.stringify(payload) } : {}) }),
   cronStop: (taskId) =>
     authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}/stop`, { method: 'POST' }),
-  cronDelete: (taskId) =>
-    authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}`, { method: 'DELETE' }),
+  cronDelete: (taskId, projectKey) =>
+    authenticatedFetch(`/api/always-on/cron-jobs/${encodeURIComponent(taskId)}`, {
+      method: 'DELETE',
+      ...(projectKey ? { body: JSON.stringify({ projectKey }) } : {}),
+    }),
   projectDiscoveryContext: (projectName) =>
     authenticatedFetch(`/api/projects/${encodeURIComponent(projectName)}/discovery-context`),
   projectDiscoveryPlans: (projectName) =>
