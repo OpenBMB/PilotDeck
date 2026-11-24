@@ -1,3 +1,5 @@
+import { parseLoopbackPreviewUrl } from './remarkPreviewLinks';
+
 export type MarkdownArtifactFile = {
   name: string;
   path: string;
@@ -64,7 +66,10 @@ const transformChildren = (node: MarkdownAstNode, files: MarkdownArtifactFile[])
   for (let index = 0; index < node.children.length; index += 1) {
     const child = node.children[index];
     if (child.type === 'link') {
-      const file = findArtifactFile(collectText(child), child.url || '', files);
+      const destination = child.url || '';
+      const previewUrl = parseLoopbackPreviewUrl(destination);
+      if (previewUrl && previewUrl.origin !== globalThis.location?.origin) continue;
+      const file = findArtifactFile(collectText(child), destination, files);
       if (file) {
         const replacement = child.children?.length
           ? child.children

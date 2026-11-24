@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createServer, type Server } from "node:http";
+import { createServer, globalAgent, type Server } from "node:http";
 import test from "node:test";
 import { createTaskPreviewTool } from "../../src/tool/builtin/taskPreview.js";
 import { TaskOutputStore } from "../../src/task/storage/TaskOutputStore.js";
@@ -76,6 +76,44 @@ test("owned running preview returns exact clickable URL, evidence and stop ident
     assert.match(text, /\[Open preview\]\(<http:\/\/127\.0\.0\.1:/);
     assert.match(text, /task_stop\(\{ taskId: "preview-task" \}\)/);
     assert.match(text, /browser rendering has not been verified/);
+  } finally {
+    await close(server);
+  }
+});
+
+test("preview Markdown escapes character references and backslashes without rewriting the checked URL", async () => {
+  const route = "/demo?value=a&amp;b=x\\";
+  const server = createServer((req, res) => {
+    res.writeHead(req.url === route ? 200 : 404, { "content-type": "text/html" });
+    res.end("Preview fixture");
+  });
+  const origin = await listen(server);
+  try {
+    const { tool } = fixture(origin);
+    const checked = await tool.execute({ taskId: "preview-task", url: origin + route, expectedText: "Preview fixture" }, context);
+    assert.equal(checked.data?.url, origin + route);
+    const link = checked.content[0];
+    assert.equal(link.type, "text");
+    assert.equal(link.text.split("\n")[0], `[Open preview](<${origin}/demo?value=a&amp;amp;b=x\\\\>)`);
+  } finally {
+    await close(server);
+  }
+});
+
+test("preview connects directly without using the process-wide HTTP agent", async t => {
+  const globalConnection = t.mock.method(globalAgent, "createConnection", () => {
+    throw new Error("The global HTTP agent must not handle a preview request");
+  });
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("Preview fixture");
+  });
+  const origin = await listen(server);
+  try {
+    const { tool } = fixture(origin);
+    const checked = await tool.execute({ taskId: "preview-task", url: origin, expectedText: "Preview fixture" }, context);
+    assert.equal(checked.data?.url, `${origin}/`);
+    assert.equal(globalConnection.mock.callCount(), 0);
   } finally {
     await close(server);
   }
@@ -279,7 +317,7 @@ test("a task that exits during the check is not reported ready", async () => {
   }
 });
 
-test("localhost retains its URL and Host header when probing a loopback server", async () => {
+test("localhost hands off the literal URL with the Host header that was verified", async () => {
   let host = "";
   const server = createServer((req, res) => {
     host = req.headers.host ?? "";
@@ -287,19 +325,21 @@ test("localhost retains its URL and Host header when probing a loopback server",
     res.end("Local app");
   });
   const origin = await listen(server);
-  const url = origin.replace("127.0.0.1", "localhost");
+  const url = `${origin.replace("127.0.0.1", "localhost")}/preview?mode=check`;
   try {
     const { tool } = fixture(url);
     const result = await tool.execute({ taskId: "preview-task", url, expectedText: "Local app" }, context);
-    assert.equal(result.data?.url, `${url}/`);
-    assert.equal(host, new URL(url).host);
+    assert.equal(result.data?.url, `${origin}/preview?mode=check`);
+    assert.equal(host, new URL(origin).host);
   } finally {
     await close(server);
   }
 });
 
-test("IPv6-only localhost services can be checked without DNS", async t => {
-  const server = createServer((_req, res) => {
+test("IPv6 localhost previews return the literal address without DNS", async t => {
+  let host = "";
+  const server = createServer((req, res) => {
+    host = req.headers.host ?? "";
     res.writeHead(200, { "content-type": "text/html" });
     res.end("IPv6 app");
   });
@@ -329,8 +369,37 @@ test("IPv6-only localhost services can be checked without DNS", async t => {
       const probeUrl: string = `http://${probeHost}:${ipv6Port}/`;
       const { tool } = fixture(announced);
       const checked = await tool.execute({ taskId: "preview-task", url: probeUrl, expectedText: "IPv6 app" }, context);
-      assert.equal(checked.data?.url, probeUrl);
+      assert.equal(checked.data?.url, `http://[::1]:${ipv6Port}/`);
+      assert.equal(host, `[::1]:${ipv6Port}`);
     }
+
+    await t.test("a different IPv4 app on the same port does not mask the verified IPv6 app", async t => {
+      const ipv4 = createServer((_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end("IPv4 app");
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          ipv4.once("error", reject);
+          ipv4.listen(ipv6Port, "127.0.0.1", resolve);
+        });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
+          t.skip("The paired IPv4 port is unavailable");
+          return;
+        }
+        throw error;
+      }
+      try {
+        const url = `http://localhost:${ipv6Port}/preview`;
+        const { tool } = fixture(url);
+        const checked = await tool.execute({ taskId: "preview-task", url, expectedText: "IPv6 app" }, context);
+        assert.equal(checked.data?.url, `http://[::1]:${ipv6Port}/preview`);
+        assert.equal(host, `[::1]:${ipv6Port}`);
+      } finally {
+        await close(ipv4);
+      }
+    });
   } finally {
     await close(server);
   }

@@ -9,9 +9,11 @@ const input = { cwd: "/workspace", provider: "test", model: "test", permissionMo
 test("web handoff advertises only available capabilities and preserves source-only exceptions", () => {
   const prompt = assembler.assemble(input).joined;
   assert.match(prompt, /Web application delivery:/);
-  assert.match(prompt, /clickable Markdown URL/);
+  assert.match(prompt, /copying the clickable Markdown URL from task_preview/);
   assert.match(prompt, /source-only/);
   assert.match(prompt, /index\.html/);
+  assert.match(prompt, /offset 0 to recover retained origins/);
+  assert.match(prompt, /exact URL returned by task_preview for the browser check/);
   assert.match(prompt, /HTTP success alone does not prove the app renders/);
   assert.match(prompt, /remote\/Docker/);
   for (const missing of tools) {

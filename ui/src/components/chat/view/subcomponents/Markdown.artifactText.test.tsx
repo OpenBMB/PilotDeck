@@ -60,6 +60,23 @@ describe('Markdown artifact file text', () => {
     expect(link.getAttribute('href')).toBe('https://example.com/report');
   });
 
+  it('keeps a distinct-origin preview clickable alongside its source artifact', () => {
+    const source = { name: 'index.html', path: 'index.html' };
+    const preview = 'http://[::1]:43127/index.html';
+    const artifactLink = `${window.location.origin}/session/index.html`;
+    render(
+      <Markdown artifactFiles={[source]} onFileOpen={vi.fn()}>
+        {`[Open preview](<${preview}>)\n\n[Open source](<${artifactLink}>)`}
+      </Markdown>,
+    );
+
+    const link = screen.getByRole('link', { name: 'Open preview' });
+    expect(link.getAttribute('href')).toBe(preview);
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(screen.queryByRole('link', { name: 'Open source' })).toBeNull();
+    expect(screen.getByText('Open source')).toBeTruthy();
+  });
+
   it('does not rewrite artifact-looking text inside code', () => {
     render(
       <Markdown artifactFiles={[artifact]} onFileOpen={vi.fn()}>

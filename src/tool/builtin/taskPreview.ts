@@ -34,14 +34,13 @@ type AnnouncedOrigin = {
 };
 
 const MAX_HTML_BYTES = 512 * 1024;
-const RETRYABLE_LOOPBACK_CODES = new Set(["ECONNREFUSED", "EADDRNOTAVAIL", "EAFNOSUPPORT", "ENETUNREACH"]);
 
 /** Local readiness is distinct from browser acceptance and client reachability. */
 export function createTaskPreviewTool(runtime: TaskPreviewRuntime): PilotDeckToolDefinition<TaskPreviewInput, TaskPreviewOutput> {
   return {
     name: "task_preview",
     description:
-      "Verify a running development server before handing it to the user. Pass its task_create taskId, exact HTTP page URL on the origin announced in that task's output, and a distinctive expectedText from the initial page HTML. Checks HTTP success, HTML content and that marker; does not execute JavaScript or open a browser. Use browser-use separately for visual/interaction acceptance. The URL is on the executing Gateway, not necessarily the user's machine; never invent forwarding. Include the verified URL and task_stop taskId in your final response, and leave the requested preview running.",
+      "Verify a running development server before handing it to the user. Pass its task_create taskId, exact HTTP page path and query on the origin announced in that task's output, and a distinctive expectedText from the initial page HTML. Checks HTTP success, HTML content and that marker; does not execute JavaScript or open a browser. Use the returned literal loopback URL for browser-use and the final response. The URL is on the executing Gateway, not necessarily the user's machine; never invent forwarding. Include the task_stop taskId and leave the requested preview running.",
     kind: "network",
     inputSchema: {
       type: "object",
@@ -55,7 +54,7 @@ export function createTaskPreviewTool(runtime: TaskPreviewRuntime): PilotDeckToo
         url: {
           type: "string",
           description:
-            "Exact HTTP page URL on localhost, 127.0.0.1 or [::1], with the non-default port announced by the task. Wildcard binds (0.0.0.0 or [::]) map to loopback on the same port. Redirects are not followed.",
+            "Exact HTTP page URL on localhost, 127.0.0.1 or [::1], with the non-default port announced by the task. For localhost, the result uses the verified literal loopback address. Wildcard binds (0.0.0.0 or [::]) map to loopback on the same port. Redirects are not followed.",
         },
         expectedText: {
           type: "string",
@@ -113,28 +112,9 @@ export function createTaskPreviewTool(runtime: TaskPreviewRuntime): PilotDeckToo
       const timeout = AbortSignal.timeout(5000);
       const signal = context.abortSignal ? AbortSignal.any([context.abortSignal, timeout]) : timeout;
 
-      // Pin loopback probes to literal IPv4/IPv6 addresses without DNS or ambient proxies.
+      let verifiedUrl: URL;
       try {
-        signal.throwIfAborted();
-        let lastError: unknown;
-        for (let index = 0; index < probeHosts.length; index++) {
-          const target = new URL(url);
-          target.hostname = probeHosts[index];
-          try {
-            await checkHtml(target, url.host, input.expectedText, signal);
-            lastError = undefined;
-            break;
-          } catch (error) {
-            lastError = error;
-            const code = (error as NodeJS.ErrnoException).code ?? "";
-            if (index + 1 >= probeHosts.length || !RETRYABLE_LOOPBACK_CODES.has(code)) {
-              throw error;
-            }
-          }
-        }
-        if (lastError) {
-          throw lastError;
-        }
+        verifiedUrl = await probeLoopbackPage(url, probeHosts, input.expectedText, signal);
       } catch (error) {
         if (context.abortSignal?.aborted) {
           throw new PilotDeckToolRuntimeError("tool_aborted", "Preview check cancelled.");
@@ -154,18 +134,20 @@ export function createTaskPreviewTool(runtime: TaskPreviewRuntime): PilotDeckToo
       assertTask();
       const data: TaskPreviewOutput = {
         taskId: input.taskId,
-        url: url.href,
+        url: verifiedUrl.href,
         httpStatus: 200,
         checkedAt: (context.now?.() ?? new Date()).toISOString(),
         verification: "http-content",
         browserVerified: false,
         scope: "gateway-loopback",
       };
+      // Escape CommonMark syntax without altering the URL we requested.
+      const markdownUrl = data.url.replace(/\\/g, "\\\\").replace(/&/g, "&amp;");
       return {
         content: [{
           type: "text",
           text:
-            `[Open preview](<${data.url}>)\n\n`
+            `[Open preview](<${markdownUrl}>)\n\n`
             + `HTTP HTML and expected content verified at ${data.checkedAt}; browser rendering has not been verified.\n`
             + "This address is local to the executing Gateway. Remote/Docker clients may need port forwarding.\n"
             + `Leave the preview running for review. Stop with task_stop({ taskId: ${JSON.stringify(data.taskId)} }).`,
@@ -178,7 +160,7 @@ export function createTaskPreviewTool(runtime: TaskPreviewRuntime): PilotDeckToo
 
 // Startup banners can contain ANSI color codes. Extract announced loopback/wildcard
 // HTTP origins so callers can verify routes beneath the service's bound port.
-function parseAnnouncedOrigins(output: string): AnnouncedOrigin[] {
+export function parseAnnouncedOrigins(output: string): AnnouncedOrigin[] {
   const matches = stripVTControlCharacters(output).matchAll(
     /(?:^|[\s"'(<=>])http:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):([0-9]{1,5})(?=$|[\s/?#"'<>),;])/gi,
   );
@@ -243,11 +225,37 @@ function extractHtmlTitle(html: string): string {
   return cleaned.length > 80 ? `${cleaned.slice(0, 80)}...` : cleaned;
 }
 
-function checkHtml(url: URL, host: string, expectedText: string, signal?: AbortSignal): Promise<void> {
+async function probeLoopbackPage(
+  url: URL,
+  hosts: LoopbackTargetHost[],
+  expectedText: string,
+  signal: AbortSignal,
+): Promise<URL> {
+  const failures: string[] = [];
+  for (const host of hosts) {
+    signal.throwIfAborted();
+    const target = new URL(url);
+    target.hostname = host;
+    try {
+      await checkHtml(target, expectedText, signal);
+      return target;
+    } catch (error) {
+      failures.push(`${target.origin}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  throw new Error(failures.join(" "));
+}
+
+function checkHtml(url: URL, expectedText: string, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const req = request(
       url,
-      { method: "GET", headers: { host, accept: "text/html", "accept-encoding": "identity" }, signal },
+      {
+        method: "GET",
+        agent: false, // The process-global agent can inherit environment proxy settings.
+        headers: { accept: "text/html", "accept-encoding": "identity" },
+        signal,
+      },
       res => {
         const contentType = res.headers["content-type"] ?? "";
         let failure: string | undefined;
