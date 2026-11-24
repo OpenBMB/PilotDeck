@@ -18,7 +18,11 @@ import { parseModelResponse } from "../response/parseModelResponse.js";
 import { createStreamNormalizerState, normalizeStreamEvent } from "./normalizeStreamEvent.js";
 import { createGoogleStreamState, normalizeGoogleStreamEvent } from "../providers/google/stream.js";
 import { normalizeProviderBaseUrl } from "../normalizeProviderBaseUrl.js";
-import { buildProviderChatEndpointCandidates, isExpectedProviderResponseShape } from "../providerEndpoint.js";
+import {
+  buildProviderChatEndpointCandidates,
+  isExpectedProviderResponseShape,
+  normalizeOpenAIChatTokenLimit,
+} from "../providerEndpoint.js";
 import { StreamingCheckpointManager } from "./StreamingCheckpoint.js";
 import { buildLiteLLMContinuationRequest } from "./continuationRequest.js";
 import { requestFingerprint } from "./requestFingerprint.js";
@@ -674,7 +678,10 @@ async function sendProviderRequest(
     )), effectiveTimeoutMs)
     : undefined;
 
-  const finalBody = sanitizeProviderBody({ ...(body as Record<string, unknown>), ...provider.extraBody });
+  const mergedBody = sanitizeProviderBody({ ...(body as Record<string, unknown>), ...provider.extraBody });
+  const finalBody = provider.protocol === "openai"
+    ? normalizeOpenAIChatTokenLimit(mergedBody, provider.url)
+    : mergedBody;
 
   try {
     const fetchOptions: RequestInit = {

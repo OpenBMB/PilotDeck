@@ -2,6 +2,23 @@ export type ProviderEndpointProtocol = "openai" | "openai-responses" | "anthropi
 
 const VERSION_SEGMENT_PATTERN = /^v\d+(?:beta\d*)?$/i;
 
+export function normalizeOpenAIChatTokenLimit(
+  body: Record<string, unknown>,
+  endpointUrl: string,
+): Record<string, unknown> {
+  let hostname: string;
+  try {
+    hostname = new URL(endpointUrl).hostname;
+  } catch {
+    return body;
+  }
+  if (hostname !== "api.openai.com" || !Object.hasOwn(body, "max_tokens")) return body;
+
+  const { max_tokens, ...params } = body;
+  if (params.max_completion_tokens === undefined) params.max_completion_tokens = max_tokens;
+  return params;
+}
+
 function trimSlashes(value: string): string {
   return value.replace(/^\/+|\/+$/g, "");
 }
