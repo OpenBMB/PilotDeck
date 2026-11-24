@@ -1,11 +1,12 @@
 import { mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
-import type { Dirent } from "node:fs";
+import { statSync, type Dirent } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import type { SessionConfigOverrides } from "../../always-on/runtime/SessionConfigOverrides.js";
 import type { Gateway } from "../../gateway/index.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { PilotDeckToolDefinition } from "../../tool/index.js";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 import type { CronConfig } from "../config/parseCronConfig.js";
 import type {
   CronCreateInput,
@@ -54,7 +55,8 @@ export class CronManager {
 
   private readonly pilotHome: string;
   private readonly runtimes = new Map<string, CronRuntime>();
-  private readonly starting = new Map<string, Promise<void>>();
+  private readonly runtimesByDirectory = new Map<string, CronRuntime>();
+  private readonly starting = new Map<CronRuntime, Promise<void>>();
   private readonly tools: PilotDeckToolDefinition[];
   private gateway?: Gateway;
   private started = false;
@@ -109,15 +111,18 @@ export class CronManager {
       await runtime.stop();
     }
     this.runtimes.clear();
+    this.runtimesByDirectory.clear();
     this.starting.clear();
   }
 
   async createTask(input: CronCreateInput): Promise<CronCreateResult> {
     if (!this.config.enabled) throw new Error("Cron is disabled. Enable it in pilotdeck.yaml to create tasks.");
-    const projectKey = input.projectKey === "general" ? this.pilotHome : requireProjectKey(input.projectKey);
+    const requested = input.projectKey === "general" ? this.pilotHome : requireProjectKey(input.projectKey);
     // Check before creating a runtime, project marker, or durable task. Agent
     // tools and Gateway/Web requests share this creation boundary.
-    if (projectKey !== this.pilotHome && !await this.resolveRegisteredProject(projectKey)) {
+    const projectKey = resolveProjectIdentityPath(requested) === resolveProjectIdentityPath(this.pilotHome)
+      ? this.pilotHome : await this.resolveRegisteredProject(requested);
+    if (!projectKey) {
       throw Object.assign(new Error("Cron project is not registered or its directory is unavailable. Select an existing project and try again."), {
         code: "cron_project_unavailable",
       });
@@ -200,16 +205,17 @@ export class CronManager {
 
   async prepareConversation(input: { sessionKey: string; projectKey?: string }): Promise<{ task: CronTask; workspaceCwd: string }> {
     const task = (await this.listTasks()).tasks.find(task => task.sessionKey === input.sessionKey);
-    if (!task || (input.projectKey && resolve(input.projectKey) !== resolve(task.projectKey!))) {
+    if (!task?.projectKey || (input.projectKey
+        && resolveProjectIdentityPath(input.projectKey) !== resolveProjectIdentityPath(task.projectKey))) {
       throw new Error("Scheduled task conversation does not belong to this project.");
     }
-    return (await this.ensureRuntime(task.projectKey!)).prepareConversation(task.taskId);
+    return (await this.ensureRuntime(task.projectKey)).prepareConversation(task.taskId);
   }
 
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
     const runtime = await this.resolveTaskRuntime(input.taskId, input.projectKey);
     if (!runtime) return { deleted: false };
-    return runtime.deleteTask(input);
+    return runtime.deleteTask({ ...input, projectKey: runtime.projectKey });
   }
 
   async stopTask(input: CronStopInput): Promise<CronStopResult> {
@@ -239,9 +245,16 @@ export class CronManager {
 
   private async ensureRuntime(projectKeyInput: string): Promise<CronRuntime> {
     const projectKey = projectKeyInput === "general" ? this.pilotHome : resolve(projectKeyInput);
-    const existing = this.runtimes.get(projectKey);
+    const identity = resolveProjectIdentityPath(projectKey);
+    const atPath = this.runtimes.get(identity);
+    const directory = atPath ? undefined : getProjectDirectoryIdentity(identity);
+    const atDirectory = directory ? this.runtimesByDirectory.get(directory) : undefined;
+    // Case-only renames can change the canonical pathname while the registered
+    // project still points to the same directory. Keep its loaded store pinned.
+    const existing = atPath ?? (atDirectory && resolveProjectIdentityPath(atDirectory.projectKey) === identity
+      ? atDirectory : undefined);
     if (existing) {
-      await this.starting.get(projectKey);
+      await this.starting.get(existing);
       return existing;
     }
 
@@ -264,14 +277,13 @@ export class CronManager {
       skipToolCreation: true,
     });
     if (this.gateway) runtime.bindGateway(this.gateway);
-    this.runtimes.set(projectKey, runtime);
-    await writeProjectMarker(runtime.paths.projectDir, projectKey);
-
-    if (this.started) {
-      const pending = runtime.start().finally(() => this.starting.delete(projectKey));
-      this.starting.set(projectKey, pending);
-      await pending;
-    }
+    this.runtimes.set(identity, runtime);
+    if (directory) this.runtimesByDirectory.set(directory, runtime);
+    const pending = writeProjectMarker(runtime.paths.projectDir, projectKey)
+      .then(async () => { if (this.started) await runtime.start(); })
+      .finally(() => this.starting.delete(runtime));
+    this.starting.set(runtime, pending);
+    await pending;
     return runtime;
   }
 
@@ -289,18 +301,18 @@ export class CronManager {
   ): Promise<CronRuntime | undefined> {
     if (projectKey) {
       const runtime = await this.ensureRuntime(projectKey);
-      return (await runtime.listTasks()).tasks.some((task) => task.taskId === taskId)
-        ? runtime
-        : undefined;
+      return (await runtime.hasTask(taskId)) ? runtime : undefined;
     }
     const matches: CronRuntime[] = [];
     for (const runtime of this.runtimes.values()) {
-      if ((await runtime.listTasks()).tasks.some((task) => task.taskId === taskId)) {
+      if (await runtime.hasTask(taskId)) {
         matches.push(runtime);
       }
     }
     if (matches.length > 1) {
-      throw new Error(`Cron task id is ambiguous across projects: ${taskId}`);
+      throw Object.assign(new Error(`Cron task id is ambiguous across projects: ${taskId}`), {
+        code: "cron_task_ambiguous",
+      });
     }
     return matches[0];
   }
@@ -323,6 +335,14 @@ export class CronManager {
     }
     return matches[0];
   }
+}
+
+function getProjectDirectoryIdentity(projectPath: string): string | undefined {
+  try {
+    const info = statSync(projectPath, { bigint: true, throwIfNoEntry: false });
+    if (info?.isDirectory() && info.ino !== 0n) return `${info.dev}:${info.ino}:${info.birthtimeNs}`;
+  } catch { /* Use the resolved path for directories without a readable identity. */ }
+  return undefined;
 }
 
 export function createCronManager(options: CreateCronManagerOptions): CronManager {

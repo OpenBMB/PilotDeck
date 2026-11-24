@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 import type { CronRuntimeLogger } from "../runtime/CronRuntime.js";
 import { cronRunEventsPath, resolveCronPaths } from "./CronPaths.js";
 
@@ -92,12 +93,12 @@ export async function migrateCronStores(input: {
       bucket.records = dedupeRuns(bucket.records);
     }
 
-    await stageDestinationData(snapshots, finalTasks, finalRuns, input.logger);
+    await stageDestinationData(snapshots, finalTasks, finalRuns);
     await migrateRunEvents(snapshots, runTargets, input.logger);
     await writeFinalSnapshots(snapshots, finalTasks, finalRuns);
     await writeFile(
-      resolve(rootDir, "store-migration-v1.json"),
-      `${JSON.stringify({ version: 1, completedAt: new Date().toISOString() }, null, 2)}\n`,
+      resolve(rootDir, "store-migration-v2.json"),
+      `${JSON.stringify({ version: 2, completedAt: new Date().toISOString() }, null, 2)}\n`,
       "utf-8",
     );
   } finally {
@@ -130,8 +131,8 @@ async function readTasks(
   path: string,
 ): Promise<Pick<StoreSnapshot, "tasks" | "taskFileWritable">> {
   try {
-    const parsed = JSON.parse(await readFile(path, "utf-8")) as { tasks?: unknown };
-    if (!Array.isArray(parsed.tasks)) {
+    const parsed = JSON.parse(await readFile(path, "utf-8")) as { schemaVersion?: unknown; tasks?: unknown } | null;
+    if (parsed?.schemaVersion !== 1 || !Array.isArray(parsed.tasks)) {
       return { tasks: [], taskFileWritable: false };
     }
     return { tasks: parsed.tasks, taskFileWritable: true };
@@ -223,27 +224,31 @@ async function stageDestinationData(
   snapshots: StoreSnapshot[],
   finalTasks: Map<string, unknown[]>,
   finalRuns: Map<string, { records: JsonRecord[]; invalidLines: string[] }>,
-  logger?: CronRuntimeLogger,
 ): Promise<void> {
   const originals = new Map(snapshots.map((snapshot) => [snapshot.dir, snapshot]));
   for (const [dir, tasks] of finalTasks) {
     const original = originals.get(dir);
     if (original && !original.taskFileWritable) continue;
-    await writeTaskFile(
-      dir,
-      dedupeTasks([...(original?.tasks ?? []), ...tasks], logger, dir),
-    );
+    // Preserve every source record until all destinations have been written.
+    const existing = original?.tasks ?? [];
+    const additions = findUnstagedRecords(existing, tasks);
+    if (additions.length > 0) await writeTaskFile(dir, [...existing, ...additions]);
   }
   for (const [dir, bucket] of finalRuns) {
     const original = originals.get(dir);
+    const existing = original?.runs ?? [];
+    const additions = findUnstagedRecords(existing, bucket.records);
+    if (additions.length === 0) continue;
     await writeRunFile(dir, {
-      records: dedupeRuns([...(original?.runs ?? []), ...bucket.records]),
-      invalidLines: [...new Set([
-        ...(original?.invalidRunLines ?? []),
-        ...bucket.invalidLines,
-      ])],
+      records: [...existing, ...additions],
+      invalidLines: original?.invalidRunLines ?? [],
     });
   }
+}
+
+function findUnstagedRecords<T>(existing: T[], records: T[]): T[] {
+  const saved = new Set(existing.map((record) => JSON.stringify(record)));
+  return records.filter((record) => !saved.has(JSON.stringify(record)));
 }
 
 async function writeFinalSnapshots(
@@ -308,8 +313,8 @@ async function migrateRunEvents(
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
-      const merged = mergeJsonLines(targetRaw, sourceRaw);
-      await atomicWrite(targetPath, merged);
+      const merged = mergeRunEventLogs(targetRaw, sourceRaw);
+      if (merged !== targetRaw) await atomicWrite(targetPath, merged);
       await unlink(sourcePath).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") {
           logger?.warn("cron migration could not remove source run event file", {
@@ -391,11 +396,18 @@ function compareRun(left: JsonRecord, right: JsonRecord): number {
     .localeCompare(String(right.finishedAt ?? right.startedAt ?? ""));
 }
 
-function mergeJsonLines(left: string, right: string): string {
-  const lines = new Set(
-    `${left}\n${right}`.split("\n").filter((line) => line.trim().length > 0),
-  );
-  return lines.size ? `${[...lines].join("\n")}\n` : "";
+function mergeRunEventLogs(target: string, source: string): string {
+  // An interrupted migration can leave the complete source sequence in the
+  // target. Compare full, line-aligned sequences and keep repeated rows.
+  const existing = terminateJsonLines(target);
+  const incoming = terminateJsonLines(source);
+  if (existing.startsWith(incoming) || existing.includes(`\n${incoming}`)) return target;
+  if (incoming.startsWith(existing)) return source;
+  return existing + source;
+}
+
+function terminateJsonLines(raw: string): string {
+  return raw && !raw.endsWith("\n") ? `${raw}\n` : raw;
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {
@@ -450,7 +462,7 @@ async function acquireMigrationLock(
 }
 
 function normalizedProjectKey(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? resolve(value) : undefined;
+  return typeof value === "string" && value.trim() ? resolveProjectIdentityPath(value) : undefined;
 }
 
 function isRecord(value: unknown): value is JsonRecord {

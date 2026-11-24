@@ -126,7 +126,7 @@ import settingsRoutes from './routes/settings.js';
 import { createUsageRouter } from './routes/usage.js';
 import configRoutes from './routes/config.js';
 import gatewayRoutes from './routes/gateway.js';
-import { createCronUpdateHandler } from './routes/cron-jobs.js';
+import { createCronDeleteHandler, createCronUpdateHandler } from './routes/cron-jobs.js';
 import { cronTaskOverview } from './services/cronOverview.js';
 import { createCronWorkspaceResolver } from './services/cronWorkspace.js';
 import { projectFileIndex } from './services/projectFileIndex.js';
@@ -888,20 +888,7 @@ app.post('/api/always-on/cron-jobs/:taskId/stop', authenticateToken, async (req,
     }
 });
 
-app.delete('/api/always-on/cron-jobs/:taskId', authenticateToken, async (req, res) => {
-    try {
-        const gateway = await getPilotDeckGateway();
-        const result = await gateway.cronDelete({
-            taskId: req.params.taskId,
-            projectKey: req.body?.projectKey || req.query?.projectKey || undefined,
-            stopRunning: true,
-        });
-        res.json(result);
-    } catch (error) {
-        console.error('[always-on-cron-delete] failed:', error);
-        res.status(500).json({ error: error?.message || 'cron delete failed' });
-    }
-});
+app.delete('/api/always-on/cron-jobs/:taskId', authenticateToken, createCronDeleteHandler({ getGateway: getPilotDeckGateway }));
 
 app.get('/api/ccr/health', authenticateToken, (_req, res) => {
     res.json({

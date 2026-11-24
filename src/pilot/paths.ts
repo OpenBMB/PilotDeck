@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { findCanonicalProjectRoot } from "../session/worktree/findCanonicalProjectRoot.js";
 
 export type PilotPathEnv = Record<string, string | undefined>;
@@ -93,6 +93,16 @@ export function createCollisionResistantProjectId(projectRoot: string): string {
   const legacyId = createLegacyProjectId(normalizedRoot);
   const digest = createHash("sha1").update(normalizedRoot).digest("hex").slice(0, 10);
   return `${legacyId}--${digest}`;
+}
+
+/** Resolve the on-disk spelling while preserving the names of missing entries. */
+export function resolveProjectIdentityPath(projectRoot: string): string {
+  const absolute = resolve(projectRoot);
+  try { return realpathSync.native(absolute); }
+  catch {
+    const parent = dirname(absolute);
+    return parent === absolute ? absolute : resolve(resolveProjectIdentityPath(parent), basename(absolute));
+  }
 }
 
 /**

@@ -257,7 +257,17 @@ Reminder records and per-user acknowledgements are in
 record. Gateway equivalents are `cron_reminder_list` and `cron_reminder_dismiss`.
 
 Tasks are in `<PILOT_HOME>/cron/projects/<projectId>/tasks.json`, with a `.cwd`
-project marker. JSON writes use a serialized mutation queue and atomic replace.
+project marker. The storage ID hashes the absolute project path as resolved by
+the filesystem, including its drive letter and Unicode characters. Equivalent
+spellings of the same directory share a store, and distinct directories keep
+separate stores on case-sensitive volumes. A casing-only rename that leaves the
+registered path valid keeps using the loaded store until restart. At startup
+the store migration uses each task's recorded project key to split legacy shared stores
+and moves run events with their attributable history. Ambiguous records stay in
+their original directory. Destination data is staged before source records are
+removed, so startup can resume an interrupted migration. Run events retain their
+order and occurrences, and retries recognize an already copied event sequence.
+JSON writes use a serialized mutation queue and atomic replace.
 Unreadable, unsupported or damaged stores reject writes and preserve their bytes.
 Running records recover after restart; a committed terminal result is retained
 rather than executed again. Run history uses JSONL with bounded retention (200
@@ -271,7 +281,8 @@ project; `scope: all` enables a host-wide query. Detail queries provide cursor
 pagination. Source session and project identity are supplied by the host.
 Creation revalidates the project's registration and directory using the same
 resolver as conversation submission, before writing any task or Cron project
-marker. Missing, unregistered, or removed projects reject with
+marker. The resolver prefers an exact registered path before considering
+filesystem aliases. Missing, unregistered, or removed projects reject with
 `cron_project_unavailable`; the Web API returns HTTP 400 and the editor preserves
 the draft. General retains its separate virtual identity and execution workspace.
 
@@ -279,6 +290,10 @@ Web APIs keep `/api/always-on/cron-jobs` compatibility. Task detail is
 `GET /api/always-on/cron-jobs/:taskId`; history pagination uses `beforeRunId`.
 `POST /api/always-on/cron-preview` validates and previews without creating work.
 The existing PATCH, run-now, stop and DELETE routes operate on the same tasks.
+The Web client sends `projectKey` when deleting a task. The Gateway checks
+project ownership before stopping a run or removing its task. A legacy DELETE
+without `projectKey` can delete a unique match and returns HTTP 409 with
+`cron_task_ambiguous` when the task ID matches multiple projects.
 The legacy `retryDeliveryRunId` field is accepted without executing or forwarding a result.
 
 Validate with `tests/cron`, `tests/gateway/cron-defaults.spec.ts`, Web route and

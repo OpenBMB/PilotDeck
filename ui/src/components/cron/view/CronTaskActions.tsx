@@ -35,7 +35,7 @@ export default function CronTaskActions({ job, compact = false, onEdit, onRefres
     try {
       const response = kind === 'run' ? await api.cronRunNow(job.id)
         : kind === 'stop' ? await api.cronStop(job.id)
-          : kind === 'delete' ? await api.cronDelete(job.id)
+          : kind === 'delete' ? await api.cronDelete(job.id, job.projectKey)
             : await api.cronUpdate(job.id, { projectKey: job.projectKey, expectedRevision: job.revision,
               message: job.prompt, schedule: job.schedule, timezone: job.timezone, enabled: canResume });
       const result = await response.json();

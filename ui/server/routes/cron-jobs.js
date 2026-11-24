@@ -1,5 +1,30 @@
 import { isValidCalendarSchedule } from '../../../src/cron/runtime/CronSchedule.js';
 
+export function createCronDeleteHandler({ getGateway }) {
+    return async function handleCronDelete(req, res) {
+        const projectKey = req.body?.projectKey || req.query?.projectKey || undefined;
+        if (projectKey !== undefined && (typeof projectKey !== 'string' || !projectKey.trim())) {
+            res.status(400).json({ error: 'Cron projectKey must be a non-empty string.' });
+            return;
+        }
+        try {
+            const gateway = await getGateway();
+            const result = await gateway.cronDelete({ taskId: req.params.taskId, projectKey, stopRunning: true });
+            res.json(result);
+        } catch (error) {
+            if (error?.code === 'cron_task_ambiguous') {
+                res.status(409).json({
+                    code: error.code,
+                    error: 'This scheduled task ID matches multiple projects. Select the task in its project and try again.',
+                });
+                return;
+            }
+            console.error('[always-on-cron-delete] failed:', error);
+            res.status(500).json({ error: error?.message || 'cron delete failed' });
+        }
+    };
+}
+
 export function createCronUpdateHandler({ getGateway }) {
     return async function handleCronUpdate(req, res) {
         try {
