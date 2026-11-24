@@ -25,6 +25,8 @@ export type TaskOutputStoreOptions = {
   taskId: string;
   /** Hard cap on in-memory bytes retained (default 1 MB). */
   maxMemoryBytes?: number;
+  /** Immutable startup prefix retained across ring-buffer turnover (default 16 KiB). */
+  maxStartupBytes?: number;
   /**
    * Optional spill directory. When set, every overflow chunk is appended to
    * `<diskSpillDir>/<taskId>.log` so callers can read the full transcript
@@ -34,20 +36,25 @@ export type TaskOutputStoreOptions = {
 };
 
 const DEFAULT_MEMORY_BYTES = 1_000_000;
+const DEFAULT_STARTUP_BYTES = 16_384;
 
 export class TaskOutputStore {
   private chunks: Buffer[] = [];
   private memBytes = 0;
+  private startupChunks: Buffer[] = [];
+  private startupBytes = 0;
   private totalSeenBytes = 0;
   private droppedBytes = 0;
   private readonly options: TaskOutputStoreOptions;
   private readonly maxMemoryBytes: number;
+  private readonly maxStartupBytes: number;
   private readonly diskSpillPath: string | null;
   private spillReady = false;
 
   constructor(options: TaskOutputStoreOptions) {
     this.options = options;
     this.maxMemoryBytes = options.maxMemoryBytes ?? DEFAULT_MEMORY_BYTES;
+    this.maxStartupBytes = options.maxStartupBytes ?? DEFAULT_STARTUP_BYTES;
     this.diskSpillPath = options.diskSpillDir
       ? path.join(options.diskSpillDir, `${options.taskId}.log`)
       : null;
@@ -58,6 +65,12 @@ export class TaskOutputStore {
     const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
     if (buf.length === 0) return;
     this.totalSeenBytes += buf.length;
+
+    if (this.startupBytes < this.maxStartupBytes) {
+      const keep = Math.min(buf.length, this.maxStartupBytes - this.startupBytes);
+      this.startupChunks.push(Buffer.from(buf.subarray(0, keep)));
+      this.startupBytes += keep;
+    }
 
     if (this.diskSpillPath) {
       this.queueSpill(buf);
@@ -117,10 +130,17 @@ export class TaskOutputStore {
     return this.totalSeenBytes;
   }
 
+  /** Read retained initial startup output even after the ring buffer wraps. */
+  readStartup(): string {
+    return this.startupChunks.length === 0 ? "" : Buffer.concat(this.startupChunks).toString("utf8");
+  }
+
   /** Clear in-memory buffer (the disk spill, if any, remains intact). */
   close(): void {
     this.chunks = [];
     this.memBytes = 0;
+    this.startupChunks = [];
+    this.startupBytes = 0;
   }
 
   // ---------------------------------------------------------------------

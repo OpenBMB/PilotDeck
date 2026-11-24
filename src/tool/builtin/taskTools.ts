@@ -12,6 +12,8 @@
  * lookup); tools without a runtime hand back `unsupported_tool`.
  */
 
+import path from "node:path";
+import { createTaskPreviewTool, parseAnnouncedOrigins } from "./taskPreview.js";
 import type { BackgroundTaskRuntime } from "../../task/runtime/BackgroundTaskRuntime.js";
 import type {
   PilotDeckBackgroundBashTask,
@@ -70,6 +72,7 @@ export type TaskOutputInput = {
 export type TaskOutputResult = {
   taskId: string;
   content: string;
+  startupPreviewOrigins?: string[];
   nextOffset: number;
   totalBytes: number;
   truncated: boolean;
@@ -123,7 +126,10 @@ function isTerminalTaskStatus(status: PilotDeckBackgroundTaskStatus): boolean {
 
 function formatTaskOutputText(data: TaskOutputResult, requestedOffset: number): string {
   const exitCode = data.exitCode ?? "null";
-  const header = `task_output taskId=${data.taskId} status=${data.status} offset=${requestedOffset} nextOffset=${data.nextOffset} totalBytes=${data.totalBytes} truncated=${data.truncated} exitCode=${exitCode}`;
+  const statusLine = `task_output taskId=${data.taskId} status=${data.status} offset=${requestedOffset} nextOffset=${data.nextOffset} totalBytes=${data.totalBytes} truncated=${data.truncated} exitCode=${exitCode}`;
+  const header = data.startupPreviewOrigins
+    ? `${statusLine}\nRetained startup preview origins: ${data.startupPreviewOrigins.join(", ")}`
+    : statusLine;
   const hasNewOutput = data.content.length > 0;
   const isFinished = isTerminalTaskStatus(data.status) && data.nextOffset >= data.totalBytes;
 
@@ -308,7 +314,7 @@ export function createTaskOutputTool(
     name: "task_output",
     aliases: ["TaskOutput"],
     description:
-      "Read newly-produced output for a background task (incremental progress polling). Use task_wait when you need to block until a finite task completes. Use nextOffset for the next read. Stop polling when status is completed, failed, or cancelled and nextOffset >= totalBytes.",
+      "Read newly-produced output for a background task (incremental progress polling). An initial read at offset 0 can include retained startup preview origins when older logs for an owned task have rotated out. Use task_wait when you need to block until a finite task completes. Use nextOffset for the next read. Stop polling when status is completed, failed, or cancelled and nextOffset >= totalBytes.",
     kind: "shell",
     inputSchema: {
       type: "object",
@@ -325,14 +331,14 @@ export function createTaskOutputTool(
         },
         maxBytes: {
           type: "integer",
-          description: "Maximum bytes to return in this read. Defaults to tool limit.",
+          description: "Maximum bytes of incremental log output to return in this read. Defaults to tool limit.",
         },
       },
     },
     maxResultBytes: 200_000,
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    execute: async (input): Promise<PilotDeckToolExecutionOutput<TaskOutputResult>> => {
+    execute: async (input, context): Promise<PilotDeckToolExecutionOutput<TaskOutputResult>> => {
       const rt = ensureRuntime(runtime);
       const task = rt.get(input.taskId);
       if (!task) {
@@ -352,6 +358,12 @@ export function createTaskOutputTool(
         status: task.status,
         exitCode: task.exitCode,
       };
+      if (requestedOffset === 0 && slice.truncated
+        && task.sessionId === context.sessionId && path.resolve(task.cwd) === path.resolve(context.cwd)) {
+        const announced = parseAnnouncedOrigins(rt.getStartupOutput(input.taskId));
+        const origins = [...new Set(announced.map(entry => entry.displayOrigin))];
+        if (origins.length > 0) data.startupPreviewOrigins = origins;
+      }
       return {
         content: [{ type: "text", text: formatTaskOutputText(data, requestedOffset) }],
         data,
@@ -517,6 +529,7 @@ export function createTaskTools(options: CreateTaskToolsOptions): {
   output: ReturnType<typeof createTaskOutputTool>;
   wait: ReturnType<typeof createTaskWaitTool>;
   stop: ReturnType<typeof createTaskStopTool>;
+  preview: ReturnType<typeof createTaskPreviewTool>;
 } {
   return {
     create: createTaskCreateTool(options.runtime),
@@ -524,5 +537,6 @@ export function createTaskTools(options: CreateTaskToolsOptions): {
     output: createTaskOutputTool(options.runtime),
     wait: createTaskWaitTool(options.runtime),
     stop: createTaskStopTool(options.runtime),
+    preview: createTaskPreviewTool(options.runtime),
   };
 }

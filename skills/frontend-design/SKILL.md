@@ -14,7 +14,11 @@ Use this skill when creating or reviewing frontend UI where visual quality matte
 3. Choose a deliberate visual direction instead of generic gradients and cards.
 4. Use consistent spacing, type scale, color tokens, border radius, shadows, and component rhythm.
 5. Design responsive states, loading states, empty states, error states, and disabled states.
-6. Verify the result in a browser or preview surface when available.
+6. In implementation mode (not Ask/Plan), complete the runnable preview handoff for implementation tasks unless the user requests source only or prohibits service startup:
+   - Reuse an appropriate existing service, or launch the project with `task_create` and `lifecycle: "service"`. Read `task_output` from offset 0 for its actual URL and errors, including retained origins after log turnover. Keep the service managed by `task_create`.
+   - When `task_preview` is available, check the exact page URL on the origin announced in the service's task output with a distinctive initial-HTML marker matched verbatim including case and whitespace (for client-rendered SPAs, set a project-specific `<title>` in `index.html` rather than scaffold defaults or JS-rendered text). Fix startup/content failures before claiming readiness.
+   - Verify rendering and the main interaction with an available browser. Open the exact URL returned by `task_preview` when available. Report any unavailable browser check.
+   - Return the checked URL as a clickable link. Copy the Markdown link from `task_preview` when it succeeds. Report actual verification results and the `taskId` for `task_stop`. Leave the requested preview running for review. Loopback is on the executing Gateway, so remote or Docker clients may need forwarding. Never invent a forwarded address or stop an unrelated service.
 
 ## Review Checklist
 

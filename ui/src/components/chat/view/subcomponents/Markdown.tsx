@@ -9,6 +9,7 @@ import {
   createRemarkArtifactFileTextPlugin,
   type MarkdownArtifactFile,
 } from '../../utils/remarkArtifactFileText';
+import { remarkPreviewLinks } from '../../utils/remarkPreviewLinks';
 import { MarkdownCodeBlock, MarkdownTable } from './MarkdownCopyBlocks';
 import { MarkdownSourceContext } from './MarkdownContext';
 
@@ -22,6 +23,7 @@ type MarkdownProps = {
 };
 
 const fullRehypePlugins = [rehypeKatex];
+const baseRemarkPlugins = [remarkGfm, remarkMath, remarkPreviewLinks];
 
 const linkClassName = 'text-[var(--pd-accent-strong,#2563eb)] hover:underline dark:text-[var(--pd-accent-strong,#60a5fa)]';
 
@@ -77,9 +79,8 @@ export const Markdown = React.memo(function Markdown({
     [onFileOpen],
   );
   const remarkPlugins = useMemo(() => {
-    if (isStreaming) return [remarkGfm, remarkMath];
-    if (artifactFiles === undefined) return [remarkGfm, remarkMath];
-    return [remarkGfm, remarkMath, createRemarkArtifactFileTextPlugin(artifactFiles)];
+    if (isStreaming || artifactFiles === undefined) return baseRemarkPlugins;
+    return [...baseRemarkPlugins, createRemarkArtifactFileTextPlugin(artifactFiles)];
   }, [artifactFiles, isStreaming]);
 
   // Only apply streaming-fade-in on the initial mount while streaming.

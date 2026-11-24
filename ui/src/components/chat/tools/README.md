@@ -11,3 +11,8 @@ Shared chat rendering for tool calls and results. [ToolRenderer.tsx](ToolRendere
 - [GeneratedMediaCard](GeneratedMediaCard.tsx) presents independent image/video generation feedback for both deliverables and intermediate assets. [mediaPresentation](mediaPresentation.ts) owns visibility: completed assets close smoothly into tool details, deliverables stay visible, and recoverable video jobs stay reachable after the turn stops. Closing surfaces release their media resources after the transition. [useVideoJobs](useVideoJobs.ts) refreshes durable state within the originating session/turn. See [video generation](../../../../../docs/video-generation.md).
 
 Add a tool display through the shared configuration before adding conditionals in message components. Preserve error handling, accessible expansion and result-action behavior. Keep rendering changes covered by the existing chat tests; see [UI development](../../../../README.md).
+
+`task_preview` uses the shared Markdown result renderer so verified loopback URLs
+remain clickable in live and historical tool details. Failed checks keep the
+ordinary error view. HTTP/content evidence and the stop-task identity remain
+visible; a historical check does not imply that the service is still running.
