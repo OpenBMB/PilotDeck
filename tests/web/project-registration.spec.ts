@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createProjectId } from '../../src/pilot/index.js';
+import { createCollisionResistantProjectId, createProjectId } from '../../src/pilot/index.js';
 import { createRegisteredWebProjectResolver, listRegisteredWebProjects } from '../../src/web/server/listProjects.js';
 import { createDialogProjectRegistry } from '../../src/gateway/dialog/projectRegistry.js';
 
@@ -42,4 +42,39 @@ test('registration lookup supports current and legacy IDs and revalidates cached
     await rm(legacy, {recursive: true});
 
   } finally { await rm(root, {recursive: true, force: true}); }
+});
+
+test('ordinary dialog lookup prefers an exact registration added after a case-only rename', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'pilotdeck-registration-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const pilotHome = join(root, 'home');
+  const original = join(root, 'Workspace');
+  const renamed = join(root, 'workspace');
+  await mkdir(original);
+  if (!await stat(renamed).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  })) {
+    t.skip('The test workspace uses case-sensitive paths');
+    return;
+  }
+  const legacyRecord = join(pilotHome, 'projects', createProjectId(original));
+  await mkdir(legacyRecord, {recursive: true});
+  await writeFile(join(legacyRecord, '.cwd'), original);
+  const resolveProject = createRegisteredWebProjectResolver({pilotHome});
+  const registry = createDialogProjectRegistry({pilotHome, resolveProject, listProjects: async () => []});
+  assert.equal(await registry.resolveProjectKey(original), original);
+
+  const intermediate = join(root, 'case-rename');
+  await rename(original, intermediate);
+  await rename(intermediate, renamed);
+  assert.equal(await resolveProject(renamed), original);
+  const exactRecord = join(pilotHome, 'projects', createCollisionResistantProjectId(renamed));
+  await mkdir(exactRecord);
+  await writeFile(join(exactRecord, '.cwd'), renamed);
+
+  assert.equal(await registry.resolveProjectKey(renamed), renamed);
+  assert.equal(await registry.resolveProjectKey(original), original);
+  await rm(exactRecord, {recursive: true});
+  await assert.rejects(registry.resolveProjectKey(renamed), {code: 'PROJECT_NOT_FOUND'});
 });

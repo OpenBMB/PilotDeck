@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -93,6 +93,48 @@ test("case aliases of an existing project share one runtime and allow scoped del
   const update = await f.manager.updateTask({ taskId: created.taskId, projectKey: alias,
     expectedRevision: created.revision!, message: "Updated report", schedule });
   assert.equal(update.updated, true);
+});
+
+test("renaming an active project by case keeps scoped operations on the loaded store", async (t) => {
+  const f = await fixture(t);
+  const original = join(f.parent, "Workspace");
+  const renamed = join(f.parent, "workspace");
+  await mkdir(original, { recursive: true });
+  if (!await stat(renamed).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  })) {
+    t.skip("The test workspace uses case-sensitive paths");
+    return;
+  }
+  await registerProject(f.pilotHome, "original-project", original);
+  await f.manager.start();
+  const schedule = { type: "once" as const, runAt: nextRunAt };
+  const oldPaths = resolveCronPaths({ pilotHome: f.pilotHome, projectKey: original });
+  const { task: existing } = await f.manager.createTask({ projectKey: original, message: "Original report", schedule });
+
+  const intermediate = join(f.parent, "case-rename");
+  await rename(original, intermediate);
+  await rename(intermediate, renamed);
+  const newPaths = resolveCronPaths({ pilotHome: f.pilotHome, projectKey: renamed });
+  assert.notEqual(oldPaths.tasksFile, newPaths.tasksFile);
+  assert.deepEqual((await f.manager.listTasks()).tasks.map(({ taskId }) => taskId), [existing.taskId]);
+  for (const projectKey of [existing.projectKey, renamed]) {
+    assert.deepEqual((await f.manager.listTasks({ projectKey })).tasks.map(({ taskId }) => taskId), [existing.taskId]);
+  }
+  await registerProject(f.pilotHome, "renamed-project", renamed);
+  const { task: added } = await f.manager.createTask({ projectKey: renamed, message: "New report", schedule });
+  assert.deepEqual((await new CronTaskStore(oldPaths).listTasks()).map(({ taskId }) => taskId).sort(),
+    [existing.taskId, added.taskId].sort());
+  assert.equal((await f.manager.deleteTask({ taskId: existing.taskId, projectKey: existing.projectKey, stopRunning: true })).deleted, true);
+  assert.deepEqual((await f.manager.listTasks()).tasks.map(({ taskId }) => taskId), [added.taskId]);
+  await assert.rejects(readFile(newPaths.tasksFile), { code: "ENOENT" });
+
+  await f.manager.stop();
+  await f.manager.start();
+  assert.deepEqual((await f.manager.listTasks({ projectKey: renamed })).tasks.map(({ taskId }) => taskId), [added.taskId]);
+  assert.deepEqual((await new CronTaskStore(oldPaths).listTasks()).map(({ taskId }) => taskId), []);
+  assert.deepEqual((await new CronTaskStore(newPaths).listTasks()).map(({ taskId }) => taskId), [added.taskId]);
 });
 
 test("case-distinct directories remain separate projects on a case-sensitive filesystem", async (t) => {

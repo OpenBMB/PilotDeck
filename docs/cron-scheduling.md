@@ -260,8 +260,9 @@ Tasks are in `<PILOT_HOME>/cron/projects/<projectId>/tasks.json`, with a `.cwd`
 project marker. The storage ID hashes the absolute project path as resolved by
 the filesystem, including its drive letter and Unicode characters. Equivalent
 spellings of the same directory share a store, and distinct directories keep
-separate stores on case-sensitive volumes. At startup the store
-migration uses each task's recorded project key to split legacy shared stores
+separate stores on case-sensitive volumes. A casing-only rename that leaves the
+registered path valid keeps using the loaded store until restart. At startup
+the store migration uses each task's recorded project key to split legacy shared stores
 and moves run events with their attributable history. Ambiguous records stay in
 their original directory. Destination data is staged before source records are
 removed, so startup can resume an interrupted migration. Run events retain their
@@ -280,7 +281,8 @@ project; `scope: all` enables a host-wide query. Detail queries provide cursor
 pagination. Source session and project identity are supplied by the host.
 Creation revalidates the project's registration and directory using the same
 resolver as conversation submission, before writing any task or Cron project
-marker. Missing, unregistered, or removed projects reject with
+marker. The resolver prefers an exact registered path before considering
+filesystem aliases. Missing, unregistered, or removed projects reject with
 `cron_project_unavailable`; the Web API returns HTTP 400 and the editor preserves
 the draft. General retains its separate virtual identity and execution workspace.
 

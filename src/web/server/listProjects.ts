@@ -75,7 +75,7 @@ export async function listRegisteredWebProjects(
   return projects;
 }
 
-/** Cache locations, not authorization: revalidate registrations on every lookup. */
+/** Cache exact registration locations and revalidate them on every lookup. */
 export function createRegisteredWebProjectResolver(options: ListWebProjectsOptions) {
   const projectsDir = resolve(options.pilotHome, "projects");
   const locations = new Map<string, string>();
@@ -83,32 +83,36 @@ export function createRegisteredWebProjectResolver(options: ListWebProjectsOptio
     const requested = resolve(projectKey);
     const identity = resolveProjectIdentityPath(requested);
     const directId = createProjectId(requested);
-    const findMatch = async (id: string): Promise<string | undefined> => {
+    let alias: string | undefined;
+    const findExactMatch = async (id: string): Promise<string | undefined> => {
       if (!(await stat(resolve(projectsDir, id)).catch(() => undefined))?.isDirectory()) return undefined;
       const registered = await resolveProjectPathFromId(projectsDir, id);
-      if (registered && resolveProjectIdentityPath(registered) === identity) return resolve(registered);
+      if (!registered) return undefined;
+      const project = resolve(registered);
+      if (project === requested) {
+        if (locations.size >= 256 && !locations.has(requested)) locations.delete(locations.keys().next().value!);
+        locations.set(requested, id);
+        return project;
+      }
+      if (!alias && resolveProjectIdentityPath(project) === identity) alias = project;
       return undefined;
     };
-    const cachedId = locations.get(identity);
+    const cachedId = locations.get(requested);
     for (const id of new Set([cachedId, directId])) {
       if (!id) continue;
-      const project = await findMatch(id);
+      const project = await findExactMatch(id);
       if (project) return project;
     }
-    locations.delete(identity);
-    // Legacy/collision-resistant directories may use a different ID. Only
-    // inspect registration markers; session counts and titles are irrelevant.
+    locations.delete(requested);
+    // Exact registrations under legacy or collision-resistant IDs take
+    // precedence even when a direct lookup found an alias.
     const entries = await readdir(projectsDir, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name === directId || entry.name === cachedId) continue;
-      const project = await findMatch(entry.name);
-      if (project) {
-        if (locations.size >= 256) locations.delete(locations.keys().next().value!);
-        locations.set(identity, entry.name);
-        return project;
-      }
+      const project = await findExactMatch(entry.name);
+      if (project) return project;
     }
-    return undefined;
+    return alias;
   };
 }
 

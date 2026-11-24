@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, realpath, writeFile } from "node:fs/promises";
-import type { Dirent } from "node:fs";
+import { statSync, type Dirent } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import type { SessionConfigOverrides } from "../../always-on/runtime/SessionConfigOverrides.js";
@@ -55,7 +55,8 @@ export class CronManager {
 
   private readonly pilotHome: string;
   private readonly runtimes = new Map<string, CronRuntime>();
-  private readonly starting = new Map<string, Promise<void>>();
+  private readonly runtimesByDirectory = new Map<string, CronRuntime>();
+  private readonly starting = new Map<CronRuntime, Promise<void>>();
   private readonly tools: PilotDeckToolDefinition[];
   private gateway?: Gateway;
   private started = false;
@@ -110,6 +111,7 @@ export class CronManager {
       await runtime.stop();
     }
     this.runtimes.clear();
+    this.runtimesByDirectory.clear();
     this.starting.clear();
   }
 
@@ -244,9 +246,15 @@ export class CronManager {
   private async ensureRuntime(projectKeyInput: string): Promise<CronRuntime> {
     const projectKey = projectKeyInput === "general" ? this.pilotHome : resolve(projectKeyInput);
     const identity = resolveProjectIdentityPath(projectKey);
-    const existing = this.runtimes.get(identity);
+    const atPath = this.runtimes.get(identity);
+    const directory = atPath ? undefined : getProjectDirectoryIdentity(identity);
+    const atDirectory = directory ? this.runtimesByDirectory.get(directory) : undefined;
+    // Case-only renames can change the canonical pathname while the registered
+    // project still points to the same directory. Keep its loaded store pinned.
+    const existing = atPath ?? (atDirectory && resolveProjectIdentityPath(atDirectory.projectKey) === identity
+      ? atDirectory : undefined);
     if (existing) {
-      await this.starting.get(identity);
+      await this.starting.get(existing);
       return existing;
     }
 
@@ -270,10 +278,11 @@ export class CronManager {
     });
     if (this.gateway) runtime.bindGateway(this.gateway);
     this.runtimes.set(identity, runtime);
+    if (directory) this.runtimesByDirectory.set(directory, runtime);
     const pending = writeProjectMarker(runtime.paths.projectDir, projectKey)
       .then(async () => { if (this.started) await runtime.start(); })
-      .finally(() => this.starting.delete(identity));
-    this.starting.set(identity, pending);
+      .finally(() => this.starting.delete(runtime));
+    this.starting.set(runtime, pending);
     await pending;
     return runtime;
   }
@@ -326,6 +335,14 @@ export class CronManager {
     }
     return matches[0];
   }
+}
+
+function getProjectDirectoryIdentity(projectPath: string): string | undefined {
+  try {
+    const info = statSync(projectPath, { bigint: true, throwIfNoEntry: false });
+    if (info?.isDirectory() && info.ino !== 0n) return `${info.dev}:${info.ino}:${info.birthtimeNs}`;
+  } catch { /* Use the resolved path for directories without a readable identity. */ }
+  return undefined;
 }
 
 export function createCronManager(options: CreateCronManagerOptions): CronManager {
