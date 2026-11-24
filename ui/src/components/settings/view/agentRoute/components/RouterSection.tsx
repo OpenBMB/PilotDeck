@@ -28,10 +28,11 @@ import {
   getBuiltInPricing,
   ROUTER_TIER_KEYS,
 } from "../utils/router";
+import SubagentTimeoutSetting, { type SaveRouteConfig } from "./SubagentTimeoutSetting";
 
 type RouterSectionProps = {
   config: PilotDeckConfig;
-  onChange: (next: PilotDeckConfig) => void;
+  onChange: SaveRouteConfig;
 };
 
 type TierMap = Record<
@@ -366,6 +367,9 @@ export default function RouterSection({
               true,
             )}
           </div>
+          <div className="px-5 pb-4">
+            <SubagentTimeoutSetting config={config} onSave={onChange} />
+          </div>
         </section>
       ) : (
         <fieldset
@@ -581,6 +585,7 @@ export default function RouterSection({
                       </div>
                     </div>
                   ) : null}
+                  <SubagentTimeoutSetting config={config} onSave={onChange} />
                 </section>
 
                 <section className="route-card advanced-route-card tier-definition-card">
