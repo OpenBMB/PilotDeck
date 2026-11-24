@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 import type { CronRuntimeLogger } from "../runtime/CronRuntime.js";
 import { cronRunEventsPath, resolveCronPaths } from "./CronPaths.js";
 
@@ -312,8 +313,8 @@ async function migrateRunEvents(
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
-      const merged = mergeJsonLines(targetRaw, sourceRaw);
-      await atomicWrite(targetPath, merged);
+      const merged = mergeRunEventLogs(targetRaw, sourceRaw);
+      if (merged !== targetRaw) await atomicWrite(targetPath, merged);
       await unlink(sourcePath).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "ENOENT") {
           logger?.warn("cron migration could not remove source run event file", {
@@ -395,11 +396,18 @@ function compareRun(left: JsonRecord, right: JsonRecord): number {
     .localeCompare(String(right.finishedAt ?? right.startedAt ?? ""));
 }
 
-function mergeJsonLines(left: string, right: string): string {
-  const lines = new Set(
-    `${left}\n${right}`.split("\n").filter((line) => line.trim().length > 0),
-  );
-  return lines.size ? `${[...lines].join("\n")}\n` : "";
+function mergeRunEventLogs(target: string, source: string): string {
+  // An interrupted migration can leave the complete source sequence in the
+  // target. Compare full, line-aligned sequences and keep repeated rows.
+  const existing = terminateJsonLines(target);
+  const incoming = terminateJsonLines(source);
+  if (existing.startsWith(incoming) || existing.includes(`\n${incoming}`)) return target;
+  if (incoming.startsWith(existing)) return source;
+  return existing + source;
+}
+
+function terminateJsonLines(raw: string): string {
+  return raw && !raw.endsWith("\n") ? `${raw}\n` : raw;
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {
@@ -454,7 +462,7 @@ async function acquireMigrationLock(
 }
 
 function normalizedProjectKey(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? resolve(value) : undefined;
+  return typeof value === "string" && value.trim() ? resolveProjectIdentityPath(value) : undefined;
 }
 
 function isRecord(value: unknown): value is JsonRecord {

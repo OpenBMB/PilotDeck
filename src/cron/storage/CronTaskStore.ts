@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { appendFile, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import type { GatewayEvent } from "../../gateway/index.js";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 import type { CronRunRecord, CronTask, CronTaskChange } from "../protocol/types.js";
 import { cronRunEventsPath, type CronPaths } from "./CronPaths.js";
 import { isValidCalendarSchedule, isValidCronExpression } from "../runtime/CronSchedule.js";
@@ -96,7 +97,8 @@ export class CronTaskStore {
 
   private findTask(tasks: CronTask[], taskId: string, projectKey?: string): CronTask | undefined {
     const task = tasks.find((entry) => entry.taskId === taskId);
-    if (task && (projectKey === undefined || resolve(task.projectKey ?? this.paths.projectKey) === projectKey)) {
+    if (task && (projectKey === undefined
+        || resolveProjectIdentityPath(task.projectKey ?? this.paths.projectKey) === resolveProjectIdentityPath(projectKey))) {
       return task;
     }
     return undefined;

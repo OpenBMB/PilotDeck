@@ -257,13 +257,16 @@ Reminder records and per-user acknowledgements are in
 record. Gateway equivalents are `cron_reminder_list` and `cron_reminder_dismiss`.
 
 Tasks are in `<PILOT_HOME>/cron/projects/<projectId>/tasks.json`, with a `.cwd`
-project marker. The storage ID hashes the resolved absolute project path,
-including its drive letter and Unicode characters. At startup the store
+project marker. The storage ID hashes the absolute project path as resolved by
+the filesystem, including its drive letter and Unicode characters. Equivalent
+spellings of the same directory share a store, and distinct directories keep
+separate stores on case-sensitive volumes. At startup the store
 migration uses each task's recorded project key to split legacy shared stores
 and moves run events with their attributable history. Ambiguous records stay in
 their original directory. Destination data is staged before source records are
-removed, so startup can resume an interrupted migration. JSON writes use a
-serialized mutation queue and atomic replace.
+removed, so startup can resume an interrupted migration. Run events retain their
+order and occurrences, and retries recognize an already copied event sequence.
+JSON writes use a serialized mutation queue and atomic replace.
 Unreadable, unsupported or damaged stores reject writes and preserve their bytes.
 Running records recover after restart; a committed terminal result is retained
 rather than executed again. Run history uses JSONL with bounded retention (200

@@ -11,6 +11,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { resolve, basename } from "node:path";
 import { listSessionFiles, isInternalSession } from "../../session/storage/SessionCatalog.js";
 import { createProjectId, getPilotProjectChatDir } from "../../pilot/index.js";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 import type { WebListProjectsResult, WebProjectSummary } from "../client/protocol.js";
 
 export type ListWebProjectsOptions = {
@@ -80,26 +81,31 @@ export function createRegisteredWebProjectResolver(options: ListWebProjectsOptio
   const locations = new Map<string, string>();
   return async (projectKey: string): Promise<string | undefined> => {
     const requested = resolve(projectKey);
+    const identity = resolveProjectIdentityPath(requested);
     const directId = createProjectId(requested);
-    const matches = async (id: string): Promise<boolean> => {
-      if (!(await stat(resolve(projectsDir, id)).catch(() => undefined))?.isDirectory()) return false;
+    const findMatch = async (id: string): Promise<string | undefined> => {
+      if (!(await stat(resolve(projectsDir, id)).catch(() => undefined))?.isDirectory()) return undefined;
       const registered = await resolveProjectPathFromId(projectsDir, id);
-      return registered !== null && resolve(registered) === requested;
+      if (registered && resolveProjectIdentityPath(registered) === identity) return resolve(registered);
+      return undefined;
     };
-    const cachedId = locations.get(requested);
+    const cachedId = locations.get(identity);
     for (const id of new Set([cachedId, directId])) {
-      if (id && await matches(id)) return requested;
+      if (!id) continue;
+      const project = await findMatch(id);
+      if (project) return project;
     }
-    locations.delete(requested);
+    locations.delete(identity);
     // Legacy/collision-resistant directories may use a different ID. Only
     // inspect registration markers; session counts and titles are irrelevant.
     const entries = await readdir(projectsDir, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name === directId || entry.name === cachedId) continue;
-      if (await matches(entry.name)) {
+      const project = await findMatch(entry.name);
+      if (project) {
         if (locations.size >= 256) locations.delete(locations.keys().next().value!);
-        locations.set(requested, entry.name);
-        return requested;
+        locations.set(identity, entry.name);
+        return project;
       }
     }
     return undefined;

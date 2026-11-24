@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -13,7 +14,9 @@ import { createProjectId } from "../../src/pilot/paths.js";
 
 const timestamp = "2026-06-01T08:00:00.000Z";
 const nextRunAt = "2026-06-02T08:00:00.000Z";
-const runEvent = '{"schemaVersion":1,"runId":"run-child","event":{"type":"assistant_text_delta","text":"Report"}}\n';
+const runEvent = ["ha", "ha", "!"].map((text) => JSON.stringify({
+  schemaVersion: 1, runId: "run-child", event: { type: "assistant_text_delta", text },
+})).join("\n") + "\n";
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(join(tmpdir(), "pilotdeck-cron-stores-"));
@@ -57,14 +60,102 @@ function task(taskId: string, projectKey?: string): CronTask {
   };
 }
 
+async function registerProject(pilotHome: string, id: string, projectKey: string): Promise<void> {
+  const registration = join(pilotHome, "projects", id);
+  await mkdir(registration, { recursive: true });
+  await writeFile(join(registration, ".cwd"), projectKey);
+}
+
+test("case aliases of an existing project share one runtime and allow scoped deletion", async (t) => {
+  const f = await fixture(t);
+  const registered = join(f.parent, "Workspace");
+  const alias = join(f.parent, "workspace");
+  await mkdir(registered, { recursive: true });
+  if (!await stat(alias).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  })) {
+    t.skip("The test workspace uses case-sensitive paths");
+    return;
+  }
+  await registerProject(f.pilotHome, "workspace", registered);
+  await f.manager.start();
+  const schedule = { type: "once" as const, runAt: nextRunAt };
+  const { task: original } = await f.manager.createTask({ projectKey: registered, message: "Report", schedule });
+  assert.equal((await f.manager.deleteTask({ taskId: original.taskId, projectKey: alias, stopRunning: true })).deleted, true);
+
+  const { task: created } = await f.manager.createTask({ projectKey: alias, message: "Report", schedule });
+  assert.equal(created.projectKey, registered);
+  assert.equal(resolveCronPaths({ pilotHome: f.pilotHome, projectKey: alias }).tasksFile,
+    resolveCronPaths({ pilotHome: f.pilotHome, projectKey: registered }).tasksFile);
+  assert.deepEqual((await f.manager.listTasks({ projectKey: alias })).tasks.map(({ taskId }) => taskId), [created.taskId]);
+  assert.deepEqual((await f.manager.listTasks()).tasks.map(({ taskId }) => taskId), [created.taskId]);
+  const update = await f.manager.updateTask({ taskId: created.taskId, projectKey: alias,
+    expectedRevision: created.revision!, message: "Updated report", schedule });
+  assert.equal(update.updated, true);
+});
+
+test("case-distinct directories remain separate projects on a case-sensitive filesystem", async (t) => {
+  const f = await fixture(t);
+  const upper = join(f.parent, "Workspace");
+  const lower = join(f.parent, "workspace");
+  await mkdir(upper, { recursive: true });
+  try { await mkdir(lower); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    t.skip("The test workspace uses case-insensitive paths");
+    return;
+  }
+  await registerProject(f.pilotHome, "uppercase", upper);
+  await registerProject(f.pilotHome, "lowercase", lower);
+  await f.manager.start();
+  const schedule = { type: "once" as const, runAt: nextRunAt };
+  const { task: upperTask } = await f.manager.createTask({ projectKey: upper, message: "Upper project", schedule });
+  const { task: lowerTask } = await f.manager.createTask({ projectKey: lower, message: "Lower project", schedule });
+  assert.equal((await f.manager.deleteTask({ taskId: upperTask.taskId, projectKey: lower, stopRunning: true })).deleted, false);
+  assert.equal((await f.manager.deleteTask({ taskId: lowerTask.taskId, projectKey: lower })).deleted, true);
+  assert.deepEqual((await f.manager.listTasks()).tasks.map(({ taskId }) => taskId), [upperTask.taskId]);
+});
+
+test("startup migrates a previously hashed path alias with its run events", async (t) => {
+  const f = await fixture(t);
+  const registered = join(f.parent, "Workspace");
+  const alias = join(f.parent, "workspace");
+  await mkdir(registered, { recursive: true });
+  if (!await stat(alias).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  })) {
+    t.skip("The test workspace uses case-sensitive paths");
+    return;
+  }
+  const previousDir = join(f.pilotHome, "cron", "projects", `v2~${createHash("sha256").update(alias).digest("hex")}`);
+  const aliasTask = task("alias", alias);
+  const savedRun: CronRunRecord = {
+    schemaVersion: 1, taskId: aliasTask.taskId, runId: "run-child", sessionKey: aliasTask.sessionKey,
+    startedAt: timestamp, finishedAt: timestamp, outcome: "completed",
+  };
+  await mkdir(join(previousDir, "runs"), { recursive: true });
+  await writeFile(join(previousDir, "tasks.json"), JSON.stringify({ schemaVersion: 1, tasks: [aliasTask] }));
+  await writeFile(join(previousDir, "run-history.jsonl"), `${JSON.stringify(savedRun)}\n`);
+  await writeFile(join(previousDir, "runs", "run-child.events.jsonl"), runEvent);
+
+  await f.manager.start();
+  const history = await f.manager.listTasks({ projectKey: registered, taskId: aliasTask.taskId, includeHistory: true });
+  assert.deepEqual(history.tasks.map(({ taskId }) => taskId), [aliasTask.taskId]);
+  assert.deepEqual(history.recentRuns?.map(({ runId }) => runId), [savedRun.runId]);
+  const paths = resolveCronPaths({ pilotHome: f.pilotHome, projectKey: registered });
+  assert.equal(await readFile(cronRunEventsPath(paths, savedRun.runId), "utf8"), runEvent);
+  assert.deepEqual(JSON.parse(await readFile(join(previousDir, "tasks.json"), "utf8")).tasks, []);
+  assert.equal((await f.manager.deleteTask({ taskId: aliasTask.taskId, projectKey: registered })).deleted, true);
+});
+
 test("new tasks in a parent workspace and a Chinese subproject use separate files", async (t) => {
   const f = await fixture(t);
   const [parentPaths, childPaths] = f.paths;
   for (const [index, projectKey] of [f.parent, f.child].entries()) {
-    const registration = join(f.pilotHome, "projects", `registration-${index}`);
     await mkdir(projectKey, { recursive: true });
-    await mkdir(registration, { recursive: true });
-    await writeFile(join(registration, ".cwd"), projectKey);
+    await registerProject(f.pilotHome, `registration-${index}`, projectKey);
   }
   await f.manager.start();
   const schedule = { type: "once" as const, runAt: nextRunAt };
@@ -148,6 +239,9 @@ test("an interrupted migration preserves both source owners and resumes before a
   assert.equal(await readFile(f.legacyEvents, "utf8"), runEvent);
   assert.deepEqual(JSON.parse(await readFile(childPaths.tasksFile, "utf8")).tasks, [tasks[1]]);
   await rm(targetEvents, { recursive: true });
+  // Simulate a prior attempt that updated the event file before clearing its source.
+  const previousEvent = '{"schemaVersion":1,"runId":"run-child","event":{"type":"assistant_text_delta","text":"Start"}}\n';
+  await writeFile(targetEvents, previousEvent + runEvent);
 
   await f.manager.start();
   await assert.rejects(f.manager.deleteTask({ taskId }), { code: "cron_task_ambiguous" });
@@ -157,7 +251,7 @@ test("an interrupted migration preserves both source owners and resumes before a
   assert.deepEqual(parentRuns.map(({ runId, projectKey }) => ({ runId, projectKey })), [
     { runId: "copied-run", projectKey: f.parent },
   ]);
-  assert.equal(await readFile(targetEvents, "utf8"), runEvent);
+  assert.equal(await readFile(targetEvents, "utf8"), previousEvent + runEvent);
 });
 
 test("a task recorded under another project is protected even if it is misplaced in the selected store", async (t) => {

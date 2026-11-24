@@ -4,6 +4,7 @@ import {
   SessionConfigOverrides,
 } from "../../always-on/runtime/SessionConfigOverrides.js";
 import type { Gateway } from "../../gateway/index.js";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 import type { PilotDeckToolDefinition } from "../../tool/index.js";
 import type { CronConfig } from "../config/parseCronConfig.js";
 import type {
@@ -373,7 +374,7 @@ export class CronRuntime {
     let messageChanged = false;
     let reason: Extract<CronUpdateResult, { updated: false }>["reason"] | undefined;
     const updated = await this.store.updateTask(input.taskId, (current) => {
-      if (resolve(current.projectKey ?? this.projectKey) !== resolve(input.projectKey)) { reason = "not_found"; return current; }
+      if (!this.matchesProject(current.projectKey ?? this.projectKey)) { reason = "not_found"; return current; }
       if ((current.revision ?? 0) !== input.expectedRevision) { reason = "conflict"; return current; }
       const scheduleChanged = JSON.stringify(current.schedule) !== JSON.stringify(schedule) || current.timezone !== timezone;
       const changedConfiguration = scheduleChanged
@@ -416,7 +417,7 @@ export class CronRuntime {
   }
 
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
-    if (input.projectKey !== undefined && resolve(input.projectKey) !== this.projectKey) return { deleted: false };
+    if (input.projectKey !== undefined && !this.matchesProject(input.projectKey)) return { deleted: false };
     let stoppedRunId: string | undefined;
     if (input.stopRunning) {
       if (!await this.hasTask(input.taskId)) return { deleted: false };
@@ -513,7 +514,7 @@ export class CronRuntime {
   }
 
   private matchesProject(projectKey: string): boolean {
-    return resolve(projectKey) === this.projectKey;
+    return resolveProjectIdentityPath(projectKey) === resolveProjectIdentityPath(this.projectKey);
   }
 
   private async migrateLegacyTaskSessions(): Promise<void> {

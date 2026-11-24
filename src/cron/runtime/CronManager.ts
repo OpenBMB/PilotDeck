@@ -6,6 +6,7 @@ import type { SessionConfigOverrides } from "../../always-on/runtime/SessionConf
 import type { Gateway } from "../../gateway/index.js";
 import type { TelemetryClient } from "../../telemetry/index.js";
 import type { PilotDeckToolDefinition } from "../../tool/index.js";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 import type { CronConfig } from "../config/parseCronConfig.js";
 import type {
   CronCreateInput,
@@ -114,10 +115,12 @@ export class CronManager {
 
   async createTask(input: CronCreateInput): Promise<CronCreateResult> {
     if (!this.config.enabled) throw new Error("Cron is disabled. Enable it in pilotdeck.yaml to create tasks.");
-    const projectKey = input.projectKey === "general" ? this.pilotHome : requireProjectKey(input.projectKey);
+    const requested = input.projectKey === "general" ? this.pilotHome : requireProjectKey(input.projectKey);
     // Check before creating a runtime, project marker, or durable task. Agent
     // tools and Gateway/Web requests share this creation boundary.
-    if (projectKey !== this.pilotHome && !await this.resolveRegisteredProject(projectKey)) {
+    const projectKey = resolveProjectIdentityPath(requested) === resolveProjectIdentityPath(this.pilotHome)
+      ? this.pilotHome : await this.resolveRegisteredProject(requested);
+    if (!projectKey) {
       throw Object.assign(new Error("Cron project is not registered or its directory is unavailable. Select an existing project and try again."), {
         code: "cron_project_unavailable",
       });
@@ -200,10 +203,11 @@ export class CronManager {
 
   async prepareConversation(input: { sessionKey: string; projectKey?: string }): Promise<{ task: CronTask; workspaceCwd: string }> {
     const task = (await this.listTasks()).tasks.find(task => task.sessionKey === input.sessionKey);
-    if (!task || (input.projectKey && resolve(input.projectKey) !== resolve(task.projectKey!))) {
+    if (!task?.projectKey || (input.projectKey
+        && resolveProjectIdentityPath(input.projectKey) !== resolveProjectIdentityPath(task.projectKey))) {
       throw new Error("Scheduled task conversation does not belong to this project.");
     }
-    return (await this.ensureRuntime(task.projectKey!)).prepareConversation(task.taskId);
+    return (await this.ensureRuntime(task.projectKey)).prepareConversation(task.taskId);
   }
 
   async deleteTask(input: CronDeleteInput): Promise<CronDeleteResult> {
@@ -239,9 +243,10 @@ export class CronManager {
 
   private async ensureRuntime(projectKeyInput: string): Promise<CronRuntime> {
     const projectKey = projectKeyInput === "general" ? this.pilotHome : resolve(projectKeyInput);
-    const existing = this.runtimes.get(projectKey);
+    const identity = resolveProjectIdentityPath(projectKey);
+    const existing = this.runtimes.get(identity);
     if (existing) {
-      await this.starting.get(projectKey);
+      await this.starting.get(identity);
       return existing;
     }
 
@@ -264,14 +269,12 @@ export class CronManager {
       skipToolCreation: true,
     });
     if (this.gateway) runtime.bindGateway(this.gateway);
-    this.runtimes.set(projectKey, runtime);
-    await writeProjectMarker(runtime.paths.projectDir, projectKey);
-
-    if (this.started) {
-      const pending = runtime.start().finally(() => this.starting.delete(projectKey));
-      this.starting.set(projectKey, pending);
-      await pending;
-    }
+    this.runtimes.set(identity, runtime);
+    const pending = writeProjectMarker(runtime.paths.projectDir, projectKey)
+      .then(async () => { if (this.started) await runtime.start(); })
+      .finally(() => this.starting.delete(identity));
+    this.starting.set(identity, pending);
+    await pending;
     return runtime;
   }
 

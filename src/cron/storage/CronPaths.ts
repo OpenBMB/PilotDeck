@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { resolveProjectIdentityPath } from "../../pilot/paths.js";
 
 const ROOT_DIR_NAME = "cron";
 
@@ -19,7 +20,7 @@ export function resolveCronPaths(input: { pilotHome: string; projectKey: string 
   const projectKey = resolve(input.projectKey);
   // Legacy IDs replace path separators and non-ASCII characters. The tilde
   // keeps IDs derived from full paths distinct from every legacy directory name.
-  const projectId = `v2~${createHash("sha256").update(projectKey).digest("hex")}`;
+  const projectId = `v2~${createHash("sha256").update(resolveProjectIdentityPath(projectKey)).digest("hex")}`;
   const rootDir = resolve(pilotHome, ROOT_DIR_NAME);
   const projectDir = resolve(rootDir, "projects", projectId);
 
