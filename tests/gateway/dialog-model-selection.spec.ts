@@ -399,6 +399,14 @@ function requestImages(request: CanonicalModelRequest) {
   }));
 }
 
+function pngUpload(png: Buffer): Pick<GatewaySubmitTurnInput, 'attachments'> {
+  return { attachments: [{ type: 'image', name: 'synthetic.png', mimeType: 'image/png', content: png.toString('base64'), bytes: png.length }] };
+}
+
+function noisyPng(width: number) {
+  return sharp(randomBytes(width * width * 3), { raw: { width, height: width, channels: 3 } }).png().toBuffer();
+}
+
 for (const large of [false, true]) {
   test(`Auto sends a ${large ? 'persisted' : 'small inline'} read_file image to a vision model configured only in the pool`, async t => {
     const f = await fixture(t, 'image inspected', {
@@ -468,8 +476,7 @@ test('read_file compresses for the selected model before dispatch while retainin
     config,
     reply: (_request, index) => index === 1 ? readFileReply('large.png') : undefined,
   });
-  const width = 700;
-  const png = await sharp(randomBytes(width * width * 3), { raw: { width, height: width, channels: 3 } }).png().toBuffer();
+  const png = await noisyPng(700);
   assert.ok(png.length > limit);
   await writeFile(join(f.home, 'large.png'), png);
 
@@ -487,6 +494,61 @@ test('read_file compresses for the selected model before dispatch while retainin
   const history = replayTranscriptEntries((await readTranscript(storage.transcriptPath)).entries);
   assert.ok(history.messages.some(message => message.content.some(block =>
     block.type === 'media_reference' && block.mediaType === 'image' && block.originalBytes === png.length)));
+});
+
+test('Auto probes a recovered vision provider even with a healthy text-only model', async t => {
+  const config = TEXT_DEFAULT_CONFIG.replace('  zeroUsageRetry:', '  tokenSaver: { enabled: false }\n  zeroUsageRetry:');
+  let offline = true;
+  const f = await fixture(t, 'image inspected', {
+    config,
+    reply: request => offline && request.provider === 'alpha' ? [{ type: 'error', error: {
+      provider: 'alpha', protocol: 'openai', code: 'connection_refused', message: 'Synthetic outage', retryable: false, retryAfterMs: 0,
+    } }] : undefined,
+  });
+  const firstImage = await noisyPng(20);
+  const freshImage = await noisyPng(21);
+  const failed = await f.submit({ mode: 'auto' }, undefined, 'Inspect the first image', pngUpload(firstImage));
+  assert.ok(failed.some(event => event.type === 'turn_completed' && event.finishReason === 'model_error'));
+  const failedAttempts = f.requests.length;
+  assert.ok(failedAttempts >= 5, 'Failed requests must open the vision provider circuit');
+  assert.ok(f.requests.every(request => request.provider === 'alpha'));
+
+  offline = false;
+  const recovered = await f.submit({ mode: 'auto' }, undefined, 'Inspect the new image', pngUpload(freshImage));
+  assert.ok(recovered.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+  assert.equal(f.requests.length, failedAttempts + 1);
+  assert.equal(f.requests[failedAttempts]?.provider, 'alpha');
+  assert.ok(requestImages(f.requests[failedAttempts]!).some(image => image.data === freshImage.toString('base64')));
+});
+
+test('Auto failover skips a model that cannot accept a system prompt', async t => {
+  const config = CONFIG.replace('        first: {}', '        first: { capabilities: { supportsSystemPrompt: false } }\n        second: {}');
+  const f = await fixture(t, 'done', {
+    config,
+    reply: request => request.provider === 'zeta' ? [{ type: 'error', error: {
+      provider: 'zeta', protocol: 'openai', code: 'rate_limit_error', message: 'Synthetic limit', retryable: true,
+    } }] : undefined,
+  });
+  const events = await f.submit({ mode: 'auto' });
+  assert.ok(f.requests[0]?.systemPrompt);
+  assert.deepEqual(f.requests.map(request => [request.provider, request.model]), [['zeta', 'configured'], ['alpha', 'second']]);
+  assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+});
+
+test('Auto considers the JPEG output of resizing an oversized PNG', async t => {
+  const limit = 512 * 1024;
+  const config = TEXT_DEFAULT_CONFIG.replace('input: [text, image], imageDetail: low',
+    `input: [text, image], supportedImageMimeTypes: [image/jpeg], maxImageBytes: ${limit}`);
+  const f = await fixture(t, 'image inspected', { config });
+  const png = await noisyPng(700);
+  assert.ok(png.length > limit);
+  const events = await f.submit({ mode: 'auto' }, undefined, 'Inspect the PNG upload', pngUpload(png));
+  assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+  assert.deepEqual(f.requests.map(request => request.provider), ['alpha']);
+  const [image] = requestImages(f.requests[0]!);
+  assert.ok(image?.bytes && image.bytes <= limit);
+  assert.equal(image.mimeType, 'image/jpeg');
+  assert.equal((await sharp(Buffer.from(image.data, 'base64')).metadata()).format, 'jpeg');
 });
 
 for (const mode of ['no-vision', 'explicit', 'router-disabled'] as const) {
@@ -587,6 +649,46 @@ test('Auto considers the successful failover cache on the next user message', as
   assert.deepEqual(f.requests.map(request => request.provider), ['zeta', 'alpha', 'alpha']);
   assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
 });
+
+for (const size of ['small', 'oversized', 'unpriced'] as const) {
+  test(`Auto compares eligible priced models using the projected request (${size})`, async t => {
+    const limit = 512 * 1024;
+    const vision = `multimodal: { input: [text, image], maxImageBytes: ${limit} }`;
+    const config = CONFIG.replace('        first: {}', `        first: { ${vision} }`)
+      .replace('        configured:\n', `        configured:\n          ${vision}\n`)
+      .replace('  zeroUsageRetry:', `  tokenSaver:
+    enabled: true
+    judge: zeta/configured
+    defaultTier: simple
+    tiers:
+      simple: { model: zeta/configured }
+      medium: { model: alpha/first }
+  stats:
+    enabled: false
+    modelPricing:
+      zeta/configured: { input: 3 }${size === 'unpriced' ? '' : '\n      alpha/first: { input: 10, cacheRead: 1 }'}
+  zeroUsageRetry:`);
+    const f = await fixture(t, 'done', {
+      config,
+      judgeReply: '<tier>simple</tier>',
+      reply: request => request.provider === 'alpha' && size !== 'unpriced' ? [
+        { type: 'text_delta', text: 'Synthetic answer' },
+        { type: 'usage', usage: { inputTokens: 1000, outputTokens: 10, cacheReadTokens: 9000 } },
+        { type: 'message_end', finishReason: 'stop' },
+      ] : undefined,
+    });
+    const upload = size === 'unpriced' ? undefined : pngUpload(await noisyPng(size === 'small' ? 30 : 700));
+    await f.submit(A, undefined, 'Inspect the provided context', upload);
+    const events = await f.submit({ mode: 'auto' }, undefined, 'Summarize the previous result');
+    assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+    assert.deepEqual(f.requests.map(request => request.provider), ['alpha', size === 'unpriced' ? 'zeta' : 'alpha']);
+    if (upload) {
+      const [image] = requestImages(f.requests[1]!);
+      assert.ok(image?.bytes && image.bytes <= limit);
+      assert.equal(image.mimeType, size === 'small' ? 'image/png' : 'image/jpeg');
+    }
+  });
+}
 
 test('Auto does not switch models after it has streamed answer text', async t => {
   const f = await fixture(t, 'done', {

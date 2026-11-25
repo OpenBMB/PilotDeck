@@ -25,6 +25,7 @@ import { noopCustomRouterRegistry } from "./customRouter/customRouter.js";
 import { isFallbackEligible, isProviderWideFailure } from "./fallback/isFallbackEligible.js";
 import { assertContentSupported, type MediaValidationOptions } from "../model/protocol/multimodal.js";
 import { compressImageToFit } from "../model/request/compressImage.js";
+import { assertModelRequestCapabilities } from "../model/request/validateModelRequest.js";
 import { applyOrchestration } from "./orchestrate/applyOrchestration.js";
 import type {
   RouterDecision,
@@ -46,13 +47,16 @@ import {
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
 import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
 import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
-import { lookupModelPricing, orderPoolByConfiguredPrice } from "./utils/modelPricing.js";
+import { lookupBuiltInModelPricing, orderPoolByConfiguredPrice } from "./utils/modelPricing.js";
 import { collectRequiredInputModalities } from "./utils/mediaRequirements.js";
 import type { TelemetryClient } from "../telemetry/index.js";
 import { currentRequestContext } from "../network/requestContext.js";
 import { buildCachePlan } from "../context/cache/CachePlan.js";
 
 const STANDARD_TIERS = ["simple", "medium", "complex", "reasoning"];
+
+type ResizedImages = Map<string, Map<string, Awaited<ReturnType<typeof compressImageToFit>>>>;
+type MediaPreparation = { resizedImages: ResizedImages; signal?: AbortSignal };
 
 export type RouterRuntimeDeps = {
   modelRuntime: ModelRuntime;
@@ -130,6 +134,8 @@ export function createRouterRuntime(
   const events = deps.events ?? { emit: () => undefined };
   const telemetry = deps.telemetry;
   const healthTrackers = new Map<string, ProviderHealthTracker>();
+  // Share resize results from decision through dispatch, without retaining images across calls.
+  const resizedImagesByDecision = new WeakMap<RouterDecision, ResizedImages>();
   function getHealthTracker(sessionId: string): ProviderHealthTracker {
     let tracker = healthTrackers.get(sessionId);
     if (!tracker) {
@@ -140,14 +146,8 @@ export function createRouterRuntime(
   }
 
   function assertRequestCapabilities(ref: RouterModelRef, request: CanonicalModelRequest): void {
-    if (!request.stream && !request.tools?.length) return;
-    const capabilities = deps.modelRuntime.getCapabilities(ref.provider, ref.model);
-    if (request.stream && capabilities.supportsStreaming === false) {
-      throw new ModelRequestError("unsupported_streaming", `Model ${ref.model} does not support streaming.`);
-    }
-    if (request.tools?.length && capabilities.supportsToolUse === false) {
-      throw new ModelRequestError("unsupported_tool_use", `Model ${ref.model} does not support tools.`);
-    }
+    if (!request.stream && !request.systemPrompt && !request.tools?.length) return;
+    assertModelRequestCapabilities(request, deps.modelRuntime.getCapabilities(ref.provider, ref.model), ref.model);
   }
 
   function supportsRequestCapabilities(ref: RouterModelRef, request: CanonicalModelRequest): boolean {
@@ -169,12 +169,30 @@ export function createRouterRuntime(
     }
   }
 
-  function mediaCandidates(candidates: RouterModelRef[], request: CanonicalModelRequest): RouterModelRef[] {
+  async function mediaSupport(
+    candidate: RouterModelRef,
+    request: CanonicalModelRequest,
+    media: MediaPreparation,
+  ): Promise<"full" | "limited" | undefined> {
+    if (media.signal?.aborted) return undefined;
+    if (supportsMedia(candidate, request)) return "full";
+    if (supportsMedia(candidate, request, { allowImageCountOverflow: true })) return "limited";
+    if (!supportsMedia(candidate, request, { allowImageResize: true, allowImageCountOverflow: true })) return undefined;
+
+    const prepared = await prepareMediaForAttempt(request, candidate, deps.modelRuntime, false, media);
+    if (!supportsMedia(candidate, prepared.request)) return undefined;
+    return prepared.omittedImages > 0 ? "limited" : "full";
+  }
+
+  async function mediaCandidates(candidates: RouterModelRef[], request: CanonicalModelRequest, media: MediaPreparation): Promise<RouterModelRef[]> {
+    if (collectRequiredInputModalities(request.messages).length === 0) return candidates;
     const full: RouterModelRef[] = [];
     const limited: RouterModelRef[] = [];
     for (const candidate of candidates) {
-      if (supportsMedia(candidate, request, { allowImageResize: true })) full.push(candidate);
-      else if (supportsMedia(candidate, request, { allowImageResize: true, allowImageCountOverflow: true })) limited.push(candidate);
+      if (media.signal?.aborted) break;
+      const support = await mediaSupport(candidate, request, media);
+      if (support === "full") full.push(candidate);
+      else if (support === "limited") limited.push(candidate);
     }
     return [...full, ...limited];
   }
@@ -192,13 +210,16 @@ export function createRouterRuntime(
     return !turnRouting?.failedModels.has(ref.id) && !turnRouting?.failedProviders.has(ref.provider);
   }
 
-  function candidateModels(
+  async function candidateModels(
     decision: RouterDecision,
     ctx: Pick<RouterExecuteContext, "sessionId" | "turnRouting">,
     request: CanonicalModelRequest,
-  ): RouterModelRef[] {
+    media: MediaPreparation,
+  ): Promise<{ native: RouterModelRef[]; withPlaceholders: RouterModelRef[] }> {
     const preferred = { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model };
-    if (decision.scenarioType === "explicit") return supportsRequestCapabilities(preferred, request) ? [preferred] : [];
+    if (decision.scenarioType === "explicit") {
+      return { native: [], withPlaceholders: supportsRequestCapabilities(preferred, request) ? [preferred] : [] };
+    }
 
     const tierModels = eligibleTierModels(decision.tokenSaverTier);
     const eligibleIds = new Set(tierModels.map(model => model.id));
@@ -209,24 +230,31 @@ export function createRouterRuntime(
       && supportsRequestCapabilities(model, request)
     );
     const health = getHealthTracker(ctx.sessionId);
-    const available = candidates.filter(model => !health.shouldSkip(model.provider));
-    if (available.length) return available;
-    // An open circuit must not prevent recovery when there are no other candidates.
-    const probe = mediaCandidates(candidates, request)[0] ?? candidates[0];
-    return probe ? [probe] : [];
+    const available: RouterModelRef[] = [];
+    const open: RouterModelRef[] = [];
+    for (const candidate of candidates) {
+      (health.shouldSkip(candidate.provider) ? open : available).push(candidate);
+    }
+    const native = await mediaCandidates(available, request, media);
+    if (native.length) return { native, withPlaceholders: available };
+
+    // Probe a provider that can carry the media before falling back to placeholders.
+    const [probe] = await mediaCandidates(open, request, media);
+    return {
+      native: probe ? [probe] : [],
+      withPlaceholders: available.length ? available : (probe ? [probe] : open.slice(0, 1)),
+    };
   }
 
-  function adjustDecisionForCompatibility(input: RouterDecisionInput, decision: RouterDecision): void {
+  async function adjustDecisionForCompatibility(input: RouterDecisionInput, decision: RouterDecision, media: MediaPreparation): Promise<void> {
     const request = applyDecisionToRequest(decision, input.request);
-    const candidates = candidateModels(decision, input, request);
-    const mediaCompatible = mediaCandidates(candidates, request);
-    const replacement = mediaCompatible[0] ?? candidates[0];
+    const { native, withPlaceholders } = await candidateModels(decision, input, request, media);
+    const replacement = native[0] ?? withPlaceholders[0];
     if (!replacement || (replacement.provider === decision.provider && replacement.model === decision.model)) return;
 
     const required = collectRequiredInputModalities(request.messages);
     const selected = { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model };
-    if (required.length && mediaCompatible.includes(replacement)
-      && !supportsMedia(selected, request, { allowImageResize: true, allowImageCountOverflow: true })) {
+    if (required.length && native[0] === replacement && !(await mediaSupport(selected, request, media))) {
       decision.mutations.mediaCapabilityRerouted = { required, from: selected.id, to: replacement.id };
     }
     decision.provider = replacement.provider;
@@ -234,13 +262,14 @@ export function createRouterRuntime(
     decision.resolvedFrom = "fallback";
   }
 
-  function compareInputCosts(
+  async function compareInputCosts(
     current: RouterModelRef | undefined,
     next: RouterModelRef,
     tier: string,
     request: CanonicalModelRequest,
     lastUsage: import("../model/index.js").CanonicalUsage | undefined,
-  ): { selection: RouterModelRef; mutation?: RouterMutationsLog["cacheAwareSwitch"] } {
+    media: MediaPreparation,
+  ): Promise<{ selection: RouterModelRef; mutation?: RouterMutationsLog["cacheAwareSwitch"] }> {
     if (!current) {
       return { selection: next };
     }
@@ -249,19 +278,25 @@ export function createRouterRuntime(
     }
 
     if (!eligibleTierModels(tier).some(model => model.id === current.id)
-      || ![current, next].every(ref => availableInPool(ref) && supportsRequestCapabilities(ref, request) && supportsMedia(ref, request))) {
+      || ![current, next].every(ref => availableInPool(ref) && supportsRequestCapabilities(ref, request))) {
       return { selection: next };
     }
 
     const pricing = config.stats?.modelPricing;
-    const currentPricing = pricing?.[current.id] ?? lookupModelPricing(current.provider, current.model);
-    const nextPricing = pricing?.[next.id] ?? lookupModelPricing(next.provider, next.model);
-    const currentInput = currentPricing.input;
-    const nextInput = nextPricing.input;
+    const currentPricing = pricing?.[current.id] ?? lookupBuiltInModelPricing(current.provider, current.model);
+    const nextPricing = pricing?.[next.id] ?? lookupBuiltInModelPricing(next.provider, next.model);
+    const currentInput = currentPricing?.input;
+    const nextInput = nextPricing?.input;
     const defaultUnit = ROUTER_PRICING_UNITS[0];
     if (currentInput === undefined || nextInput === undefined
       || !Number.isFinite(currentInput) || !Number.isFinite(nextInput)
-      || (currentPricing.unit ?? defaultUnit) !== (nextPricing.unit ?? defaultUnit)) {
+      || (currentPricing?.unit ?? defaultUnit) !== (nextPricing?.unit ?? defaultUnit)) {
+      return { selection: next };
+    }
+
+    const currentSupport = await mediaSupport(current, request, media);
+    const nextSupport = await mediaSupport(next, request, media);
+    if (!currentSupport || currentSupport !== nextSupport) {
       return { selection: next };
     }
 
@@ -276,7 +311,7 @@ export function createRouterRuntime(
       : 0;
     const estimatedCacheReadTokens = Math.floor(estimatedInputTokens * observedCacheHitRatio);
     const estimatedUncachedTokens = Math.max(0, estimatedInputTokens - estimatedCacheReadTokens);
-    const cachedCost = (estimatedCacheReadTokens / 1_000_000) * (currentPricing.cacheRead ?? currentInput)
+    const cachedCost = (estimatedCacheReadTokens / 1_000_000) * (currentPricing?.cacheRead ?? currentInput)
       + (estimatedUncachedTokens / 1_000_000) * currentInput;
     const prefillCost = (estimatedInputTokens / 1_000_000) * nextInput;
 
@@ -392,6 +427,7 @@ export function createRouterRuntime(
 
     let tokenSaverTier: string | undefined;
     let cacheAwareSwitch: RouterMutationsLog["cacheAwareSwitch"];
+    const media: MediaPreparation = { resizedImages: new Map(), signal: input.abortSignal };
     const subagentPolicy = config.tokenSaver?.subagent?.policy ?? DEFAULT_SUBAGENT_POLICY;
     const previousCall = input.turnRouting?.continuationTarget;
     if (previousCall && !custom?.provider && scenarioType !== "explicit") {
@@ -469,12 +505,13 @@ export function createRouterRuntime(
             selection = tokenSaver.selection;
             resolvedFrom = "tokenSaver";
             const previousExecution = sessionStore.get(input.sessionId, isSubagent)?.lastSuccessful;
-            const cacheAware = compareInputCosts(
+            const cacheAware = await compareInputCosts(
               previousExecution?.target,
               selection,
               tokenSaver.tier,
               input.request,
               previousExecution?.usage,
+              media,
             );
             selection = cacheAware.selection;
             cacheAwareSwitch = cacheAware.mutation;
@@ -545,9 +582,10 @@ export function createRouterRuntime(
     }
 
     decision.mutations = mutations;
-    adjustDecisionForCompatibility(input, decision);
+    await adjustDecisionForCompatibility(input, decision, media);
 
     input.abortSignal?.throwIfAborted();
+    resizedImagesByDecision.set(decision, media.resizedImages);
 
     sessionStore.set({
       ...sessionStore.get(input.sessionId, isSubagent),
@@ -605,6 +643,8 @@ export function createRouterRuntime(
     request: CanonicalModelRequest,
     ctx: RouterExecuteContext,
   ): AsyncIterable<CanonicalModelEvent> {
+    const media: MediaPreparation = { resizedImages: resizedImagesByDecision.get(decision) ?? new Map(), signal: ctx.abortSignal };
+    resizedImagesByDecision.delete(decision);
     if (!enabled) {
       if (ctx.abortSignal?.aborted) return;
       request = await ctx.requestForTarget?.(decision) ?? request;
@@ -627,7 +667,7 @@ export function createRouterRuntime(
         { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model },
         deps.modelRuntime,
         true,
-        ctx.abortSignal,
+        media,
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(mediaRequest, deps.modelRuntime);
       await ctx.onRequestPrepared?.(cappedPassthroughRequest, omittedImages);
@@ -654,11 +694,10 @@ export function createRouterRuntime(
     const baseRequest = applyDecisionToRequest(decision, request);
     const turnRouting = ctx.turnRouting ?? { failedModels: new Set<string>(), failedProviders: new Set<string>() };
     const attemptContext = { sessionId: ctx.sessionId, turnRouting };
-    const candidates = candidateModels(decision, attemptContext, baseRequest);
     const explicit = decision.scenarioType === "explicit";
-    const nativeCandidates = explicit ? [] : mediaCandidates(candidates, baseRequest);
+    const { native: nativeCandidates, withPlaceholders } = await candidateModels(decision, attemptContext, baseRequest, media);
     // If all native projections fail before dispatch, retry preparation with placeholders.
-    const attempts = [...nativeCandidates, ...candidates];
+    const attempts = [...nativeCandidates, ...withPlaceholders];
     const zeroUsageMax = Math.max(1, config.zeroUsageRetry?.maxAttempts ?? 5);
     const zeroUsageEnabled = config.zeroUsageRetry?.enabled ?? true;
     const transientRetryEnabled = config.transientRetry?.enabled ?? true;
@@ -696,7 +735,7 @@ export function createRouterRuntime(
       if (ctx.abortSignal?.aborted) return;
       const projected = applyDecisionToRequest(attemptDecision, targetRequest);
       const { request: attemptRequest, omittedImages } = await prepareMediaForAttempt(
-        projected, attempt, deps.modelRuntime, allowPlaceholders, ctx.abortSignal,
+        projected, attempt, deps.modelRuntime, allowPlaceholders, media,
       );
       if (ctx.abortSignal?.aborted) return;
       if (!supportsRequestCapabilities(attempt, attemptRequest) || !supportsMedia(attempt, attemptRequest)) {
@@ -1179,7 +1218,7 @@ async function prepareMediaForAttempt(
   attempt: RouterModelRef,
   modelRuntime: ModelRuntime,
   allowPlaceholders: boolean,
-  signal?: AbortSignal,
+  { resizedImages, signal }: MediaPreparation,
 ): Promise<{ request: CanonicalModelRequest; omittedImages: number }> {
   const modalities = collectRequiredInputModalities(request.messages);
   if (modalities.length === 0) return { request, omittedImages: 0 };
@@ -1207,7 +1246,16 @@ async function prepareMediaForAttempt(
           if (signal?.aborted) return { request, omittedImages: 0 };
           if (part.type !== "image") continue;
           if (maxImageBytes && part.source === "base64" && part.bytes && part.bytes > maxImageBytes) {
-            const fitted = await compressImageToFit(Buffer.from(part.data, "base64"), part.mimeType, maxImageBytes);
+            let results = resizedImages.get(part.data);
+            if (!results) {
+              results = new Map();
+              resizedImages.set(part.data, results);
+            }
+            const key = `${part.mimeType}:${maxImageBytes}`;
+            if (!results.has(key)) {
+              results.set(key, await compressImageToFit(Buffer.from(part.data, "base64"), part.mimeType, maxImageBytes));
+            }
+            const fitted = results.get(key);
             if (fitted && (!multimodal.supportedImageMimeTypes || multimodal.supportedImageMimeTypes.includes(fitted.mimeType))) {
               part.data = fitted.buffer.toString("base64");
               part.mimeType = fitted.mimeType;

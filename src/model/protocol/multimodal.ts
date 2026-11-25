@@ -228,13 +228,16 @@ function imageInputError(
   if (!constraints.input.includes("image")) {
     return new ModelRequestError("unsupported_modality", "Model does not support image input.", { modality: "image" });
   }
-  if (constraints.supportedImageMimeTypes && !constraints.supportedImageMimeTypes.includes(image.mimeType)) {
+  const oversized = constraints.maxImageBytes !== undefined && constraints.maxImageBytes > 0
+    && image.bytes !== undefined && image.bytes > constraints.maxImageBytes;
+  const canResize = oversized && options?.allowImageResize && image.source === "base64" && image.data;
+  // A byte-limit resize can change the format. Strict validation will see the encoded result.
+  if (!canResize && constraints.supportedImageMimeTypes && !constraints.supportedImageMimeTypes.includes(image.mimeType)) {
     return new ModelRequestError("unsupported_image_mime_type", `Model does not support image MIME type ${image.mimeType}.`, {
       mimeType: image.mimeType,
     });
   }
-  if (constraints.maxImageBytes && image.bytes && image.bytes > constraints.maxImageBytes
-    && !(options?.allowImageResize && image.source === "base64" && image.data)) {
+  if (oversized && !canResize) {
     return new ModelRequestError("image_too_large", "Image content exceeds model limits.", {
       bytes: image.bytes,
       maxImageBytes: constraints.maxImageBytes,

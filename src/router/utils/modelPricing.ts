@@ -72,12 +72,17 @@ export function lookupModelPricing(
       if (model.includes(key) || key.includes(model)) return val;
     }
   }
+  return lookupBuiltInModelPricing(provider, model) ?? FALLBACK_PRICING;
+}
+
+export function lookupBuiltInModelPricing(provider: string, model: string): RouterModelPricing | undefined {
+  const combined = `${provider}/${model}`;
   for (const entry of DEFAULT_PRICING) {
     if (entry.pattern.test(combined) || entry.pattern.test(model)) {
       return { input: entry.input, output: entry.output, cacheRead: entry.cacheRead };
     }
   }
-  return FALLBACK_PRICING;
+  return undefined;
 }
 
 /**
