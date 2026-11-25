@@ -13,8 +13,6 @@ export function usageLabel(path: string, t: TFunction): string {
   const scenario = /^router\.scenarios\.([^.]+)$/.exec(path);
   if (scenario) return t('common:modelUsage.preferred', { route: routeName(scenario[1], t) });
 
-  const fallback = /^router\.fallback\.([^.]+)\.\d+$/.exec(path);
-  if (fallback) return t('common:modelUsage.fallback', { route: routeName(fallback[1], t) });
 
   if (path === "router.tokenSaver.judge") return t('common:modelUsage.judgeModel');
   const tier = /^router\.tokenSaver\.tiers\.([^.]+)\.model$/.exec(path);

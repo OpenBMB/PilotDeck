@@ -729,6 +729,9 @@
     }
   },
   "agentStatus": {
+    "modelImagesOmitted": {
+      "message": "Images the selected model could not accept were replaced with text placeholders."
+    },
     "modelRequestFailed": {
       "message": "{{providerMessage}}\n\nSee the suggested action below.",
       "actions": {

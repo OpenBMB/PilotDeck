@@ -117,6 +117,7 @@ export interface ChatMessage {
   subagentId?: string;
   isTaskNotification?: boolean;
   isInterruptedNotice?: boolean;
+  isAgentNotice?: boolean;
   isAgentActivity?: boolean;
   isAgentActivitySummary?: boolean;
   isCompactBoundary?: boolean;

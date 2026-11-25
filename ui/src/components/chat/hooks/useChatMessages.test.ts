@@ -7,6 +7,18 @@ const complete: NormalizedMessage = {
   timestamp: '2026-11-10T00:00:02Z', finishReason: 'aborted',
 };
 
+it('renders an image-omission notice alongside ordinary assistant output', () => {
+  const contentI18n = { key: 'chat:agentStatus.modelImagesOmitted.message' };
+  const messages = normalizedToChatMessages([
+    { ...complete, id: 'notice', kind: 'agent_notice', content: 'Images were omitted.', contentI18n },
+    { ...complete, id: 'answer', kind: 'text', role: 'assistant', content: 'I could answer from the text.' },
+  ]);
+  expect(messages).toMatchObject([
+    { id: 'notice', type: 'system', isAgentNotice: true, contentI18n },
+    { id: 'answer', type: 'assistant', content: 'I could answer from the text.' },
+  ]);
+});
+
 describe('completion presentation', () => {
   it('retains a user stop without timing instead of discarding the completion frame', () => {
     expect(normalizedToChatMessages([complete])).toMatchObject([

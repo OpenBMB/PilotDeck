@@ -1747,6 +1747,18 @@ describe('MessagesPane render behavior', () => {
     expect(screen.getByText('Final answer.')).toBeTruthy();
   });
 
+  it('keeps the image omission visible after the turn finishes and the tool trace folds', () => {
+    const notice = 'Images the selected model could not accept were replaced with text placeholders.';
+    renderPane({ messages: [
+      makeMessage(0),
+      { ...makeMessage(1), isToolUse: true, toolName: 'Read', content: '' },
+      { ...makeMessage(2), type: 'system', isAgentNotice: true, content: notice },
+      { ...makeMessage(3), content: 'Final answer.' },
+    ] });
+    expect(screen.getByText(notice).closest('[inert]')).toBeNull();
+    expect(screen.getByText('Final answer.')).toBeTruthy();
+  });
+
   it.each(['error', 'interrupted', 'no-final'])('keeps %s turns visible', (kind) => {
     const messages: ChatMessage[] = [makeMessage(0), { ...makeMessage(1), content: 'Working details.' }];
     if (kind === 'error') messages.push({ ...makeMessage(2), type: 'error', content: 'Connection failed.' });

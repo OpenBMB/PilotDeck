@@ -755,6 +755,21 @@ describe('gatewayEventToFrames agent status errors', () => {
         });
     });
 
+    it('delivers omitted model images as a notice during the active turn', () => {
+        const key = 'chat:agentStatus.modelImagesOmitted.message';
+        const frames = gatewayEventToFrames({
+            type: 'agent_status',
+            event: 'model_images_omitted',
+            runId: 'run',
+            detail: { message: 'Images were omitted.', messageI18n: { key }, visible: true },
+        }, 'web:s_test', 'pilotdeck');
+        expect(frames).toMatchObject([{
+            id: 'model-images-omitted:run', kind: 'agent_notice', runId: 'run',
+            content: 'Images were omitted.', contentI18n: { key },
+        }]);
+        expect(frames[0]).not.toHaveProperty('terminal');
+    });
+
     it('renders new semantic status events as error frames', () => {
         const frames = gatewayEventToFrames({
             type: 'agent_status',

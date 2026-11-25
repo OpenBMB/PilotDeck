@@ -186,19 +186,8 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         if (!mimeType) {
           throw new PilotDeckToolRuntimeError("invalid_tool_input", `Unsupported image type: ${resolved.relativePath}.`);
         }
-        const supportsImage = context.modelMultimodal?.input?.includes("image");
-        if (!supportsImage) {
-          return {
-            content: [{
-              type: "text",
-              text: `[Image file: ${resolved.relativePath}, ${fileStat.size} bytes, ${mimeType}. Current model does not support image input.]`,
-            }],
-            data: { filePath: resolved.relativePath, kind, modelSupportsImage: false },
-          };
-        }
         const imageBuffer = await readFile(resolved.absolutePath, { signal: context.abortSignal });
-        const maxImageBytes = Math.min(MAX_IMAGE_BYTES, context.modelMultimodal?.maxImageBytes ?? MAX_IMAGE_BYTES);
-        const preparedImage = await prepareImageForModel(imageBuffer, mimeType, maxImageBytes);
+        const preparedImage = await prepareImageForModel(imageBuffer, mimeType, MAX_IMAGE_BYTES);
         if (!preparedImage.ok) {
           return {
             content: [{
@@ -230,7 +219,6 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
             mimeType: compressed.mimeType,
             data: compressed.buffer.toString("base64"),
             bytes: compressed.buffer.byteLength,
-            detail: context.modelMultimodal?.imageDetail,
           }],
           data: {
             filePath: resolved.relativePath,

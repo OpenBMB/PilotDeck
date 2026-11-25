@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import sharp from 'sharp';
 import type { PilotConfigSnapshot } from '../../src/pilot/config/types.js';
 import { createLocalGateway } from '../../src/cli/createLocalGateway.js';
-import { createModelRuntime, type CanonicalModelEvent, type CanonicalModelRequest } from '../../src/model/index.js';
+import { buildOpenAIRequest } from '../../src/model/providers/openai/request.js';
+import { createModelRuntime, type CanonicalModelEvent, type CanonicalModelRequest, type ModelRuntime } from '../../src/model/index.js';
 import { createAgentProjectSessionStorage, readTranscript, replayTranscriptEntries } from '../../src/session/index.js';
 import { readWebSessionMessages } from '../../src/web/server/readSessionMessages.js';
 import type { GatewayEvent, GatewaySubmitTurnInput, SessionModelSelection } from '../../src/gateway/protocol/types.js';
@@ -49,45 +52,63 @@ router:
   enabled: true
   scenarios:
     default: zeta/configured
-  fallback:
-    default: [alpha/first]
   zeroUsageRetry:
     enabled: false
   transientRetry:
     enabled: false
 `;
 
-async function fixture(t: test.TestContext, responseText = 'ok') {
+async function fixture(t: test.TestContext, responseText = 'ok', routing: {
+  config?: string;
+  judgeReply?: string;
+  reply?: (request: CanonicalModelRequest, index: number) => CanonicalModelEvent[] | undefined;
+} = {}) {
   const home = await mkdtemp(join(tmpdir(), 'pilotdeck-model-choice-'));
-  await writeFile(join(home, 'pilotdeck.yaml'), CONFIG);
+  await writeFile(join(home, 'pilotdeck.yaml'), routing.config ?? CONFIG);
   await mkdir(join(home, 'skills'), { recursive: true });
   const requests: CanonicalModelRequest[] = [];
+  let modelConfig: PilotConfigSnapshot['config']['model'];
   let failZeta = false;
   const options = {
     pilotHome: home, projectRoot: home,
     env: { ...process.env, PILOT_HOME: home, PILOT_AGENT_MODEL: undefined, PILOTDECK_CONFIG_PATH: undefined },
     builtinSkillsRoot: join(home, 'skills'),
-    __testModelFactory: (snapshot: PilotConfigSnapshot) => ({
-      ...createModelRuntime(snapshot.config.model),
-      async *stream(request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
-        requests.push(request);
-        yield { type: 'request_started', provider: request.provider, model: request.model };
-        if (failZeta && request.provider === 'zeta') {
-          yield { type: 'error', error: { provider: request.provider, protocol: 'openai', code: 'auth_error', message: 'test failure', retryable: false } };
-          return;
-        }
-        yield { type: 'message_start', role: 'assistant' };
-        yield { type: 'text_delta', text: responseText };
-        yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 1 } };
-        yield { type: 'message_end', finishReason: 'stop' };
-      },
-      async complete() { return { role: 'assistant' as const, content: [{ type: 'text' as const, text: '' }], finishReason: 'stop' as const }; },
-    }),
+    __testModelFactory: (snapshot: PilotConfigSnapshot): ModelRuntime => {
+      modelConfig = snapshot.config.model;
+      return {
+        ...createModelRuntime(modelConfig),
+        async *stream(request: CanonicalModelRequest): AsyncIterable<CanonicalModelEvent> {
+          requests.push(request);
+          yield { type: 'request_started', provider: request.provider, model: request.model };
+          const reply = routing.reply?.(request, requests.length);
+          if (reply) {
+            yield* reply;
+            return;
+          }
+          if (failZeta && request.provider === 'zeta') {
+            yield { type: 'error', error: { provider: request.provider, protocol: 'openai', code: 'auth_error', message: 'test failure', retryable: false } };
+            return;
+          }
+          yield { type: 'message_start', role: 'assistant' };
+          yield { type: 'text_delta', text: responseText };
+          yield { type: 'usage', usage: { inputTokens: 10, outputTokens: 1 } };
+          yield { type: 'message_end', finishReason: 'stop' };
+        },
+        async complete() {
+          return { role: 'assistant', content: [{ type: 'text', text: routing.judgeReply ?? '' }], finishReason: 'stop' };
+        },
+      };
+    },
   };
   let local = createLocalGateway(options);
   t.after(async () => { local.dispose(); await rm(home, { recursive: true, force: true }); });
   return {
     home, requests,
+    wireBody(index: number) {
+      const request = requests[index]!;
+      const provider = modelConfig.providers[request.provider];
+      return buildOpenAIRequest(request, provider.models[request.model], provider);
+    },
     get gateway() { return local.gateway; },
     fail() { failZeta = true; },
     restart() { local.dispose(); local = createLocalGateway(options); },
@@ -101,10 +122,15 @@ async function fixture(t: test.TestContext, responseText = 'ok') {
         `thinking: ${thinking}`,
       ));
     },
-    async submit(modelSelection?: GatewaySubmitTurnInput['modelSelection'], modelOverride?: GatewaySubmitTurnInput['modelOverride'], message = 'hello') {
+    async submit(
+      modelSelection?: GatewaySubmitTurnInput['modelSelection'],
+      modelOverride?: GatewaySubmitTurnInput['modelOverride'],
+      message = 'hello',
+      extra?: Pick<GatewaySubmitTurnInput, 'attachments' | 'mode'>,
+    ) {
       const events: GatewayEvent[] = [];
       for await (const event of local.gateway.submitTurn({
-        projectKey: home, sessionKey: 'web:model-choice', channelKey: 'web', message, modelSelection, modelOverride,
+        projectKey: home, sessionKey: 'web:model-choice', channelKey: 'web', message, modelSelection, modelOverride, ...extra,
       })) events.push(event);
       return events;
     },
@@ -198,7 +224,7 @@ test('explicit Auto replaces saved concrete choice; one-turn overrides do not ch
   assert.equal(f.requests.at(-1)!.provider, A.provider);
 });
 
-test('concrete choices fail without silently falling back, while Auto retains fallback', async (t) => {
+test('concrete choices fail without silently falling back, while Auto uses the model pool', async (t) => {
   const f = await fixture(t);
   f.fail();
   await f.submit(B);
@@ -349,4 +375,186 @@ test('restoring stale reasoning does not hide an unavailable saved model or inva
     assert.equal(events.some(event => event.type === 'input_accepted'), false);
   }
   assert.equal(f.requests.length, 0);
+});
+
+const TEXT_DEFAULT_CONFIG = CONFIG
+  .replace('        first: {}', '        first: { multimodal: { input: [text, image], imageDetail: low } }')
+  .replace('        configured:\n', '        configured:\n          multimodal: { input: [text] }\n');
+
+function readFileReply(filePath: string): CanonicalModelEvent[] {
+  const toolCall = { id: 'read-test-file', name: 'read_file', input: { file_path: filePath } };
+  return [
+    { type: 'message_start', role: 'assistant' },
+    { type: 'tool_call_start', id: toolCall.id, name: toolCall.name },
+    { type: 'tool_call_end', toolCall },
+    { type: 'message_end', finishReason: 'tool_call' },
+  ];
+}
+
+function requestImages(request: CanonicalModelRequest) {
+  return request.messages.flatMap(message => message.content.flatMap(block => {
+    if (block.type === 'image') return [block];
+    if (block.type === 'tool_result') return block.content.filter(part => part.type === 'image');
+    return [];
+  }));
+}
+
+for (const large of [false, true]) {
+  test(`Auto sends a ${large ? 'persisted' : 'small inline'} read_file image to a vision model configured only in the pool`, async t => {
+    const f = await fixture(t, 'image inspected', {
+      config: TEXT_DEFAULT_CONFIG,
+      reply: (_request, index) => index === 1 ? readFileReply('synthetic.png') : undefined,
+    });
+    const size = large ? 300 : 30;
+    const png = await sharp(randomBytes(size * size * 3), {
+      raw: { width: size, height: size, channels: 3 },
+    }).png().toBuffer();
+    await writeFile(join(f.home, 'synthetic.png'), png);
+
+    const events = await f.submit({ mode: 'auto' }, undefined, 'Inspect synthetic.png');
+    assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+    const tool = events.find(event => event.type === 'tool_call_finished' && event.toolName === 'read_file');
+    assert.ok(tool?.type === 'tool_call_finished' && tool.ok, JSON.stringify(tool));
+    assert.deepEqual(f.requests.map(request => request.provider), ['zeta', 'alpha']);
+    const [image] = requestImages(f.requests[1]!);
+    assert.equal(image?.mimeType, 'image/png');
+    assert.equal(image?.detail, 'low');
+    assert.deepEqual(Buffer.from(image!.data!, 'base64'), png);
+    assert.ok(JSON.stringify(f.wireBody(1)).includes('data:image/png;base64,' + png.toString('base64')));
+    assert.ok(f.requests[1]!.messages.some(message => message.content.some(block =>
+      block.type === 'tool_result' && block.toolCallId === 'read-test-file')));
+    assert.ok(!events.some(event => event.type === 'agent_status' && event.event === 'model_images_omitted'));
+
+    const storage = createAgentProjectSessionStorage({ projectRoot: f.home, pilotHome: f.home, sessionId: 'web:model-choice' });
+    const history = replayTranscriptEntries((await readTranscript(storage.transcriptPath)).entries);
+    const blocks = history.messages.flatMap(message => message.content);
+    assert.equal(blocks.some(block => block.type === 'media_reference' && block.mediaType === 'image'), large);
+  });
+}
+
+test('an uploaded PNG uses an eligible model from the pool without making a text-only attempt', async t => {
+  const config = TEXT_DEFAULT_CONFIG.replace('        first: { multimodal: { input: [text, image], imageDetail: low } }', `        first:
+          multimodal: { input: [text, image], supportedImageMimeTypes: [image/jpeg] }
+        second: { multimodal: { input: [text, image], maxImageBytes: 1 } }
+        third: { multimodal: { input: [text, image] } }
+`);
+  const f = await fixture(t, 'upload inspected', { config });
+  const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'red' } }).png().toBuffer();
+  await f.submit({ mode: 'auto' }, undefined, 'Inspect the upload', {
+    attachments: [{ type: 'image', name: 'synthetic.png', mimeType: 'image/png', content: png.toString('base64'), bytes: png.length }],
+  });
+  assert.deepEqual(f.requests.map(request => [request.provider, request.model]), [['alpha', 'third']]);
+  assert.equal(requestImages(f.requests[0]!)[0]?.mimeType, 'image/png');
+});
+
+for (const mode of ['no-vision', 'explicit', 'router-disabled'] as const) {
+  test(`read_file retains the image in history and reports wire omission in ${mode} mode`, async t => {
+    let config = TEXT_DEFAULT_CONFIG;
+    if (mode === 'no-vision') config = config.replace('        first: { multimodal: { input: [text, image], imageDetail: low } }', '        first: { multimodal: { input: [text] } }');
+    if (mode === 'router-disabled') config = config.replace('router:\n  enabled: true', 'router:\n  enabled: false');
+    const f = await fixture(t, 'I cannot see the image', {
+      config,
+      reply: (_request, index) => index === 1 ? readFileReply('synthetic.png') : undefined,
+    });
+    const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'blue' } }).png().toBuffer();
+    await writeFile(join(f.home, 'synthetic.png'), png);
+    const selection = mode === 'explicit' ? B : mode === 'no-vision' ? { mode: 'auto' as const } : undefined;
+    const events = await f.submit(selection, undefined, 'Inspect synthetic.png');
+    assert.deepEqual(f.requests.map(request => request.provider), ['zeta', 'zeta']);
+    assert.equal(requestImages(f.requests[1]!).length, 0);
+    assert.match(JSON.stringify(f.requests[1]!.messages), /omitted, Model does not support image input/);
+    assert.equal(events.filter(event => event.type === 'agent_status' && event.event === 'model_images_omitted').length, 1);
+
+    const storage = createAgentProjectSessionStorage({ projectRoot: f.home, pilotHome: f.home, sessionId: 'web:model-choice' });
+    const history = replayTranscriptEntries((await readTranscript(storage.transcriptPath)).entries);
+    assert.ok(history.messages.some(message => message.content.some(block =>
+      block.type === 'tool_result' && block.content.some(part => part.type === 'image'))));
+  });
+}
+
+test('Auto skips models that cannot receive the current tool schemas', async t => {
+  const config = CONFIG.replace('            supportsSpeed: true', '            supportsSpeed: true\n            supportsToolUse: false');
+  const f = await fixture(t, 'done', { config });
+  await f.submit({ mode: 'auto' }, undefined, 'Inspect the workspace');
+  assert.deepEqual(f.requests.map(request => request.provider), ['alpha']);
+  assert.ok(f.requests[0]?.tools?.some(tool => tool.name === 'read_file'));
+});
+
+test('an eligible vision model failure does not silently omit an uploaded image', async t => {
+  const f = await fixture(t, 'done', {
+    config: TEXT_DEFAULT_CONFIG,
+    reply: request => [{ type: 'error', error: {
+      provider: request.provider, protocol: 'openai', code: 'auth_error', message: 'Synthetic vision fault', retryable: false, retryAfterMs: 0,
+    } }],
+  });
+  const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'red' } }).png().toBuffer();
+  const events = await f.submit({ mode: 'auto' }, undefined, 'Inspect the upload', {
+    attachments: [{ type: 'image', name: 'synthetic.png', mimeType: 'image/png', content: png.toString('base64'), bytes: png.length }],
+  });
+  assert.deepEqual([...new Set(f.requests.map(request => request.provider))], ['alpha']);
+  assert.ok(f.requests.every(request => requestImages(request).length === 1));
+  assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'model_error'));
+  assert.ok(!events.some(event => event.type === 'agent_status' && event.event === 'model_images_omitted'));
+});
+
+test('Auto reuses the successful failover within a turn and starts the next turn with its normal route', async t => {
+  const f = await fixture(t, 'done', {
+    config: CONFIG.replace('  zeroUsageRetry:', '  tokenSaver: { enabled: false }\n  zeroUsageRetry:'),
+    reply: (_request, index) => {
+      if (index === 1) return [{ type: 'error', error: {
+        provider: 'zeta', protocol: 'openai', code: 'rate_limit_error', message: 'Synthetic limit', retryable: true,
+      } }];
+      if (index === 2) return readFileReply('synthetic.txt');
+      return undefined;
+    },
+  });
+  await writeFile(join(f.home, 'synthetic.txt'), 'synthetic text');
+  await f.submit({ mode: 'auto' }, undefined, 'Read synthetic.txt');
+  await f.submit(undefined, undefined, 'New task');
+  assert.deepEqual(f.requests.map(request => request.provider), ['zeta', 'alpha', 'alpha', 'zeta']);
+});
+
+test('Auto considers the successful failover cache on the next user message', async t => {
+  const f = await fixture(t, 'done', {
+    judgeReply: '<tier>simple</tier>',
+    config: CONFIG.replace('  zeroUsageRetry:', `  fallback: { default: [removed/legacy] }
+  tokenSaver:
+    enabled: true
+    judge: zeta/configured
+    defaultTier: simple
+    cacheAwareSwitching: { enabled: false }
+    tiers:
+      simple: { model: zeta/configured }
+      medium: { model: alpha/first }
+  stats:
+    enabled: false
+    modelPricing:
+      zeta/configured: { input: 3 }
+      alpha/first: { input: 10, cacheRead: 1 }
+  zeroUsageRetry:`),
+    reply: request => request.provider === 'alpha' ? [
+      { type: 'text_delta', text: 'Synthetic answer' },
+      { type: 'usage', usage: { inputTokens: 1000, outputTokens: 10, cacheReadTokens: 9000 } },
+      { type: 'message_end', finishReason: 'stop' },
+    ] : undefined,
+  });
+
+  f.fail();
+  await f.submit({ mode: 'auto' }, undefined, 'Synthetic first task');
+  const events = await f.submit(undefined, undefined, 'Synthetic follow-up');
+  assert.deepEqual(f.requests.map(request => request.provider), ['zeta', 'alpha', 'alpha']);
+  assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+});
+
+test('Auto does not switch models after it has streamed answer text', async t => {
+  const f = await fixture(t, 'done', {
+    reply: () => [
+      { type: 'message_start', role: 'assistant' },
+      { type: 'text_delta', text: 'Visible partial output' },
+      { type: 'error', error: { provider: 'zeta', protocol: 'openai', code: 'auth_error', message: 'Synthetic fault', retryable: false } },
+    ],
+  });
+  const events = await f.submit({ mode: 'auto' });
+  assert.deepEqual(f.requests.map(request => request.provider), ['zeta']);
+  assert.ok(events.some(event => event.type === 'assistant_text_delta'));
 });

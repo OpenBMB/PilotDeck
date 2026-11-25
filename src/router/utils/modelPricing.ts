@@ -1,8 +1,10 @@
+import type { RouterModelRef } from "../config/schema.js";
+
 export type RouterModelPricing = {
   input?: number;
   output?: number;
   cacheRead?: number;
-  /** Display currency/unit metadata; it does not affect cost arithmetic. */
+  /** Currency of the unit prices. Cost arithmetic uses the configured currency. */
   unit?: RouterPricingUnit;
 };
 
@@ -76,6 +78,41 @@ export function lookupModelPricing(
     }
   }
   return FALLBACK_PRICING;
+}
+
+/**
+ * Rank pool alternatives with complete configured prices. Compare the price
+ * of equal input and output token counts within a currency. Keep each
+ * currency's positions from ID order and place unpriced models last.
+ */
+export function orderPoolByConfiguredPrice(
+  models: readonly RouterModelRef[],
+  modelPricing?: RouterModelPricingMap,
+): RouterModelRef[] {
+  type PricedModel = { model: RouterModelRef; unit: RouterPricingUnit; cost: number };
+  const priced: PricedModel[] = [];
+  const unpriced: RouterModelRef[] = [];
+  const groups = new Map<RouterPricingUnit, PricedModel[]>();
+
+  for (const model of [...models].sort((left, right) => left.id.localeCompare(right.id))) {
+    const price = modelPricing?.[model.id];
+    if (price?.input === undefined || price.output === undefined
+      || !Number.isFinite(price.input) || !Number.isFinite(price.output)
+      || price.input < 0 || price.output < 0) {
+      unpriced.push(model);
+      continue;
+    }
+    const unit = price.unit ?? "$/百万 Token";
+    const option = { model, unit, cost: price.input / 2 + price.output / 2 };
+    priced.push(option);
+    const group = groups.get(unit) ?? [];
+    group.push(option);
+    groups.set(unit, group);
+  }
+  for (const group of groups.values()) {
+    group.sort((left, right) => right.cost - left.cost || right.model.id.localeCompare(left.model.id));
+  }
+  return [...priced.map(({ unit }) => groups.get(unit)!.pop()!.model), ...unpriced];
 }
 
 export function calculateInputCost(

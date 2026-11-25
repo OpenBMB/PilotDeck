@@ -17,7 +17,6 @@ const original = () => ({
     replacement: { protocol: 'openai', url: 'https://example.invalid/v1', apiKey: 'fixture', models: { next: {} } },
   } },
   router: { enabled: true, scenarios: { default: 'HX API/qwen3.6/27b', coding: 'HX API/qwen3.6/27b' },
-    fallback: { default: ['HX API/qwen3.6/27b', 'replacement/next'] },
     tokenSaver: { enabled: true, judge: 'HX API/qwen3.6/27b', tiers: { medium: { model: 'HX API/qwen3.6/27b' } } },
     stats: { baselineModel: 'HX API/qwen3.6/27b', modelPricing: { 'HX API/qwen3.6/27b': { input: 2, output: 3 } } } },
   memory: { enabled: true, model: 'HX API/qwen3.6/27b' }, alwaysOn: { enabled: false }, cron: { enabled: false },
@@ -108,7 +107,7 @@ async function exercise(page, platform, resize) {
   await expect(page).toHaveURL(/\/settings\/models$/);
   await expect(page.locator('.agent-model-page')).toHaveCount(0);
   const references=['agent.model','agent.subagents.default','memory.model','router.scenarios.default','router.scenarios.coding',
-    'router.fallback.default.0','router.tokenSaver.judge','router.tokenSaver.tiers.medium.model','router.stats.baselineModel','router.stats.modelPricing.HX API/qwen3.6/27b'];
+    'router.tokenSaver.judge','router.tokenSaver.tiers.medium.model','router.stats.baselineModel','router.stats.modelPricing.HX API/qwen3.6/27b'];
   for(const reference of references) {
     await page.goto('http://127.0.0.1:5187/settings/models');
     await page.locator('.provider-row').filter({hasText:'HX API'}).click();

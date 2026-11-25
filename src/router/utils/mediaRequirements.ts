@@ -2,7 +2,7 @@ import type {
   CanonicalContentBlock,
   CanonicalMessage,
 } from "../../model/index.js";
-import type { InputModality, MultimodalConstraints } from "../../model/index.js";
+import type { InputModality } from "../../model/index.js";
 
 const MEDIA_MODALITY_ORDER: InputModality[] = ["image", "pdf", "audio"];
 
@@ -18,24 +18,6 @@ export function collectRequiredInputModalities(
   }
 
   return MEDIA_MODALITY_ORDER.filter((modality) => required.has(modality));
-}
-
-export function missingInputModalities(
-  constraints: MultimodalConstraints,
-  required: readonly InputModality[],
-): InputModality[] {
-  if (required.length === 0) {
-    return [];
-  }
-  const supported = new Set<InputModality>(constraints.input);
-  return required.filter((modality) => !supported.has(modality));
-}
-
-export function supportsRequiredModalities(
-  constraints: MultimodalConstraints,
-  required: readonly InputModality[],
-): boolean {
-  return missingInputModalities(constraints, required).length === 0;
 }
 
 function collectFromBlock(

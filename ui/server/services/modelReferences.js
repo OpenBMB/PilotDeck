@@ -37,7 +37,6 @@ function referenceKind(path) {
 //   remove  — the slot is optional or pure metadata and can be dropped
 export const REFERENCE_ACTIONS = Object.freeze(['replace', 'inherit', 'remove', 'clear']);
 
-const REMOVED = Symbol('removed-reference');
 
 // Walk every model reference in the config exactly once. Each slot carries the
 // default repair action and small mutators bound to its container, so callers
@@ -85,17 +84,6 @@ function collectReferenceSlots(config) {
         router: true,
         set: (next) => { scenarios[name] = next; },
         remove: () => { delete scenarios[name]; },
-      });
-    }
-  }
-  if (isRecord(router?.fallback)) {
-    for (const [name, values] of Object.entries(router.fallback)) {
-      if (!Array.isArray(values)) continue;
-      values.forEach((value, index) => {
-        add(`router.fallback.${name}.${index}`, value, 'remove', {
-          fallbackKey: name,
-          remove: () => { values[index] = REMOVED; },
-        });
       });
     }
   }
@@ -248,21 +236,6 @@ export function planModelRemoval(config, { providerId = '', modelId = '' } = {},
     else slot.remove();
   }
 
-  // Remove only entries that reference the deleted model/provider. Dynamic
-  // routes can select another tier or subagent model and fall back to the main
-  // model, so matching agent.model does not make a configured backup redundant.
-  // The runtime deduplicates attempts against its actual selection.
-  const touchedFallbacks = new Set(slots.map(slot => slot.fallbackKey).filter(Boolean));
-  if (isRecord(router?.fallback)) {
-    for (const name of touchedFallbacks) {
-      const values = router.fallback[name];
-      if (!Array.isArray(values)) continue;
-      const kept = values.filter(value => value !== REMOVED);
-      if (kept.length) router.fallback[name] = kept;
-      else delete router.fallback[name];
-    }
-  }
-
   if (target.modelId) delete next.model.providers[target.providerId].models[target.modelId];
   else delete next.model.providers[target.providerId];
 
@@ -297,13 +270,6 @@ export function rewriteModelReferences(config, { providerRenames = new Map(), mo
   if (isRecord(router?.scenarios)) {
     for (const [name, value] of Object.entries(router.scenarios)) {
       router.scenarios[name] = renameRef(value, providerRenames, modelRenames);
-    }
-  }
-  if (isRecord(router?.fallback)) {
-    for (const [name, values] of Object.entries(router.fallback)) {
-      if (Array.isArray(values)) {
-        router.fallback[name] = values.map((value) => renameRef(value, providerRenames, modelRenames));
-      }
     }
   }
   if (router?.tokenSaver) {

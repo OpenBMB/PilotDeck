@@ -69,6 +69,7 @@ const ERROR_AGENT_STATUS_EVENTS = new Set([
 ]);
 
 const STATUS_AGENT_STATUS_EVENTS = new Set([
+  "model_images_omitted",
   "structured_output_completed",
   "turn_aborted",
 ]);

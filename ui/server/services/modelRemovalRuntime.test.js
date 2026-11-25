@@ -50,7 +50,9 @@ describe('model removal with dynamic routing', () => {
       getProviderProtocol: () => 'openai',
       getProviderBaseUrl: () => 'https://example.test/v1',
     };
-    const router = createRouterRuntime({ ...parsed.config, transientRetry: { enabled: false } }, { modelRuntime });
+    const modelPool = Object.entries(plan.config.model.providers).flatMap(([provider, entry]) =>
+      Object.keys(entry.models).map(model => ({ id: `${provider}/${model}`, provider, model })));
+    const router = createRouterRuntime({ ...parsed.config, transientRetry: { enabled: false } }, { modelRuntime, modelPool });
     try {
       const events = [];
       for await (const event of router.stream({

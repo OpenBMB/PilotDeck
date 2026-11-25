@@ -40,9 +40,22 @@ export function isInputModality(value: unknown): value is InputModality {
 export function downgradeUnsupportedContent(
   messages: CanonicalMessage[],
   constraints: MultimodalConstraints,
-): void {
+): { changed: boolean; omittedImages: number } {
   const allowed = new Set<InputModality>(constraints.input);
-  if (allowed.has("image") && allowed.has("pdf") && allowed.has("audio")) return;
+  let changed = false;
+  let omittedImages = 0;
+  let imageCount = 0;
+  const placeholderFor = (block: CanonicalContentBlock | CanonicalToolResultContentBlock): string | undefined => {
+    if (block.type !== "image") return mediaBlockToPlaceholder(block, allowed);
+    const error = imageInputError(block, constraints, imageCount + 1);
+    if (!error) {
+      imageCount++;
+      return undefined;
+    }
+    omittedImages++;
+    const sizeHint = block.bytes ? `, ${Math.round(block.bytes / 1024)}KB` : "";
+    return `[Image: ${block.mimeType}${sizeHint} — omitted, ${error.message}]`;
+  };
 
   for (const msg of messages) {
     const content = messageContent(msg);
@@ -50,39 +63,38 @@ export function downgradeUnsupportedContent(
       const block = content[i]!;
 
       if (block.type === "tool_result") {
-        let changed = false;
+        let blockChanged = false;
         const newContent: CanonicalToolResultContentBlock[] = [];
         for (const sub of block.content) {
-          const placeholder = mediaBlockToPlaceholder(sub, allowed);
+          const placeholder = placeholderFor(sub);
           if (placeholder) {
             newContent.push({ type: "text", text: placeholder });
-            changed = true;
+            blockChanged = true;
           } else {
             newContent.push(sub);
           }
         }
-        if (changed) {
-          (block as { content: CanonicalToolResultContentBlock[] }).content = newContent;
+        if (blockChanged) {
+          block.content = newContent;
+          changed = true;
         }
         continue;
       }
 
-      const placeholder = mediaBlockToPlaceholder(block, allowed);
+      const placeholder = placeholderFor(block);
       if (placeholder) {
         content[i] = { type: "text", text: placeholder };
+        changed = true;
       }
     }
   }
+  return { changed, omittedImages };
 }
 
 function mediaBlockToPlaceholder(
   block: CanonicalContentBlock | CanonicalToolResultContentBlock,
   allowed: Set<InputModality>,
 ): string | undefined {
-  if (block.type === "image" && !allowed.has("image")) {
-    const sizeHint = block.bytes ? `, ${Math.round(block.bytes / 1024)}KB` : "";
-    return `[Image: ${block.mimeType}${sizeHint} — omitted, model does not support image input]`;
-  }
   if (block.type === "pdf" && !allowed.has("pdf")) {
     const pagesHint = block.pages ? `, ${block.pages} pages` : "";
     return `[PDF: ${block.mimeType}, ${Math.round(block.bytes / 1024)}KB${pagesHint} — omitted, model does not support PDF input]`;
@@ -146,23 +158,8 @@ export function assertContentSupported(
       }
       for (const item of block.content) {
         if (item.type === "image") {
-          imageCount += 1;
-          if (
-            constraints.supportedImageMimeTypes &&
-            !constraints.supportedImageMimeTypes.includes(item.mimeType)
-          ) {
-            throw new ModelRequestError(
-              "unsupported_image_mime_type",
-              `Model does not support image MIME type ${item.mimeType}.`,
-              { mimeType: item.mimeType },
-            );
-          }
-          if (constraints.maxImageBytes && item.bytes && item.bytes > constraints.maxImageBytes) {
-            throw new ModelRequestError("image_too_large", "Image content exceeds model limits.", {
-              bytes: item.bytes,
-              maxImageBytes: constraints.maxImageBytes,
-            });
-          }
+          const error = imageInputError(item, constraints, ++imageCount);
+          if (error) throw error;
         }
         if (item.type === "pdf" && constraints.maxPdfBytes && item.bytes > constraints.maxPdfBytes) {
           throw new ModelRequestError("pdf_too_large", "PDF content exceeds model limits.", {
@@ -186,25 +183,8 @@ export function assertContentSupported(
     }
 
     if (block.type === "image") {
-      imageCount += 1;
-
-      if (
-        constraints.supportedImageMimeTypes &&
-        !constraints.supportedImageMimeTypes.includes(block.mimeType)
-      ) {
-        throw new ModelRequestError(
-          "unsupported_image_mime_type",
-          `Model does not support image MIME type ${block.mimeType}.`,
-          { mimeType: block.mimeType },
-        );
-      }
-
-      if (constraints.maxImageBytes && block.bytes && block.bytes > constraints.maxImageBytes) {
-        throw new ModelRequestError("image_too_large", "Image content exceeds model limits.", {
-          bytes: block.bytes,
-          maxImageBytes: constraints.maxImageBytes,
-        });
-      }
+      const error = imageInputError(block, constraints, ++imageCount);
+      if (error) throw error;
     }
 
     if (block.type === "pdf" && constraints.maxPdfBytes && block.bytes > constraints.maxPdfBytes) {
@@ -226,11 +206,32 @@ export function assertContentSupported(
       });
     }
   }
+}
 
+function imageInputError(
+  image: Extract<CanonicalContentBlock, { type: "image" }> | Extract<CanonicalToolResultContentBlock, { type: "image" }>,
+  constraints: MultimodalConstraints,
+  imageCount: number,
+): ModelRequestError | undefined {
+  if (!constraints.input.includes("image")) {
+    return new ModelRequestError("unsupported_modality", "Model does not support image input.", { modality: "image" });
+  }
+  if (constraints.supportedImageMimeTypes && !constraints.supportedImageMimeTypes.includes(image.mimeType)) {
+    return new ModelRequestError("unsupported_image_mime_type", `Model does not support image MIME type ${image.mimeType}.`, {
+      mimeType: image.mimeType,
+    });
+  }
+  if (constraints.maxImageBytes && image.bytes && image.bytes > constraints.maxImageBytes) {
+    return new ModelRequestError("image_too_large", "Image content exceeds model limits.", {
+      bytes: image.bytes,
+      maxImageBytes: constraints.maxImageBytes,
+    });
+  }
   if (constraints.maxImagesPerRequest && imageCount > constraints.maxImagesPerRequest) {
-    throw new ModelRequestError("too_many_images", "Image count exceeds model limits.", {
+    return new ModelRequestError("too_many_images", "Image count exceeds model limits.", {
       imageCount,
       maxImagesPerRequest: constraints.maxImagesPerRequest,
     });
   }
+  return undefined;
 }

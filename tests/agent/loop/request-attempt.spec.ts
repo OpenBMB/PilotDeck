@@ -248,10 +248,9 @@ test("real routing projects fallback identity and fingerprints the patched reque
   const wire: CanonicalModelRequest[] = [];
   const router = createRouterRuntime({ enabled: true,
     scenarios: { default: { id: "synthetic/model-b", provider: "synthetic", model: "model-b" } },
-    fallback: { default: [{ id: "synthetic/model-c", provider: "synthetic", model: "model-c" }] },
     zeroUsageRetry: { enabled: false, maxAttempts: 1 }, transientRetry: { enabled: false, maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0 },
     stats: { enabled: false },
-  }, { modelRuntime: {
+  }, { modelPool: ["model-b", "model-c"].map(model => ({ id: `synthetic/${model}`, provider: "synthetic", model })), modelRuntime: {
     async *stream(request) {
       wire.push(request);
       if (request.model === "model-b") {

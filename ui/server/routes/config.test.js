@@ -1390,7 +1390,7 @@ describe('config model reference and rename routes', () => {
     const { requestStatus } = await createConfigApp({ config: baseConfig });
     const response = await requestStatus('/api/config/model-references?providerId=old-provider&modelId=old-model');
     expect(response.status).toBe(200);
-    expect(response.body.references).toHaveLength(9);
+    expect(response.body.references).toHaveLength(8);
     expect(JSON.stringify(response.body)).not.toContain('key');
   });
 
@@ -1399,7 +1399,7 @@ describe('config model reference and rename routes', () => {
     const response = await requestStatus('/api/config/model-references?providerId=old-provider');
     expect(response.status).toBe(200);
     expect(response.body.modelId).toBeUndefined();
-    expect(response.body.references).toHaveLength(9);
+    expect(response.body.references).toHaveLength(8);
   });
 
   it.each(['HX API', 'my.provider', '自定义模型', `provider-${'a'.repeat(64)}`])('looks up references for legacy provider ID %s', async (providerId) => {
@@ -1412,7 +1412,7 @@ describe('config model reference and rename routes', () => {
       if (modelId) params.set('modelId', modelId);
       const response = await requestStatus(`/api/config/model-references?${params}`);
       expect(response.status).toBe(200);
-      expect(response.body.references).toHaveLength(9);
+      expect(response.body.references).toHaveLength(8);
       expect(response.body.references.every(ref => ref.value === `${providerId}/old-model`)).toBe(true);
       expect(JSON.stringify(response.body)).not.toContain('apiKey');
     }
@@ -1620,7 +1620,7 @@ describe('config model removal route', () => {
     expect(saved.model.providers.deepseek.apiKey).toBe('secret-key');
     expect(saved.agent.model).toBe('deepseek/deepseek-chat');
     expect(saved.router.scenarios.default).toBe('deepseek/deepseek-chat');
-    expect(saved.router.fallback.default).toEqual(['deepseek/deepseek-reasoner']);
+    expect(saved.router.fallback).toEqual(initial.router.fallback);
     expect(saved.router.stats.modelPricing).toEqual({});
   });
 
@@ -1637,7 +1637,7 @@ describe('config model removal route', () => {
     expect(saved.agent.model).toBe('HX API/qwen-max');
   });
 
-  it.each([false, true])('preserves the main-model fallback in preview and persisted removal (whole provider: %s)', async (wholeProvider) => {
+  it.each([false, true])('ignores legacy fallback references in preview and retains the YAML (whole provider: %s)', async (wholeProvider) => {
     const config = structuredClone(initial);
     config.model.providers.retired = provider(['old', 'spare']);
     config.router.fallback.default = ['retired/old', 'HX API/qwen3.6-27b'];
@@ -1650,12 +1650,11 @@ describe('config model removal route', () => {
     const preview = await post(request, { ...target, dryRun: true });
     expect(preview.status).toBe(200);
     expect(preview.body.blocked).toBeNull();
-    expect(preview.body.changes.filter(change => change.path.startsWith('router.fallback.')).map(change => change.value))
-      .toEqual(['retired/old']);
+    expect(preview.body.changes).toEqual([]);
     const response = await post(request, { ...target, baseRevision: preview.body.revision });
     expect(response.status).toBe(200);
     const saved = parseYaml(readFileSync(configPath, 'utf8'));
-    expect(saved.router.fallback.default).toEqual(['HX API/qwen3.6-27b']);
+    expect(saved.router.fallback).toEqual(config.router.fallback);
     expect(saved.router.tokenSaver).toEqual(config.router.tokenSaver);
     expect(saved.agent.model).toBe(config.agent.model);
     if (wholeProvider) expect(saved.model.providers.retired).toBeUndefined();

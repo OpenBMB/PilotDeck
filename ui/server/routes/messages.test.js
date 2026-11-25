@@ -107,6 +107,34 @@ describe('message routes', () => {
       expect(body.messages[0].turnTiming).toEqual(turnTiming);
     } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   });
+  it('restores a model image omission with the same notice identity as the live frame', async () => {
+    const contentI18n = { key: 'chat:agentStatus.modelImagesOmitted.message' };
+    const read = vi.fn(async () => ({
+      messages: [{
+        id: 'transcript-entry', kind: 'status', turnId: 'run', text: 'Images were omitted.', contentI18n,
+        payload: { event: 'model_images_omitted', detail: { visible: true } },
+      }],
+      total: 1,
+    }));
+    vi.doMock('../pilotdeck-bridge.js', () => ({
+      getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,
+      withPilotDeckGatewayReadRetry: operation => operation({ readSessionMessages: read }),
+    }));
+    const { default: routes } = await import('./messages.js');
+    const app = express();
+    app.use('/api/sessions', routes);
+    const server = app.listen(0);
+    try {
+      const body = await (await nativeFetch(`http://127.0.0.1:${server.address().port}/api/sessions/s/messages`)).json();
+      expect(body.messages).toMatchObject([{
+        id: 'model-images-omitted:run', kind: 'agent_notice', content: 'Images were omitted.', contentI18n,
+      }]);
+    } finally {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
   it('forwards backward identity cursors and history replacement without converting them to offsets', async () => {
     const read = vi.fn(async () => ({ messages: [], total: 250, nextCursor: 'before:old-user', historyReset: true }));
     vi.doMock('../pilotdeck-bridge.js', () => ({ getPilotDeckGateway: vi.fn(), isGatewayUnavailableError: () => false,

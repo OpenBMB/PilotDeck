@@ -1,38 +1,4 @@
 import type { CanonicalModelError } from "../../model/index.js";
-import type { RouterFallbackConfig, RouterModelRef } from "../config/schema.js";
-import type { RouterScenarioType } from "../protocol/decision.js";
-import { LITELLM_ROUTER_MAX_FALLBACKS } from "../config/schema.js";
-
-export type FallbackPlan = {
-  /** Provider/model pairs to try in order, after the initial decision. */
-  attempts: RouterModelRef[];
-};
-
-export function planFallback(
-  fallback: RouterFallbackConfig | undefined,
-  scenarioType: RouterScenarioType | "explicit",
-): FallbackPlan {
-  if (!fallback) {
-    return { attempts: [] };
-  }
-
-  if (scenarioType === "explicit") {
-    return { attempts: [] };
-  }
-
-  return {
-    attempts: capFallbackAttempts(
-      (fallback as Record<string, RouterModelRef[] | undefined>)[scenarioType] ?? fallback.default ?? [],
-      fallback.maxFallbacks,
-    ),
-  };
-}
-
-function capFallbackAttempts(attempts: RouterModelRef[], maxFallbacks: number | undefined): RouterModelRef[] {
-  const cap = maxFallbacks ?? LITELLM_ROUTER_MAX_FALLBACKS;
-  if (cap <= 0) return [];
-  return attempts.slice(0, cap);
-}
 
 /**
  * Error codes that indicate the *model output* was malformed (e.g. invalid
@@ -48,16 +14,25 @@ const SELF_CORRECTABLE_CODES = new Set(["invalid_tool_arguments"]);
  * one provider, model not found on another).
  */
 const FALLBACK_ELIGIBLE_NON_RETRYABLE = new Set([
-  "billing",
   "model_not_found",
   "auth_error",
 ]);
+
+/** Failures tied to a shared endpoint or its credentials. A 403 can be model-specific. */
+export function isProviderWideFailure(error: CanonicalModelError): boolean {
+  return (error.code === "auth_error" && error.status !== 403)
+    || error.code === "billing"
+    || error.code === "dns_error"
+    || error.code === "connection_refused"
+    || error.code === "tls_error"
+    || error.code === "proxy_error";
+}
 
 export function isFallbackEligible(error: CanonicalModelError): boolean {
   if (SELF_CORRECTABLE_CODES.has(error.code)) {
     return true;
   }
-  if (FALLBACK_ELIGIBLE_NON_RETRYABLE.has(error.code)) {
+  if (isProviderWideFailure(error) || FALLBACK_ELIGIBLE_NON_RETRYABLE.has(error.code)) {
     return true;
   }
   if (!error.retryable) {

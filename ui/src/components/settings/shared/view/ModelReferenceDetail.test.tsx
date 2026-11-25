@@ -12,16 +12,6 @@ it('keeps dots and slashes in pricing model IDs as one path key', () => {
   expect(screen.getByText('2')).toBeTruthy();
   expect(screen.queryByRole('combobox')).toBeNull();
 });
-it('edits the exact fallback slot and preserves the remaining configuration', async () => {
-  const next={...config,router:{fallback:{coding:['HX API/qwen3.6/27b','other/new']}}};
-  const save=vi.fn();
-  render(<ModelReferenceDetail config={next} reference="router.fallback.coding.0" onChange={save} />);
-  fireEvent.change(screen.getByRole('combobox'),{target:{value:'other/new'}});
-  await waitFor(()=>expect(save).toHaveBeenCalledOnce());
-  expect(save.mock.calls[0][0].router.fallback.coding).toEqual(['other/new','other/new']);
-  expect(save.mock.calls[0][0].model).toEqual(config.model);
-  expect(next.router.fallback.coding).toEqual(['HX API/qwen3.6/27b','other/new']);
-});
 it('preserves object reference metadata and updates both ID and provider/model', async () => {
   const next={...config,agent:{model:'HX API/qwen3.6/27b'},router:{scenarios:{default:{id:'HX API/qwen3.6/27b',provider:'HX API',model:'qwen3.6/27b',tag:'keep'}}}} as unknown as PilotDeckConfig;
   const save=vi.fn();

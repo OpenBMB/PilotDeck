@@ -48,7 +48,6 @@ function classifyPath(path: string): PilotConfigChangeClass {
 function classifyRouterPath(path: string): PilotConfigChangeClass {
   if (
     path.startsWith("router.scenarios.") ||
-    path.startsWith("router.fallback.") ||
     path.startsWith("router.tokenSaver.tiers.") ||
     path === "router.zeroUsageRetry.maxAttempts" ||
     path === "router.zeroUsageRetry.enabled"

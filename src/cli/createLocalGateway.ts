@@ -1084,6 +1084,11 @@ class ProjectRuntimeRegistry {
     const routerConfig = ensureRouterConfig(snapshot.config.router, snapshot.config.agent.model);
     const router = createRouterRuntime(routerConfig, {
       modelRuntime: model,
+      modelPool: Object.entries(snapshot.config.model.providers)
+        .filter(([, provider]) => provider.apiKey)
+        .flatMap(([provider, config]) => Object.keys(config.models).map(model => ({
+          id: `${provider}/${model}`, provider, model,
+        }))),
       now: this.options.now,
       customRouterRegistry: pluginRuntime,
       loadSkillPrompt: (extensionId) => pluginRuntime.loadSkillPrompt(extensionId),
@@ -1940,7 +1945,6 @@ function ensureRouterConfig(
     enabled: true,
     ...router,
     scenarios: router.scenarios ?? { default: defaultRef },
-    fallback: router.fallback ?? { default: [defaultRef] },
     tokenSaver: router.tokenSaver ?? buildDefaultTokenSaver(defaultRef),
     autoOrchestrate: router.autoOrchestrate ?? buildDefaultAutoOrchestrate(),
     stats: { enabled: true, baselineModel: defaultRef, ...(router.stats ?? {}) },

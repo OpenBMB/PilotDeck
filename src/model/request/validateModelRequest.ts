@@ -48,9 +48,7 @@ export function validateModelRequest(
     throw new ModelRequestError("unsupported_tool_use", `Model ${request.model} does not support tools.`);
   }
 
-  for (const message of request.messages) {
-    assertContentSupported(messageContent(message), model.multimodal);
-  }
+  assertContentSupported(request.messages.flatMap(messageContent), model.multimodal);
 
   return { provider, model };
 }

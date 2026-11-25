@@ -1,6 +1,3 @@
-import { patch } from "../../modelPool/utils/patch";
-import type { PilotDeckConfig } from "../../modelPool/types";
-
 export type RouterTierKey = "simple" | "medium" | "complex" | "reasoning";
 
 export const ROUTER_TIER_KEYS: RouterTierKey[] = [
@@ -89,27 +86,4 @@ const BUILT_IN_PRICING: Array<{ pattern: RegExp; pricing: Pricing }> = [
 
 export function getBuiltInPricing(modelRef: string): Pricing | undefined {
   return BUILT_IN_PRICING.find(({ pattern }) => pattern.test(modelRef))?.pricing;
-}
-
-export function replaceFallbackModelRef(
-  config: PilotDeckConfig,
-  oldRef: string,
-  newRef: string,
-): PilotDeckConfig {
-  const fallback = config.router?.fallback;
-  if (!fallback || !oldRef || oldRef === newRef) return config;
-
-  let changed = false;
-  const rewritten = Object.fromEntries(
-    Object.entries(fallback).map(([key, refs]) => {
-      const nextRefs = refs.map((ref) => {
-        if (ref !== oldRef) return ref;
-        changed = true;
-        return newRef;
-      });
-      return [key, nextRefs];
-    }),
-  );
-
-  return changed ? patch(config, ["router", "fallback"], rewritten) : config;
 }

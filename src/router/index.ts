@@ -39,11 +39,7 @@ export {
 } from "./scenario/subagentDetector.js";
 export { SessionRouterStore } from "./session/SessionRouterStore.js";
 export { SessionUsageCache } from "./session/sessionUsageCache.js";
-export {
-  isFallbackEligible,
-  planFallback,
-  type FallbackPlan,
-} from "./fallback/runFallbackChain.js";
+export { isFallbackEligible } from "./fallback/isFallbackEligible.js";
 export {
   createZeroUsageState,
   observeEventForZeroUsage,

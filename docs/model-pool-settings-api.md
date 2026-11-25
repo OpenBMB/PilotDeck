@@ -27,10 +27,12 @@ Provider IDs and model IDs are exact, case-sensitive map keys. Display-name chan
 Metadata must match both maps. Missing sources, occupied targets, repeated or cross-provider model renames return 400 RENAME_INVALID. Under the configuration write lock, rename and reference updates succeed atomically for:
 
 - agent.model, agent.subagents.default and memory.model;
-- router.scenarios.*, router.fallback.*[], router.tokenSaver.judge and router.tokenSaver.tiers.*.model;
+- router.scenarios.*, router.tokenSaver.judge and router.tokenSaver.tiers.*.model;
 - router.stats.modelPricing keys and router.stats.baselineModel (object or supported legacy string).
 
 Keep pricing values unchanged. GET model-references accepts providerId and optional modelId and returns path/value/kind entries without secrets. Saving must scan references again and reject an in-use deletion with 409 MODEL_IN_USE; a prior query or frontend confirmation is not sufficient protection.
+
+Auto routing consults the available models in this pool after trying the eligible configured tiers. Legacy `router.fallback` entries are retained in YAML and excluded from active model references. See the [router settings contract](trd/53-router-settings-api.md#candidate-order-and-failover).
 
 ## Model discovery and single-model probes
 

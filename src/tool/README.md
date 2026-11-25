@@ -6,6 +6,8 @@ Entry points: [index.ts](index.ts), [todoWrite.ts](builtin/todoWrite.ts), [bash.
 
 Todo updates use stable IDs and explicit merge/cancellation semantics. Shell and file operations must retain their path and ownership checks.
 
+`read_file` validates image files and returns image content within the tool's byte budget. The agent can store large results as media references. Routing uses the actual target's capabilities to decide what image content to send.
+
 ToolRuntime validates mode restrictions, input schema and prompt capability after hooks and again before dispatch. Permission-rewritten inputs also pass the tool's semantic validator and todo gate. Cancellation after permission handling prevents a new tool body from starting; every early rejection retains its structured result and audit record.
 
 The concurrent scheduler overlaps consecutive calls declared safe for their input, with a default limit of four active runtime calls per batch. The optional `{ maxConcurrency }` constructor argument accepts a positive safe integer; `1` serializes execution. Exclusive and unknown calls are barriers, and results keep submitted order. Unexpected failures stop dispatch and drain started work. Queued cancelled calls use ToolRuntime's audited abort path. This limit does not apply globally across sessions or nested tool calls.
