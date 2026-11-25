@@ -1591,6 +1591,10 @@
           "bocha": "博查 Web 搜索",
           "exa": "Exa",
           "serpapi": "SerpAPI",
+          "parallel": "Parallel",
+          "parallelDescription": "搜索查询会发送给 Parallel，无需 API 密钥。",
+          "parallelDocsHint": "查看 Parallel 文档（在新窗口中打开）",
+          "parallelDocsLabel": "打开 Parallel 文档",
           "docs": "API 文档与密钥申请",
           "docsHint": "查看{{provider}}帮助文档与密钥申请（新窗口打开）",
           "docsLabel": "打开{{provider}}帮助文档与密钥申请"

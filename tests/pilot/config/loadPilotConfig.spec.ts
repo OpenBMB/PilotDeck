@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { loadPilotConfig } from "../../../src/pilot/config/loadPilotConfig.js";
+import { resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
 import { createPilotConfigStoreSync } from "../../../src/pilot/config/PilotConfigStore.js";
 
 function configYaml(model: "model-a" | "model-b"): string {
@@ -188,4 +189,23 @@ test("invalid unused providers are isolated from the Gateway without deleting th
     writeFileSync(path, raw.replace("custom/model-a", "broken/bad"));
     assert.throws(() => loadPilotConfig({ configPath: path, env: {} }));
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("loadPilotConfig accepts the explicit Parallel provider alongside saved provider credentials", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "pilotdeck-search-config-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const configPath = join(directory, "pilotdeck.yaml");
+  writeFileSync(configPath, configYaml("model-a") + `
+tools:
+  webSearch:
+    enabled: true
+    provider: parallel
+    providers:
+      tavily:
+        apiKey: tavily-test
+`);
+  const search = loadPilotConfig({ configPath, env: { PILOT_HOME: directory } }).config.tools?.webSearch;
+  assert.ok(search);
+  assert.deepEqual(resolveWebSearchConfig(search), { enabled: true, provider: "parallel" });
+  assert.equal(search.providers?.tavily?.apiKey, "tavily-test");
 });

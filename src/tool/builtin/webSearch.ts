@@ -4,6 +4,7 @@ export type { WebSearchCustomProviderConfig } from "../../pilot/config/webSearch
 import type { PermissionResult } from "../../permission/index.js";
 import { WEB_SEARCH_ENDPOINTS, type SerpApiEngine, type WebSearchProvider } from "../../pilot/config/webSearchProviders.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError, type AdditionalSearchProvider } from "./additionalWebSearch.js";
+import { parallelSearchResults } from "./parallelWebSearch.js";
 import { NetworkFetchError, networkFetch } from "../../network/fetch.js";
 import { PilotDeckToolRuntimeError } from "../protocol/errors.js";
 import type {
@@ -86,9 +87,9 @@ export function createWebSearchTool(
 - Use this tool when API/SDK/framework usage is unknown, version-sensitive, or likely changed since training. Search with package/service name, version, framework, and the specific method/option/error.
 
 Usage notes:
-  - Configure \`tools.webSearch.provider\` as \`deepseek\`, \`glm\`, \`tavily\`, \`serper\`, \`brave\`, \`baidu\`, \`bocha\`, \`exa\`, \`serpapi\`, or \`custom\` in \`pilotdeck.yaml\`
+  - Configure \`tools.webSearch.provider\` as \`deepseek\`, \`glm\`, \`tavily\`, \`serper\`, \`brave\`, \`baidu\`, \`bocha\`, \`exa\`, \`serpapi\`, \`parallel\`, or \`custom\` in \`pilotdeck.yaml\`
   - Custom HTTP templates and response mappings are applied automatically; pass query/gl normally and never supply credentials in tool arguments
-  - Requires \`tools.webSearch.apiKey\`, the provider API key environment variable, or \`CUSTOM_WEB_SEARCH_API_KEY\` unless custom auth is \`none\`
+  - Requires \`tools.webSearch.apiKey\`, the provider API key environment variable, or \`CUSTOM_WEB_SEARCH_API_KEY\` unless using Parallel or custom auth \`none\`
   - The optional \`gl\` parameter is forwarded only by providers that support localization
   - This tool is read-only and does not modify files`,
     kind: "network",
@@ -136,6 +137,21 @@ Usage notes:
     }),
     execute: async (input, context) => {
       const provider = resolveProvider(options.provider, options.apiKey, context);
+      if (provider === "parallel") {
+        const query = input.query.trim();
+        const organic = await parallelSearchResults(query, {
+          signal: context.abortSignal,
+          timeoutMs,
+          organicLimit,
+          fetchImpl: options.fetchImpl,
+        });
+        const output: WebSearchOutput = { query, organic };
+        return {
+          content: [{ type: "text", text: formatTextSummary(output) }, { type: "json", value: output }],
+          data: output,
+          metadata: { provider, endpoint: WEB_SEARCH_ENDPOINTS.parallel, organicCount: organic.length },
+        };
+      }
       const apiKey = resolveApiKey(options.apiKey, provider, context);
       const custom = normalizeCustomProviderConfig(options.customProvider);
       if (!apiKey && !(provider === "custom" && custom.auth === "none")) {
@@ -224,6 +240,7 @@ function checkWebSearchAvailability(
     env: context.env,
   } as PilotDeckToolRuntimeContext;
   const provider = resolveProvider(options.provider, options.apiKey, runtimeContext);
+  if (provider === "parallel") return { ok: true as const };
   const apiKey = resolveApiKey(options.apiKey, provider, runtimeContext);
   const custom = normalizeCustomProviderConfig(options.customProvider);
 

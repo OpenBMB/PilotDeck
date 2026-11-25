@@ -1,7 +1,7 @@
 # Web search providers
 
-Enable **Settings → Search**, select a provider, enter its API key, then use
-**Test connection**. API documentation/key links appear beside the provider.
+Enable **Settings → Search**, select a provider, enter its API key if required,
+then use **Test connection**. Documentation links appear beside the provider.
 Each provider's key and settings remain in the local configuration when switching
 providers. Switching back restores its saved settings. Masked keys are reused only
 for the same provider, endpoint and authentication settings.
@@ -17,7 +17,14 @@ for the same provider, endpoint and authentication settings.
 | Bocha Web Search | `BOCHA_API_KEY` | [Provider-maintained API reference](https://github.com/Bocha-Labs/bocha-skills/tree/main/bocha-web-search) |
 | Exa | `EXA_API_KEY` | [Search](https://exa.ai/docs/reference/search) |
 | SerpAPI | `SERPAPI_API_KEY` | [Search API](https://serpapi.com/search-api) |
+| Parallel | None | [Parallel MCP installation](https://docs.parallel.ai/integrations/mcp/installation) |
 | Custom | `CUSTOM_WEB_SEARCH_API_KEY` | Your endpoint's documentation |
+
+Select **Parallel** to use web search without an API key. PilotDeck sends search
+queries to `https://mcp.parallel.ai/mcp` and returns result links and excerpts
+through the usual `web_search` output. To opt in through YAML, set
+`tools.webSearch.enabled: true` and `tools.webSearch.provider: parallel`.
+Parallel uses its published MCP URL and ignores per-provider endpoint and API key fields.
 
 SerpAPI provides access to the selected engine with a **SerpAPI key**. It does
 not use a Google/Bing account key. Supported engine contracts:
@@ -58,7 +65,7 @@ Query-authenticated errors redact the key before returning to the UI or model.
 
 Contract tests use synthetic responses and never contact paid APIs. To verify a
 subscription, quota and regional connectivity, run Test connection with your own
-provider key. The existing implicit environment-provider precedence is preserved;
+key where required. The existing implicit environment-provider precedence is preserved;
 selecting `provider` explicitly is recommended when several keys are configured.
 
 DeepSeek Search uses `POST https://api.deepseek.com/v1/tools/search` with Bearer

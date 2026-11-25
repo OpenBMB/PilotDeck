@@ -3,6 +3,7 @@ import { imageApiBaseUrl } from "../../../src/pilot/config/imageGenerationConfig
 import { customSearchRequest, customSearchResults } from "../../../src/pilot/config/customSearch.js";
 import { WEB_SEARCH_ENDPOINTS, isWebSearchProvider, isSerpApiEngine } from "../../../src/pilot/config/webSearchProviders.js";
 import { getWebSearchProviderConfig, migrateWebSearchProviderConfigs, resolveWebSearchConfig } from "../../../src/pilot/config/webSearchConfig.js";
+import { parallelSearchResults } from "../../../src/tool/builtin/parallelWebSearch.js";
 import { additionalSearchRequest, additionalSearchResults, isAdditionalSearchProvider, redactSearchError } from "../../../src/tool/builtin/additionalWebSearch.js";
 import express from 'express';
 import { mergeRequestHeaders, requestContextHeaders } from '../../../src/network/requestContext.js';
@@ -1388,6 +1389,18 @@ router.post('/test-web-search', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'Unsupported SerpAPI search engine.' });
   }
   const selectedProvider = normalizeWebSearchProvider(provider);
+  if (selectedProvider === 'parallel') {
+    const started = Date.now();
+    try {
+      const organic = await parallelSearchResults('Find the official PilotDeck project on GitHub', {
+        timeoutMs: 15_000,
+        organicLimit: 3,
+      });
+      return res.json({ ok: true, latencyMs: Date.now() - started, organicCount: organic.length });
+    } catch (error) {
+      return res.json({ ok: false, error: redactSearchError(error, []) });
+    }
+  }
   let custom = customProvider && typeof customProvider === 'object' ? customProvider : {};
   const customAuth = normalizeWebSearchCustomAuth(custom.auth);
   const requestedKey = typeof apiKey === 'string' ? apiKey.trim() : '';

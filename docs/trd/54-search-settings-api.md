@@ -7,11 +7,11 @@ Search settings live at tools.webSearch. GET/PUT `/api/config` and POST `/api/co
 | Field | Contract |
 | --- | --- |
 | enabled | Explicit false disables the tool and skips validation of inactive search subfields |
-| provider | deepseek, glm, tavily, serper, brave, baidu, bocha, exa, serpapi or custom |
+| provider | deepseek, glm, tavily, serper, brave, baidu, bocha, exa, serpapi, parallel or custom |
 | providers.<provider> | Separate saved apiKey, endpoint, searchEngine and customProvider per provider |
 | searchEngine | SerpAPI engine, default google, with bing, baidu, duckduckgo, yahoo and yandex also supported |
 | apiKey | Legacy/current provider key, masked on read; environment injection remains supported |
-| endpoint | Optional built-in endpoint override; must be HTTP(S); custom requires one at runtime/test time |
+| endpoint | Optional HTTP(S) override for providers that support it. Custom requires an endpoint. Parallel uses its own fixed URL. |
 | customProvider | Request/auth/result mapping for custom services |
 
 Switching providers preserves other saved entries. Existing per-provider values take precedence over legacy top-level fields; form editing migrates legacy values into their original provider. Mask reuse requires matching provider, endpoint and authentication scope for both saving and probing.
@@ -24,7 +24,7 @@ Custom mapping defaults: name=custom, auth=bearer (also bodyApiKey/queryApiKey/n
 
 `POST /api/config/test-web-search` accepts provider, apiKey, endpoint, optional customProvider and optional searchEngine. Omitted provider defaults to glm for this compatibility endpoint. A `********` key may resolve the caller's saved credential only in the same provider/endpoint/auth scope. Changes require a new key. Responses redact the key.
 
-The server probes the fixed query hello, with a 15-second timeout and at most two network retries. Each request is independent. It writes no configuration and creates no persistent test ID or result binding.
+The server probes a fixed public query with a 15-second timeout. HTTP providers retry transient network failures up to two times. The Parallel probe uses the same keyless MCP adapter as the runtime, with its published endpoint. Each request is independent. It writes no configuration and creates no persistent test ID or result binding.
 
 - Success returns HTTP 200 `{ "ok": true, "latencyMs": 123, "organicCount": 3 }`.
 - Upstream HTTP/business errors and timeouts return HTTP 200 with ok=false, error and optional latencyMs.

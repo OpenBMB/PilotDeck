@@ -419,9 +419,10 @@ export class McpClient {
     await this.start();
   }
 
-  async close(): Promise<void> {
+  async close({ terminateSession = false } = {}): Promise<void> {
     this.closeVersion++;
     const client = this.client;
+    const transport = this.transport;
     const directory = this.perSessionDir;
     this.client = null;
     this.transport = null;
@@ -431,11 +432,15 @@ export class McpClient {
     this.status = "idle";
     this.invalidateToolCatalog();
     try {
-      await client?.close();
+      if (terminateSession && transport instanceof StreamableHTTPClientTransport) {
+        await transport.terminateSession();
+      }
     } catch {
-      // best effort
+      // The server may already have discarded the session.
+    } finally {
+      try { await client?.close(); } catch { /* best effort */ }
+      removeSessionDirectory(directory);
     }
-    removeSessionDirectory(directory);
   }
 
   private toToolSpec(raw: unknown): PilotDeckMcpToolSpec {
