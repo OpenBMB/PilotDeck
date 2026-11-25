@@ -49,6 +49,23 @@ describe('model connection probe request formats', () => {
     });
   }
 
+  it.each([
+    ['https://api.openai.com/v1', undefined, false, 'max_completion_tokens'],
+    ['https://example.test/v1', 'https://api.openai.com/v1/chat/completions', true, 'max_completion_tokens'],
+    ['https://example.test/v1', undefined, false, 'max_tokens'],
+    ['https://api.openai.com/v1', 'https://example.test/v1/chat/completions', true, 'max_tokens'],
+  ])('uses the token limit field for the actual probe endpoint (%s, %s, image=%s)', async (baseUrl, endpointUrl, image, field) => {
+    const fetch = vi.fn(async () => Response.json({ choices: [{ message: { content: image ? 'red' : '1' } }] }));
+    vi.stubGlobal('fetch', fetch);
+    const result = await probeModelConnection({ protocol: 'openai', baseUrl, endpointUrl, model: 'test-model', image, maxTokens: 256 });
+
+    expect(result.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(body[field]).toBe(256);
+    expect(body).not.toHaveProperty(field === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens');
+  });
+
   it('returns the endpoint URL that passed the text probe after fallback', async () => {
     const calls = [];
     vi.stubGlobal('fetch', vi.fn(async (url) => {

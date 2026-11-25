@@ -1,6 +1,7 @@
 import {
   buildProviderChatEndpointCandidates,
   isExpectedProviderResponseShape,
+  normalizeOpenAIChatTokenLimit,
 } from '../../../src/model/providerEndpoint.js';
 import { NetworkFetchError, networkFetch } from '../../../src/network/fetch.js';
 import { mergeRequestHeaders, requestContextHeaders } from '../../../src/network/requestContext.js';
@@ -214,8 +215,9 @@ export async function probeModelConnection({ protocol, baseUrl, endpointUrl, api
     const request = requestFor({ protocol, apiKey, model, image, maxTokens, imageProbe });
     let last = null;
     for (const url of urls) {
+      const requestBody = protocol === 'openai' ? normalizeOpenAIChatTokenLimit(request.body, url) : request.body;
       const response = await networkFetch(url, {
-        method: 'POST', headers: mergeRequestHeaders(requestContextHeaders({ purpose: 'model-probe' }), request.headers), body: JSON.stringify(request.body), signal: controller.signal,
+        method: 'POST', headers: mergeRequestHeaders(requestContextHeaders({ purpose: 'model-probe' }), request.headers), body: JSON.stringify(requestBody), signal: controller.signal,
       }, {
         signal: controller.signal, fetchImpl: fetch,
         retry: {
