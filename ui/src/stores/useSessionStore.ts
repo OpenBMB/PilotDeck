@@ -27,6 +27,7 @@ export type MessageKind =
   | 'error'
   | 'complete'
   | 'status'
+  | 'agent_notice'
   | 'permission_request'
   | 'permission_cancelled'
   | 'session_created'

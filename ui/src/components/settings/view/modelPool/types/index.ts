@@ -99,7 +99,6 @@ export type PilotDeckConfig = {
   router?: {
     enabled?: boolean;
     scenarios?: Record<string, string>;
-    fallback?: Record<string, string[]>;
     zeroUsageRetry?: {
       enabled?: boolean;
       maxAttempts?: number;

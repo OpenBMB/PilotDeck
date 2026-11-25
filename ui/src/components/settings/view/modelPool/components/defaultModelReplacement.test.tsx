@@ -96,15 +96,15 @@ it.each([false, true])('previews and atomically removes a referenced provider, i
   expect(config().model?.providers?.replacement.models?.model).toEqual(emptyDefinition ? null : {});
 });
 
-it('previews deleted fallback references and preserves the replacement as a backup', async () => {
+it('keeps retired fallback values out of the removal preview', async () => {
   const { config } = setup({ router: true });
   const dialog = await openProviderDelete();
   expect(dialog.queryByText(`${DIALOG}.redundant`)).toBeNull();
-  expect(dialog.getByText(`${DIALOG}.groupRemove`)).toBeTruthy();
+  expect(dialog.queryByText(`${DIALOG}.groupRemove`)).toBeNull();
   fireEvent.click(dialog.getByRole('button', { name: `${DIALOG}.replaceAndDelete` }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(config().router?.scenarios?.default).toBe('replacement/model');
-  expect(config().router?.fallback).toEqual({ default: ['replacement/model'] });
+  expect(config().router).toHaveProperty('fallback', { default: ['openai/model', 'replacement/model'] });
 });
 
 it('re-previews when the replacement changes', async () => {

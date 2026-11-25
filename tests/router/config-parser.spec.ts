@@ -102,3 +102,18 @@ test("skips auto-orchestrate tier validation when token saver is disabled", () =
   assert.equal(result.diagnostics.filter((item) => item.severity === "fatal").length, 0);
   assert.deepEqual(result.config?.autoOrchestrate?.triggerTiers, ["simple"]);
 });
+
+test("silently ignores retired routing fields and retains the cache savings threshold", () => {
+  const result = parseRouterConfig({
+    fallback: { default: ["retired/unknown"], maxFallbacks: "unused" },
+    tokenSaver: {
+      judge: "openai/gpt-test",
+      defaultTier: "simple",
+      tiers: { simple: { model: "openai/gpt-test" } },
+      cacheAwareSwitching: { enabled: false, minSavingsRatio: 0.1 },
+    },
+  }, modelConfig);
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(Object.hasOwn(result.config!, "fallback"), false);
+  assert.deepEqual(result.config?.tokenSaver?.cacheAwareSwitching, { minSavingsRatio: 0.1 });
+});

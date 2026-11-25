@@ -39,10 +39,10 @@ export type RouterTokenSaverConfig = {
   };
   judgeTimeoutMs: number;
   /**
-   * Preserve the session's current model when its cache-read input cost is
-   * cheaper than switching models and re-prefilling the full prompt.
+   * Minimum fractional input savings required to switch away from the
+   * session's last successful eligible model.
    */
-  cacheAwareSwitching?: { enabled: boolean; minSavingsRatio: number };
+  cacheAwareSwitching?: { minSavingsRatio: number };
 };
 
 export type RouterAutoOrchestrateConfig = {
@@ -68,13 +68,6 @@ export type RouterStatsConfig = {
   baselineModel?: { provider: string; model: string };
 };
 
-export type RouterFallbackConfig = Partial<Record<RouterScenarioType, RouterModelRef[]>> & {
-  /** LiteLLM-compatible max fallback model groups to try after the primary model. Default 5. */
-  maxFallbacks?: number;
-};
-
-export const LITELLM_ROUTER_MAX_FALLBACKS = 5;
-
 export type RouterCustomRouterConfig = {
   extensionId: string;
 };
@@ -95,7 +88,6 @@ export type RouterConfig = {
    * of the gateway can keep treating it as required.
    */
   scenarios?: RouterScenariosConfig;
-  fallback?: RouterFallbackConfig;
   zeroUsageRetry?: { enabled: boolean; maxAttempts: number };
   transientRetry?: { enabled: boolean; maxAttempts: number; baseDelayMs: number; maxDelayMs: number };
   tokenSaver?: RouterTokenSaverConfig;

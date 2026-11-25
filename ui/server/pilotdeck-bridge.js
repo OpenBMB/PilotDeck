@@ -1202,6 +1202,15 @@ export function gatewayEventToFrames(event, sessionId, provider) {
             if (subagentFrames && subagentFrames.length > 0) return subagentFrames;
 
             const detail = event.detail || {};
+            if (event.event === 'model_images_omitted' && detail.visible !== false) {
+                return [createNormalizedMessage({
+                    ...base,
+                    ...(event.runId ? { id: `model-images-omitted:${event.runId}` } : {}),
+                    kind: 'agent_notice',
+                    content: detail.message,
+                    contentI18n: detail.messageI18n,
+                })];
+            }
             if (event.event === 'compact_started') {
                 const compactProgress = {
                     compaction_id: detail.compactionId,

@@ -376,7 +376,7 @@ function parseAgent(
       code: "CONFIG_AGENT_FALLBACK_MODEL_DEPRECATED",
       severity: "warning",
       message:
-        "agent.fallbackModel has been removed. Move the value to router.fallback.default to keep fallback behaviour.",
+        "agent.fallbackModel has been removed. Add the model to the model pool to make it available for automatic routing.",
       path: "agent.fallbackModel",
       recoverable: true,
     });

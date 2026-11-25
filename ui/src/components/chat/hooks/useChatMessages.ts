@@ -372,6 +372,17 @@ function convertSingleMessage(
       }
       return null;
 
+    case 'agent_notice':
+      return {
+        id: msg.id,
+        ...turnIdentity,
+        type: 'system',
+        content: msg.content,
+        contentI18n: msg.contentI18n,
+        timestamp: msg.timestamp,
+        isAgentNotice: true,
+      };
+
     case 'status':
     case 'complete': {
       const timing = msg.turnTiming;

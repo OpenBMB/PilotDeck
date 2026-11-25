@@ -303,6 +303,15 @@ function mapWebMessageToNormalized(message, sessionId) {
         payload: message.payload,
       });
     case 'status':
+      if (payload.event === 'model_images_omitted' && payload.detail?.visible !== false) {
+        return createNormalizedMessage({
+          ...base,
+          id: turnId ? `model-images-omitted:${turnId}` : base.id,
+          kind: 'agent_notice',
+          content: message.text || '',
+          contentI18n: message.contentI18n,
+        });
+      }
       return createNormalizedMessage({
         ...base,
         kind: 'status',

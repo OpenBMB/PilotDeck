@@ -715,6 +715,9 @@
     }
   },
   "agentStatus": {
+    "modelImagesOmitted": {
+      "message": "有图片无法发送给当前模型，已用文字占位。"
+    },
     "modelRequestFailed": {
       "message": "{{providerMessage}}\n\n请查看下方建议操作。",
       "actions": {

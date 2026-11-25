@@ -1017,8 +1017,8 @@ describe('validatePilotDeckConfig gateway validation', () => {
             vision: 'ollama/qwen3:0.6b',
         });
         expect(result.config.router.fallback).toEqual({
-            default: ['ollama/qwen3:0.6b'],
-            vision: ['ollama/qwen3:0.6b'],
+            default: ['_placeholder/_placeholder'],
+            vision: ['_placeholder/_placeholder'],
         });
         expect(result.config.router.stats.baselineModel).toBe('ollama/qwen3:0.6b');
         expect(result.config.router.stats.modelPricing).toEqual({

@@ -8,7 +8,7 @@
  *
  * Allowed `kind` values mirror what the chat UI's reducer recognises:
  *   text | tool_use | tool_result | thinking | stream_delta | stream_end
- *   error | complete | status | permission_request | permission_cancelled
+ *   error | complete | status | agent_notice | permission_request | permission_cancelled
  *   session_created | interactive_prompt | task_notification | interrupted
  */
 

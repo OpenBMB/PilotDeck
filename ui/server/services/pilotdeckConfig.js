@@ -410,13 +410,6 @@ function validateRouterModelRefs(config, errors) {
     }
   }
 
-  if (isRecord(router.fallback)) {
-    for (const [key, refs] of Object.entries(router.fallback)) {
-      if (!Array.isArray(refs)) continue;
-      refs.forEach((ref, index) => validateModelRef(config, ref, `router.fallback.${key}[${index}]`, errors));
-    }
-  }
-
   validateRouterPricing(config, router.stats, errors);
   const tokenSaver = router.tokenSaver;
   if (!isRecord(tokenSaver)) return;
@@ -1129,7 +1122,7 @@ export async function updatePilotDeckConfig(
 //
 // Scope is deliberately narrow:
 //   • only touches `router.scenarios.default` (not tokenSaver tiers,
-//     fallback chains, or other scenario keys — those are user-curated)
+//     other scenario keys — those are user-curated)
 //   • no-ops when agent.model is empty or unparseable
 //   • no-ops when router block doesn't exist (won't create one)
 export function syncAgentModelWithRouter(config) {
@@ -1242,14 +1235,6 @@ function finalizeBootstrapPlaceholder(config) {
   if (isRecord(router.scenarios)) {
     for (const [key, val] of Object.entries(router.scenarios)) {
       if (referencesRemovedProvider(val)) router.scenarios[key] = agentModel;
-    }
-  }
-  if (isRecord(router.fallback)) {
-    for (const [key, refs] of Object.entries(router.fallback)) {
-      if (!Array.isArray(refs)) continue;
-      router.fallback[key] = refs.map(
-        value => referencesRemovedProvider(value) ? agentModel : value,
-      );
     }
   }
   if (isRecord(router.stats?.modelPricing)) {

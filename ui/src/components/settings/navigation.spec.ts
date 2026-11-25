@@ -83,7 +83,6 @@ it.each([
   ['agent.subagents.default', '/settings/agent-route'],
   ['memory.model', '/settings/agent-memory'],
   ['router.scenarios.default', '/settings/agent-route'],
-  ['router.fallback.default.0', '/settings/agent-route'],
   ['router.tokenSaver.judge', '/settings/agent-route'],
   ['router.tokenSaver.tiers.medium.model', '/settings/agent-route'],
   ['router.stats.baselineModel', '/settings/agent-route'],

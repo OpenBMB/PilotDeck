@@ -8,20 +8,17 @@ import {
   DEFAULT_TIER_RULES,
   DEFAULT_TRIGGER_TIERS,
   DEFAULT_ZERO_USAGE_MAX_ATTEMPTS,
-  LITELLM_ROUTER_MAX_FALLBACKS,
   resolveProviderRef,
   ROUTER_PRICING_UNITS,
   type RouterAutoOrchestrateConfig,
   type RouterConfig,
   type RouterCustomRouterConfig,
-  type RouterFallbackConfig,
   type RouterModelRef,
   type RouterScenariosConfig,
   type RouterStatsConfig,
   type RouterTokenSaverConfig,
   type RouterPricingUnit,
 } from "./schema.js";
-import type { RouterScenarioType } from "../protocol/decision.js";
 
 export type RouterConfigDiagnostic = {
   code: string;
@@ -30,12 +27,6 @@ export type RouterConfigDiagnostic = {
   message: string;
   hint?: string;
 };
-
-const SCENARIO_KEYS: RouterScenarioType[] = [
-  "default",
-  "subagent",
-  "explicit",
-];
 
 export type ParseRouterConfigResult = {
   config?: RouterConfig;
@@ -88,12 +79,11 @@ export function parseRouterConfig(
 
   const scenarios = parseScenarios(raw.scenarios, modelConfig, diagnostics);
   // Don't early-return on `scenarios === undefined`: that's the legitimate
-  // "user only filled in tokenSaver / fallback" case. `ensureRouterConfig`
+  // "user only filled in tokenSaver" case. `ensureRouterConfig`
   // in createLocalGateway.ts derives `scenarios.default` from `agent.model`
   // for us. Only the malformed-but-present case (handled inside
   // parseScenarios via a `fatal` diagnostic) actually aborts the load.
 
-  const fallback = parseFallback(raw.fallback, modelConfig, diagnostics);
   const zeroUsageRetry = parseZeroUsageRetry(raw.zeroUsageRetry, diagnostics);
   const tokenSaver = parseTokenSaver(raw.tokenSaver, modelConfig, diagnostics);
   const autoOrchestrate = parseAutoOrchestrate(raw.autoOrchestrate, modelConfig, tokenSaver, diagnostics);
@@ -104,7 +94,6 @@ export function parseRouterConfig(
     config: {
       enabled,
       ...(scenarios ? { scenarios } : {}),
-      fallback,
       zeroUsageRetry,
       tokenSaver,
       autoOrchestrate,
@@ -145,75 +134,6 @@ function parseScenarios(
   return {
     default: defaultRef,
   };
-}
-
-function parseFallback(
-  raw: unknown,
-  modelConfig: ModelConfig,
-  diagnostics: RouterConfigDiagnostic[],
-): RouterFallbackConfig | undefined {
-  if (raw === undefined) {
-    return undefined;
-  }
-  if (!isRecord(raw)) {
-    diagnostics.push({
-      code: "ROUTER_FALLBACK_INVALID",
-      severity: "fatal",
-      path: "router.fallback",
-      message: "router.fallback must be an object keyed by scenario type.",
-    });
-    return undefined;
-  }
-
-  const fallback: RouterFallbackConfig = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (key === "maxFallbacks") {
-      if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
-        fallback.maxFallbacks = value;
-      } else {
-        diagnostics.push({
-          code: "ROUTER_FALLBACK_MAX_FALLBACKS_INVALID",
-          severity: "fatal",
-          path: "router.fallback.maxFallbacks",
-          message: "router.fallback.maxFallbacks must be a non-negative integer.",
-        });
-      }
-      continue;
-    }
-    if (!SCENARIO_KEYS.includes(key as RouterScenarioType)) {
-      diagnostics.push({
-        code: "ROUTER_FALLBACK_UNKNOWN_SCENARIO",
-        severity: "warning",
-        path: `router.fallback.${key}`,
-        message: `Unknown scenario type ${key} in router.fallback.`,
-      });
-      continue;
-    }
-    if (!Array.isArray(value)) {
-      diagnostics.push({
-        code: "ROUTER_FALLBACK_NOT_ARRAY",
-        severity: "fatal",
-        path: `router.fallback.${key}`,
-        message: `router.fallback.${key} must be an array of provider/model strings.`,
-      });
-      continue;
-    }
-    const refs: RouterModelRef[] = [];
-    value.forEach((item: unknown, index: number) => {
-      const path = `router.fallback.${key}[${index}]`;
-      const ref = consumeRef(item, path, modelConfig, diagnostics);
-      if (ref) {
-        refs.push(ref);
-      }
-    });
-    if (refs.length > 0) {
-      fallback[key as RouterScenarioType] = refs;
-    }
-  }
-  if (fallback.maxFallbacks === undefined) {
-    fallback.maxFallbacks = LITELLM_ROUTER_MAX_FALLBACKS;
-  }
-  return Object.keys(fallback).length > 0 ? fallback : undefined;
 }
 
 function parseZeroUsageRetry(
@@ -402,10 +322,7 @@ function parseTokenSaver(
     }
   }
 
-  let cacheAwareSwitching: RouterTokenSaverConfig["cacheAwareSwitching"] = {
-    enabled: true,
-    minSavingsRatio: 0,
-  };
+  let cacheAwareSwitching: RouterTokenSaverConfig["cacheAwareSwitching"] = { minSavingsRatio: 0 };
   if (raw.cacheAwareSwitching !== undefined) {
     if (!isRecord(raw.cacheAwareSwitching)) {
       diagnostics.push({
@@ -415,9 +332,6 @@ function parseTokenSaver(
         message: "cacheAwareSwitching must be an object.",
       });
     } else {
-      const enabled = typeof raw.cacheAwareSwitching.enabled === "boolean"
-        ? raw.cacheAwareSwitching.enabled
-        : true;
       const minSavingsRatioRaw = raw.cacheAwareSwitching.minSavingsRatio;
       let minSavingsRatio = 0;
       if (minSavingsRatioRaw !== undefined) {
@@ -432,7 +346,7 @@ function parseTokenSaver(
           });
         }
       }
-      cacheAwareSwitching = { enabled, minSavingsRatio };
+      cacheAwareSwitching = { minSavingsRatio };
     }
   }
 

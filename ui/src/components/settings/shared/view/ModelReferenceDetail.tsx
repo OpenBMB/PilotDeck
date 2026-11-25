@@ -15,8 +15,6 @@ export function modelReferencePath(reference: string): Array<string | number> | 
   if (pricing) return ['router', 'stats', 'modelPricing', pricing[1]];
   const scenario = /^router\.scenarios\.([^.]+)$/.exec(reference);
   if (scenario) return ['router', 'scenarios', scenario[1]];
-  const fallback = /^router\.fallback\.([^.]+)\.(\d+)$/.exec(reference);
-  if (fallback) return ['router', 'fallback', fallback[1], Number(fallback[2])];
   const tier = /^router\.tokenSaver\.tiers\.([^.]+)\.model$/.exec(reference);
   return tier ? ['router', 'tokenSaver', 'tiers', tier[1], 'model'] : null;
 }

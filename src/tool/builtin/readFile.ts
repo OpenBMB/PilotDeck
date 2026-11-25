@@ -19,6 +19,7 @@ import {
 import { readNotebook } from "./filesystem/readNotebook.js";
 import { recordWriteSnapshot } from "./filesystem/writeSnapshots.js";
 import { countTokens } from "../../context/budget/tokenizer.js";
+import { compressImageToFit } from "../../model/request/compressImage.js";
 
 export type ReadFileInput = {
   file_path: string;
@@ -186,19 +187,8 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
         if (!mimeType) {
           throw new PilotDeckToolRuntimeError("invalid_tool_input", `Unsupported image type: ${resolved.relativePath}.`);
         }
-        const supportsImage = context.modelMultimodal?.input?.includes("image");
-        if (!supportsImage) {
-          return {
-            content: [{
-              type: "text",
-              text: `[Image file: ${resolved.relativePath}, ${fileStat.size} bytes, ${mimeType}. Current model does not support image input.]`,
-            }],
-            data: { filePath: resolved.relativePath, kind, modelSupportsImage: false },
-          };
-        }
         const imageBuffer = await readFile(resolved.absolutePath, { signal: context.abortSignal });
-        const maxImageBytes = Math.min(MAX_IMAGE_BYTES, context.modelMultimodal?.maxImageBytes ?? MAX_IMAGE_BYTES);
-        const preparedImage = await prepareImageForModel(imageBuffer, mimeType, maxImageBytes);
+        const preparedImage = await prepareImageForModel(imageBuffer, mimeType, MAX_IMAGE_BYTES);
         if (!preparedImage.ok) {
           return {
             content: [{
@@ -230,7 +220,6 @@ export function createReadFileTool(): PilotDeckToolDefinition<ReadFileInput> {
             mimeType: compressed.mimeType,
             data: compressed.buffer.toString("base64"),
             bytes: compressed.buffer.byteLength,
-            detail: context.modelMultimodal?.imageDetail,
           }],
           data: {
             filePath: resolved.relativePath,
@@ -782,84 +771,20 @@ function formatImageDecodeError(error: unknown): string {
   return message.replace(/\s+/g, " ").slice(0, 300) || "unknown image decode error";
 }
 
-/**
- * Multi-pass image compressor. We size against a single byte budget (which
- * the model's own `maxImageBytes` constraint also enforces) — there's no
- * separate "image token" cap because multimodal LLMs price images by
- * dimensions or fixed tile cost, not by base64 length. A `bytes / 6`
- * heuristic on top of that just rejects perfectly cheap images (e.g. a
- * 250 KB JPEG that the model charges ~700 tokens for).
- *
- * Cascade: pass 1 = format-appropriate 1600px / quality 80, pass 2 =
- * 1200px JPEG quality 55, pass 3 = 800px JPEG quality 40. Only after all
- * three fail to fit do we surface `result_too_large`.
- */
 async function compressImageForBudget(
   buffer: Buffer,
   mimeType: string,
   maxBytes: number,
 ): Promise<{ buffer: Buffer; mimeType: string }> {
-  let output = buffer;
-  let outputMimeType = mimeType;
-  if (output.byteLength > maxBytes) {
-    try {
-      const sharpModule = await import("sharp");
-      const sharp = sharpModule.default;
-      const pipeline = sharp(buffer).rotate();
-      if (mimeType === "image/png") {
-        output = await pipeline
-          .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-          .png({ compressionLevel: 9 })
-          .toBuffer();
-        outputMimeType = "image/png";
-      } else if (mimeType === "image/webp") {
-        output = await pipeline
-          .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toBuffer();
-        outputMimeType = "image/webp";
-      } else if (mimeType === "image/gif") {
-        output = await pipeline
-          .resize({ width: 1200, height: 1200, fit: "inside", withoutEnlargement: true })
-          .png({ compressionLevel: 9 })
-          .toBuffer();
-        outputMimeType = "image/png";
-      } else {
-        output = await pipeline
-          .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toBuffer();
-        outputMimeType = "image/jpeg";
-      }
-
-      if (output.byteLength > maxBytes) {
-        output = await sharp(output)
-          .resize({ width: 1200, height: 1200, fit: "inside", withoutEnlargement: true })
-          .jpeg({ quality: 55 })
-          .toBuffer();
-        outputMimeType = "image/jpeg";
-      }
-
-      if (output.byteLength > maxBytes) {
-        output = await sharp(output)
-          .resize({ width: 800, height: 800, fit: "inside", withoutEnlargement: true })
-          .jpeg({ quality: 40 })
-          .toBuffer();
-        outputMimeType = "image/jpeg";
-      }
-    } catch {
-      // Fall back to the original bytes when image compression is unavailable.
-    }
-  }
-
-  if (output.byteLength > maxBytes) {
+  const image = await compressImageToFit(buffer, mimeType, maxBytes);
+  if (!image) {
     throw new PilotDeckToolRuntimeError(
       "result_too_large",
       `Image content exceeds the read_file byte budget after compression attempts (${mimeType}).`,
-      { mimeType: outputMimeType, bytes: output.byteLength, maxBytes },
+      { mimeType, bytes: buffer.byteLength, maxBytes },
     );
   }
-  return { buffer: output, mimeType: outputMimeType };
+  return image;
 }
 
 function checkReadFilePermission(

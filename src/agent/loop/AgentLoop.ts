@@ -52,7 +52,7 @@ import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../pe
 import type { AgentControlBoundaryTranscriptEntry } from "../../session/transcript/TranscriptEntry.js";
 import type { AgentSteerMessage } from "../session/SteerMailbox.js";
 import { prepareModelRequest, prepareModelRequestAttempt, type ModelRequestPreparationDependencies } from "./prepareModelRequest.js";
-import type { RouterDecision } from "../../router/protocol/decision.js";
+import type { RouterDecision, RouterTurnRouting } from "../../router/protocol/decision.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
@@ -220,6 +220,8 @@ export class AgentLoop {
     let permissionDenials: AgentPermissionDenial[] = [];
     let structuredOutput: unknown;
     let finalMessage: CanonicalMessage | undefined;
+    const turnRouting: RouterTurnRouting = { failedModels: new Set(), failedProviders: new Set() };
+    let reportedOmittedImages = false;
     const toAgentStatusEvent = (status: AgentStatusMessage): AgentEvent => ({
       type: "agent_status",
       sessionId: input.sessionId,
@@ -555,6 +557,7 @@ export class AgentLoop {
           sessionId: input.sessionId,
           abortSignal: input.abortSignal,
           isMainAgent: !this.config.isSubagent,
+          turnRouting,
           metadata: stickyInfo
             ? { previousTier, previousProvider: stickyInfo.previousProvider, previousModel: stickyInfo.previousModel }
             : previousTier ? { previousTier } : undefined,
@@ -676,19 +679,39 @@ export class AgentLoop {
           catch (error) { console.warn('[pilotdeck] Could not save context inspection snapshot:', error); }
         }
       } : undefined;
+      let omittedImages = 0;
       try {
         for await (const event of this.dependencies.router.execute(decision, request, {
           sessionId: input.sessionId,
           turnId: input.turnId,
           projectPath: this.config.cwd,
+          isMainAgent: !this.config.isSubagent,
           abortSignal: input.abortSignal,
+          turnRouting,
           requestForTarget: prepareCandidate ? async target => {
             dispatchedTargets.set(this.tokenCapKey(target.provider, target.model), { ...decision, ...target });
             const prepared = await prepareCandidate(messages, target);
             return this.applyTokenCapsToRequest(prepared.request, target.provider, target.model);
           } : undefined,
-          onRequestPrepared: commitRequest,
+          onRequestPrepared: async (actual, omitted = 0) => {
+            omittedImages = omitted;
+            await commitRequest?.(actual);
+          },
         })) {
+          if (omittedImages > 0 && !reportedOmittedImages) {
+            reportedOmittedImages = true;
+            const text = "Images the selected model could not accept were replaced with text placeholders.";
+            yield await emitStatus({
+              event: "model_images_omitted",
+              kind: "status",
+              text,
+              detail: createAgentTurnStatusDetail({
+                code: "MODEL_IMAGES_OMITTED",
+                message: text,
+                messageI18n: { key: "chat:agentStatus.modelImagesOmitted.message" },
+              }),
+            });
+          }
           // Custom routers may not implement the optional preparation callback.
           if (commitRequest && !contextCommitted) await commitRequest(calibrationRequest);
           if (event.type === "request_started") {
@@ -1450,9 +1473,7 @@ export class AgentLoop {
           // Phase C: fall through to error surfacing
         }
 
-        // Cross-provider fallback decisions are now owned by RouterRuntime
-        // (see `runFallbackChain` + `zeroUsageRetry`); the loop only
-        // classifies the surfaced error and falls through.
+        // RouterRuntime already handled cross-model failover and retries.
         const classified = classifyModelError(assembled.error);
         await this.dispatchLifecycle(input, "StopFailure", { error: assembled.error });
         yield { type: "stop_failure", sessionId: input.sessionId, turnId: input.turnId, error: typeof assembled.error === "string" ? assembled.error : JSON.stringify(assembled.error) };

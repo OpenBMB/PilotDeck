@@ -1,4 +1,5 @@
 import type { CanonicalModelRequest, ModelConfig, ModelDefinition, ProviderConfig } from "../protocol/canonical.js";
+import type { ModelCapabilities } from "../protocol/capabilities.js";
 import { messageContent } from "../protocol/clone.js";
 import { ModelRequestError } from "../protocol/errors.js";
 import { assertContentSupported } from "../protocol/multimodal.js";
@@ -33,24 +34,29 @@ export function validateModelRequest(
     throw new ModelRequestError("unsupported_speed", `Model ${request.model} does not support speed for provider ${request.provider}.`);
   }
 
-  if (request.stream && !model.capabilities.supportsStreaming) {
-    throw new ModelRequestError("unsupported_streaming", `Model ${request.model} does not support streaming.`);
+  assertModelRequestCapabilities(request, model.capabilities, request.model);
+  assertContentSupported(request.messages.flatMap(messageContent), model.multimodal);
+
+  return { provider, model };
+}
+
+export function assertModelRequestCapabilities(
+  request: Pick<CanonicalModelRequest, "stream" | "systemPrompt" | "tools">,
+  capabilities: ModelCapabilities,
+  modelId: string,
+): void {
+  if (request.stream && !capabilities.supportsStreaming) {
+    throw new ModelRequestError("unsupported_streaming", `Model ${modelId} does not support streaming.`);
   }
 
-  if (request.systemPrompt && !model.capabilities.supportsSystemPrompt) {
+  if (request.systemPrompt && !capabilities.supportsSystemPrompt) {
     throw new ModelRequestError(
       "unsupported_system_prompt",
-      `Model ${request.model} does not support system prompts.`,
+      `Model ${modelId} does not support system prompts.`,
     );
   }
 
-  if (request.tools?.length && !model.capabilities.supportsToolUse) {
-    throw new ModelRequestError("unsupported_tool_use", `Model ${request.model} does not support tools.`);
+  if (request.tools?.length && !capabilities.supportsToolUse) {
+    throw new ModelRequestError("unsupported_tool_use", `Model ${modelId} does not support tools.`);
   }
-
-  for (const message of request.messages) {
-    assertContentSupported(messageContent(message), model.multimodal);
-  }
-
-  return { provider, model };
 }
