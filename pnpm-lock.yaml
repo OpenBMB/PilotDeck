@@ -93,6 +93,9 @@ importers:
         specifier: ^2.8.4
         version: 2.9.0
     devDependencies:
+      '@pilotdeck/native-sandbox':
+        specifier: workspace:*
+        version: link:packages/native-sandbox
       '@types/node':
         specifier: ^25.0.0
         version: 25.9.1
@@ -132,6 +135,8 @@ importers:
         version: 5.9.3
 
   packages/config: {}
+
+  packages/native-sandbox: {}
 
   ui:
     dependencies:

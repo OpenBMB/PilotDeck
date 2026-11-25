@@ -1,13 +1,26 @@
+import { createHash } from "node:crypto";
 import { Tiktoken } from "js-tiktoken/lite";
 import o200k_base from "js-tiktoken/ranks/o200k_base";
 
+const TOKEN_CACHE_MAX_ENTRIES = 4096;
+const SHORT_TEXT_KEY_LIMIT = 256;
+
 let _instance: Tiktoken | null = null;
+const _tokenCache = new Map<string, number>();
 
 export function getTokenizer(): Tiktoken {
   if (!_instance) {
     _instance = new Tiktoken(o200k_base);
   }
   return _instance;
+}
+
+function cacheKeyFor(text: string): string {
+  if (text.length <= SHORT_TEXT_KEY_LIMIT) {
+    return `s:${text}`;
+  }
+  const digest = createHash("sha256").update(text).digest("base64url");
+  return `l:${text.length}:${digest}`;
 }
 
 /**
@@ -18,5 +31,21 @@ export function getTokenizer(): Tiktoken {
  */
 export function countTokens(text: string): number {
   if (text.length === 0) return 0;
-  return getTokenizer().encode(text, [], []).length;
+  const key = cacheKeyFor(text);
+  const cached = _tokenCache.get(key);
+  if (cached !== undefined) {
+    // Refresh insertion order for LRU eviction.
+    _tokenCache.delete(key);
+    _tokenCache.set(key, cached);
+    return cached;
+  }
+  const count = getTokenizer().encode(text, [], []).length;
+  if (_tokenCache.size >= TOKEN_CACHE_MAX_ENTRIES) {
+    const oldest = _tokenCache.keys().next().value;
+    if (oldest !== undefined) {
+      _tokenCache.delete(oldest);
+    }
+  }
+  _tokenCache.set(key, count);
+  return count;
 }

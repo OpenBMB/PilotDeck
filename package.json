@@ -37,6 +37,7 @@
     "postbuild": "node scripts/write-web-build-metadata.mjs dist"
   },
   "devDependencies": {
+    "@pilotdeck/native-sandbox": "workspace:*",
     "@types/node": "^25.0.0",
     "@types/ws": "^8.18.1",
     "ink-testing-library": "^4.0.0",

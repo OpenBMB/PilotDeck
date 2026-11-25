@@ -1,0 +1,18 @@
+{
+  "name": "@pilotdeck/native-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.cjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build-native.mjs",
+    "build:debug": "node scripts/build-native.mjs --debug"
+  }
+}
+

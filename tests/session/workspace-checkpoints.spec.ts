@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { WorkspaceCheckpoints, CheckpointStore, getCheckpointStore } from "../../src/session/checkpoints/WorkspaceCheckpoints.js";
+import { getCheckpointWorkerPool, resolveCheckpointObjectPath } from "../../src/session/checkpoints/checkpointWorkerPool.js";
 import type { Checkpoint, RestoreOperation } from "../../src/session/checkpoints/types.js";
 import { createBashTool } from "../../src/tool/builtin/bash.js";
 
@@ -389,4 +390,41 @@ test("retention removes unused content but keeps backups referenced by restore o
   await assert.rejects(f.store.readObject(orphan), { code: "ENOENT" });
   const undo = await f.store.undoPreview("session", operation.id); await f.store.restore("session", undo.id);
   assert.equal(await readFile(f.file("a.txt"), "utf8"), "version-3");
+});
+
+test("worker pool capture handles larger workspaces and preserves exact file contents and exclusions", async t => {
+  const f = await fixture(t);
+  await mkdir(f.file("src"));
+  await mkdir(f.file("node_modules"));
+  await writeFile(f.file("node_modules/ignored.js"), "ignored\n");
+  for (let i = 0; i < 20; i++) {
+    await writeFile(f.file(`src/file-${i}.txt`), `content-${i}\n`);
+  }
+  await writeFile(f.file("src/binary.bin"), Buffer.from([0, 10, 20, 30]));
+  const before = await f.store.capture("session", "turn-worker", "before");
+  await f.store.save(before);
+
+  assert.equal(before.files["node_modules/ignored.js"], undefined);
+  for (let i = 0; i < 20; i++) {
+    const entry = before.files[`src/file-${i}.txt`];
+    assert.equal(entry?.kind, "file");
+    if (entry?.kind === "file") {
+      assert.equal(entry.binary, false);
+      assert.equal((await f.store.readObject(entry.hash)).toString("utf8"), `content-${i}\n`);
+    }
+  }
+  const binaryEntry = before.files["src/binary.bin"];
+  assert.equal(binaryEntry?.kind, "file");
+  if (binaryEntry?.kind === "file") {
+    assert.equal(binaryEntry.binary, true);
+  }
+
+  const mainThreadVersion = await f.store.captureFile("src/file-0.txt");
+  const workerVersion = await getCheckpointWorkerPool().captureFile({
+    target: f.file("src/file-0.txt"),
+    objectsDir: resolveCheckpointObjectPath(f.store.directory),
+    maxFileBytes: 10 * 1024 * 1024,
+    save: true,
+  });
+  assert.deepEqual(workerVersion, mainThreadVersion);
 });
