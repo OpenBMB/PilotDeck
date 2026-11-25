@@ -23,7 +23,8 @@ import type {
 } from "./customRouter/customRouter.js";
 import { noopCustomRouterRegistry } from "./customRouter/customRouter.js";
 import { isFallbackEligible, isProviderWideFailure } from "./fallback/isFallbackEligible.js";
-import { assertContentSupported } from "../model/protocol/multimodal.js";
+import { assertContentSupported, type MediaValidationOptions } from "../model/protocol/multimodal.js";
+import { compressImageToFit } from "../model/request/compressImage.js";
 import { applyOrchestration } from "./orchestrate/applyOrchestration.js";
 import type {
   RouterDecision,
@@ -45,7 +46,7 @@ import {
 import { TokenStatsCollector } from "./stats/TokenStatsCollector.js";
 import { classifyAndRoute } from "./tokenSaver/classifyAndRoute.js";
 import { countMessagesTokens, countResponseTokens, dispose as disposeTokenizer } from "./utils/countTokens.js";
-import { calculateCacheReadCost, calculateInputCost, lookupModelPricing, orderPoolByConfiguredPrice } from "./utils/modelPricing.js";
+import { lookupModelPricing, orderPoolByConfiguredPrice } from "./utils/modelPricing.js";
 import { collectRequiredInputModalities } from "./utils/mediaRequirements.js";
 import type { TelemetryClient } from "../telemetry/index.js";
 import { currentRequestContext } from "../network/requestContext.js";
@@ -138,23 +139,44 @@ export function createRouterRuntime(
     return tracker;
   }
 
-  function supportsTools(ref: RouterModelRef, request: CanonicalModelRequest): boolean {
-    if (!request.tools?.length) return true;
+  function assertRequestCapabilities(ref: RouterModelRef, request: CanonicalModelRequest): void {
+    if (!request.stream && !request.tools?.length) return;
+    const capabilities = deps.modelRuntime.getCapabilities(ref.provider, ref.model);
+    if (request.stream && capabilities.supportsStreaming === false) {
+      throw new ModelRequestError("unsupported_streaming", `Model ${ref.model} does not support streaming.`);
+    }
+    if (request.tools?.length && capabilities.supportsToolUse === false) {
+      throw new ModelRequestError("unsupported_tool_use", `Model ${ref.model} does not support tools.`);
+    }
+  }
+
+  function supportsRequestCapabilities(ref: RouterModelRef, request: CanonicalModelRequest): boolean {
     try {
-      return deps.modelRuntime.getCapabilities(ref.provider, ref.model).supportsToolUse !== false;
+      assertRequestCapabilities(ref, request);
+      return true;
     } catch {
       return false;
     }
   }
 
-  function supportsMedia(ref: RouterModelRef, request: CanonicalModelRequest): boolean {
+  function supportsMedia(ref: RouterModelRef, request: CanonicalModelRequest, options?: MediaValidationOptions): boolean {
     if (collectRequiredInputModalities(request.messages).length === 0) return true;
     try {
-      assertContentSupported(request.messages.flatMap(messageContent), deps.modelRuntime.getMultimodal(ref.provider, ref.model));
+      assertContentSupported(request.messages.flatMap(messageContent), deps.modelRuntime.getMultimodal(ref.provider, ref.model), options);
       return true;
     } catch {
       return false;
     }
+  }
+
+  function mediaCandidates(candidates: RouterModelRef[], request: CanonicalModelRequest): RouterModelRef[] {
+    const full: RouterModelRef[] = [];
+    const limited: RouterModelRef[] = [];
+    for (const candidate of candidates) {
+      if (supportsMedia(candidate, request, { allowImageResize: true })) full.push(candidate);
+      else if (supportsMedia(candidate, request, { allowImageResize: true, allowImageCountOverflow: true })) limited.push(candidate);
+    }
+    return [...full, ...limited];
   }
 
   function availableInPool(ref: RouterModelRef): boolean {
@@ -166,41 +188,45 @@ export function createRouterRuntime(
     return tiers.slice(start).map(name => configuredTiers[name].model);
   }
 
-  function canAttempt(
-    ref: RouterModelRef,
-    ctx: Pick<RouterExecuteContext, "sessionId" | "turnRouting">,
-  ): boolean {
-    return !ctx.turnRouting?.failedModels.has(ref.id)
-      && !ctx.turnRouting?.failedProviders.has(ref.provider)
-      && !getHealthTracker(ctx.sessionId).shouldSkip(ref.provider);
+  function canAttempt(ref: RouterModelRef, turnRouting: RouterExecuteContext["turnRouting"]): boolean {
+    return !turnRouting?.failedModels.has(ref.id) && !turnRouting?.failedProviders.has(ref.provider);
   }
 
   function candidateModels(
     decision: RouterDecision,
     ctx: Pick<RouterExecuteContext, "sessionId" | "turnRouting">,
+    request: CanonicalModelRequest,
   ): RouterModelRef[] {
     const preferred = { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model };
-    if (decision.scenarioType === "explicit") return [preferred];
+    if (decision.scenarioType === "explicit") return supportsRequestCapabilities(preferred, request) ? [preferred] : [];
 
     const tierModels = eligibleTierModels(decision.tokenSaverTier);
     const eligibleIds = new Set(tierModels.map(model => model.id));
     const ordered = new Map([preferred, ...tierModels, ...orderedPool].map(model => [model.id, model]));
-    return [...ordered.values()].filter(model =>
+    const candidates = [...ordered.values()].filter(model =>
       (!assignedModels.has(model.id) || eligibleIds.has(model.id))
-      && availableInPool(model) && canAttempt(model, ctx)
+      && availableInPool(model) && canAttempt(model, ctx.turnRouting)
+      && supportsRequestCapabilities(model, request)
     );
+    const health = getHealthTracker(ctx.sessionId);
+    const available = candidates.filter(model => !health.shouldSkip(model.provider));
+    if (available.length) return available;
+    // An open circuit must not prevent recovery when there are no other candidates.
+    const probe = mediaCandidates(candidates, request)[0] ?? candidates[0];
+    return probe ? [probe] : [];
   }
 
   function adjustDecisionForCompatibility(input: RouterDecisionInput, decision: RouterDecision): void {
     const request = applyDecisionToRequest(decision, input.request);
-    const candidates = candidateModels(decision, input);
-    const replacement = candidates.find(ref => supportsTools(ref, request) && supportsMedia(ref, request))
-      ?? candidates.find(ref => supportsTools(ref, request));
+    const candidates = candidateModels(decision, input, request);
+    const mediaCompatible = mediaCandidates(candidates, request);
+    const replacement = mediaCompatible[0] ?? candidates[0];
     if (!replacement || (replacement.provider === decision.provider && replacement.model === decision.model)) return;
 
     const required = collectRequiredInputModalities(request.messages);
     const selected = { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model };
-    if (required.length && !supportsMedia(selected, request) && supportsMedia(replacement, request)) {
+    if (required.length && mediaCompatible.includes(replacement)
+      && !supportsMedia(selected, request, { allowImageResize: true, allowImageCountOverflow: true })) {
       decision.mutations.mediaCapabilityRerouted = { required, from: selected.id, to: replacement.id };
     }
     decision.provider = replacement.provider;
@@ -223,15 +249,18 @@ export function createRouterRuntime(
     }
 
     if (!eligibleTierModels(tier).some(model => model.id === current.id)
-      || ![current, next].every(ref => availableInPool(ref) && supportsTools(ref, request) && supportsMedia(ref, request))) {
+      || ![current, next].every(ref => availableInPool(ref) && supportsRequestCapabilities(ref, request) && supportsMedia(ref, request))) {
       return { selection: next };
     }
 
     const pricing = config.stats?.modelPricing;
-    const currentPricing = lookupModelPricing(current.provider, current.model, pricing);
-    const nextPricing = lookupModelPricing(next.provider, next.model, pricing);
+    const currentPricing = pricing?.[current.id] ?? lookupModelPricing(current.provider, current.model);
+    const nextPricing = pricing?.[next.id] ?? lookupModelPricing(next.provider, next.model);
+    const currentInput = currentPricing.input;
+    const nextInput = nextPricing.input;
     const defaultUnit = ROUTER_PRICING_UNITS[0];
-    if (!Number.isFinite(currentPricing.input) || !Number.isFinite(nextPricing.input)
+    if (currentInput === undefined || nextInput === undefined
+      || !Number.isFinite(currentInput) || !Number.isFinite(nextInput)
       || (currentPricing.unit ?? defaultUnit) !== (nextPricing.unit ?? defaultUnit)) {
       return { selection: next };
     }
@@ -247,23 +276,9 @@ export function createRouterRuntime(
       : 0;
     const estimatedCacheReadTokens = Math.floor(estimatedInputTokens * observedCacheHitRatio);
     const estimatedUncachedTokens = Math.max(0, estimatedInputTokens - estimatedCacheReadTokens);
-    const cachedCost = calculateCacheReadCost(
-      estimatedCacheReadTokens,
-      current.provider,
-      current.model,
-      pricing,
-    ) + calculateInputCost(
-      estimatedUncachedTokens,
-      current.provider,
-      current.model,
-      pricing,
-    );
-    const prefillCost = calculateInputCost(
-      estimatedInputTokens,
-      next.provider,
-      next.model,
-      pricing,
-    );
+    const cachedCost = (estimatedCacheReadTokens / 1_000_000) * (currentPricing.cacheRead ?? currentInput)
+      + (estimatedUncachedTokens / 1_000_000) * currentInput;
+    const prefillCost = (estimatedInputTokens / 1_000_000) * nextInput;
 
     const minSavingsRatio = config.tokenSaver?.cacheAwareSwitching?.minSavingsRatio ?? 0;
     const requiredSavings = cachedCost * minSavingsRatio;
@@ -378,7 +393,7 @@ export function createRouterRuntime(
     let tokenSaverTier: string | undefined;
     let cacheAwareSwitch: RouterMutationsLog["cacheAwareSwitch"];
     const subagentPolicy = config.tokenSaver?.subagent?.policy ?? DEFAULT_SUBAGENT_POLICY;
-    const previousCall = input.turnRouting?.lastSuccessful;
+    const previousCall = input.turnRouting?.continuationTarget;
     if (previousCall && !custom?.provider && scenarioType !== "explicit") {
       selection = {
         id: `${previousCall.provider}/${previousCall.model}`,
@@ -607,11 +622,12 @@ export function createRouterRuntime(
           : request.cacheBreakpoints,
         cachePlan: routedCachePlan,
       };
-      const { request: mediaRequest, omittedImages } = prepareMediaForAttempt(
+      const { request: mediaRequest, omittedImages } = await prepareMediaForAttempt(
         passthroughRequest,
         { id: `${decision.provider}/${decision.model}`, provider: decision.provider, model: decision.model },
         deps.modelRuntime,
         true,
+        ctx.abortSignal,
       );
       const cappedPassthroughRequest = clampMaxOutputTokensToModelCap(mediaRequest, deps.modelRuntime);
       await ctx.onRequestPrepared?.(cappedPassthroughRequest, omittedImages);
@@ -638,10 +654,11 @@ export function createRouterRuntime(
     const baseRequest = applyDecisionToRequest(decision, request);
     const turnRouting = ctx.turnRouting ?? { failedModels: new Set<string>(), failedProviders: new Set<string>() };
     const attemptContext = { sessionId: ctx.sessionId, turnRouting };
-    const candidates = candidateModels(decision, attemptContext).filter(ref => supportsTools(ref, baseRequest));
-    const nativeCandidates = candidates.filter(ref => supportsMedia(ref, baseRequest));
-    const downgradeMedia = nativeCandidates.length === 0;
-    const attempts = downgradeMedia ? candidates : nativeCandidates;
+    const candidates = candidateModels(decision, attemptContext, baseRequest);
+    const explicit = decision.scenarioType === "explicit";
+    const nativeCandidates = explicit ? [] : mediaCandidates(candidates, baseRequest);
+    // If all native projections fail before dispatch, retry preparation with placeholders.
+    const attempts = [...nativeCandidates, ...candidates];
     const zeroUsageMax = Math.max(1, config.zeroUsageRetry?.maxAttempts ?? 5);
     const zeroUsageEnabled = config.zeroUsageRetry?.enabled ?? true;
     const transientRetryEnabled = config.transientRetry?.enabled ?? true;
@@ -657,13 +674,16 @@ export function createRouterRuntime(
     let lastHasYieldedContent = false;
 
     let attemptsStarted = 0;
+    let dispatchedNative = false;
     let previousFailure: import("../model/index.js").CanonicalModelError | undefined;
     let projectionError: import("../model/index.js").CanonicalModelError | undefined;
 
     outer: for (const [attemptIndex, attempt] of attempts.entries()) {
       if (ctx.abortSignal?.aborted) return;
       if (attemptsStarted >= MAX_MODEL_ATTEMPTS) break;
-      if (decision.scenarioType !== "explicit" && !canAttempt(attempt, attemptContext)) continue;
+      const allowPlaceholders = attemptIndex >= nativeCandidates.length;
+      if (allowPlaceholders && dispatchedNative) break;
+      if (!explicit && !canAttempt(attempt, turnRouting)) continue;
       const attemptDecision: RouterDecision = {
         ...decision,
         provider: attempt.provider,
@@ -675,10 +695,11 @@ export function createRouterRuntime(
       const targetRequest = await ctx.requestForTarget?.(attemptDecision) ?? request;
       if (ctx.abortSignal?.aborted) return;
       const projected = applyDecisionToRequest(attemptDecision, targetRequest);
-      const { request: attemptRequest, omittedImages } = prepareMediaForAttempt(
-        projected, attempt, deps.modelRuntime, downgradeMedia || decision.scenarioType === "explicit",
+      const { request: attemptRequest, omittedImages } = await prepareMediaForAttempt(
+        projected, attempt, deps.modelRuntime, allowPlaceholders, ctx.abortSignal,
       );
-      if (!supportsTools(attempt, attemptRequest) || !supportsMedia(attempt, attemptRequest)) {
+      if (ctx.abortSignal?.aborted) return;
+      if (!supportsRequestCapabilities(attempt, attemptRequest) || !supportsMedia(attempt, attemptRequest)) {
         projectionError = incompatibleRequestError(attempt, attemptRequest);
         continue;
       }
@@ -719,6 +740,7 @@ export function createRouterRuntime(
       }
       previousFailure = undefined;
       attemptsStarted++;
+      dispatchedNative ||= !allowPlaceholders;
       lastAttempt = attempt;
       lastDecision = attemptDecision;
 
@@ -794,8 +816,8 @@ export function createRouterRuntime(
           if (
             !hasYieldedContent && isFallbackEligible(outcome.error)
             && attemptsStarted < MAX_MODEL_ATTEMPTS
-            && attempts.slice(attemptIndex + 1).some(next =>
-              (!providerWide || next.provider !== attempt.provider) && canAttempt(next, attemptContext)
+            && attempts.slice(attemptIndex + 1, allowPlaceholders ? attempts.length : nativeCandidates.length).some(next =>
+              (!providerWide || next.provider !== attempt.provider) && canAttempt(next, turnRouting)
             )
           ) {
             if (providerWide) turnRouting.failedProviders.add(attempt.provider);
@@ -919,12 +941,12 @@ export function createRouterRuntime(
           const outputEst = countResponseTokens(outcome.buffered);
           finalUsage = { inputTokens: inputEst, outputTokens: outputEst, totalTokens: inputEst + outputEst };
         }
-        const completed = outcome.buffered.some(event => event.type === "message_end");
+        const ending = outcome.buffered.find(event => event.type === "message_end");
         const producedOutput = outcome.buffered.some(event =>
           event.type === "tool_call_end" || (event.type === "text_delta" && event.text.trim().length > 0)
         );
-        if (completed && producedOutput) {
-          if (ctx.turnRouting) ctx.turnRouting.lastSuccessful = attemptDecision;
+        if (ending && producedOutput && ctx.turnRouting) ctx.turnRouting.continuationTarget = attemptDecision;
+        if ((ending?.finishReason === "stop" || ending?.finishReason === "tool_call") && producedOutput) {
           const current = sessionStore.get(ctx.sessionId, isSubagent);
           // Update the route selected for this call when it still owns the sticky
           // slot. A manual selection or a newer decision owns its own route.
@@ -1032,10 +1054,7 @@ export function createRouterRuntime(
       retryable: false,
     };
     try {
-      const capabilities = deps.modelRuntime.getCapabilities(target.provider, target.model);
-      if (request.tools?.length && capabilities.supportsToolUse === false) {
-        throw new ModelRequestError("unsupported_tool_use", `Model ${target.model} does not support tools.`);
-      }
+      assertRequestCapabilities(target, request);
       assertContentSupported(request.messages.flatMap(messageContent), deps.modelRuntime.getMultimodal(target.provider, target.model));
     } catch (cause) {
       if (cause instanceof ModelRequestError) return { ...error, code: cause.code, message: cause.message };
@@ -1155,12 +1174,13 @@ function clampMaxOutputTokensToModelCap(
   return request;
 }
 
-function prepareMediaForAttempt(
+async function prepareMediaForAttempt(
   request: CanonicalModelRequest,
   attempt: RouterModelRef,
   modelRuntime: ModelRuntime,
   allowPlaceholders: boolean,
-): { request: CanonicalModelRequest; omittedImages: number } {
+  signal?: AbortSignal,
+): Promise<{ request: CanonicalModelRequest; omittedImages: number }> {
   const modalities = collectRequiredInputModalities(request.messages);
   if (modalities.length === 0) return { request, omittedImages: 0 };
 
@@ -1171,20 +1191,31 @@ function prepareMediaForAttempt(
     // Unknown provider/model should still be reported by validateModelRequest.
     return { request, omittedImages: 0 };
   }
-  const detail = modalities.includes("image") ? multimodal.imageDetail : undefined;
-  if (!detail && !allowPlaceholders) return { request, omittedImages: 0 };
+  const supportsImages = modalities.includes("image") && multimodal.input.includes("image");
+  const detail = supportsImages ? multimodal.imageDetail : undefined;
+  const maxImageBytes = supportsImages ? multimodal.maxImageBytes : undefined;
+  const limitImageCount = supportsImages && multimodal.maxImagesPerRequest !== undefined;
+  if (!detail && !maxImageBytes && !limitImageCount && !allowPlaceholders) return { request, omittedImages: 0 };
 
   const messages = cloneMessages(request.messages);
-  const downgrade = allowPlaceholders
-    ? downgradeUnsupportedContent(messages, multimodal)
-    : { changed: false, omittedImages: 0 };
-  let changed = downgrade.changed;
-  if (detail) {
+  let changed = false;
+  if (detail || maxImageBytes) {
     for (const message of messages) {
       for (const block of message.content) {
         const parts = block.type === "tool_result" ? block.content : [block];
         for (const part of parts) {
-          if (part.type === "image" && part.detail === undefined) {
+          if (signal?.aborted) return { request, omittedImages: 0 };
+          if (part.type !== "image") continue;
+          if (maxImageBytes && part.source === "base64" && part.bytes && part.bytes > maxImageBytes) {
+            const fitted = await compressImageToFit(Buffer.from(part.data, "base64"), part.mimeType, maxImageBytes);
+            if (fitted && (!multimodal.supportedImageMimeTypes || multimodal.supportedImageMimeTypes.includes(fitted.mimeType))) {
+              part.data = fitted.buffer.toString("base64");
+              part.mimeType = fitted.mimeType;
+              part.bytes = fitted.buffer.length;
+              changed = true;
+            }
+          }
+          if (detail && part.detail === undefined) {
             part.detail = detail;
             changed = true;
           }
@@ -1192,9 +1223,12 @@ function prepareMediaForAttempt(
       }
     }
   }
+  const downgrade = allowPlaceholders || limitImageCount
+    ? downgradeUnsupportedContent(messages, multimodal, !allowPlaceholders)
+    : { changed: false, omittedImages: 0 };
 
   return {
-    request: changed ? refreshCachePlan({ ...request, messages }) : request,
+    request: changed || downgrade.changed ? refreshCachePlan({ ...request, messages }) : request,
     omittedImages: downgrade.omittedImages,
   };
 }

@@ -73,7 +73,8 @@ export type RouterDecisionInputUsageHint = {
 
 /** One AgentLoop run owns this state, including its tool continuations. */
 export type RouterTurnRouting = {
-  lastSuccessful?: RouterDecision;
+  /** Model to continue with in this turn, including after an output limit. */
+  continuationTarget?: RouterDecision;
   failedModels: Set<string>;
   failedProviders: Set<string>;
 };

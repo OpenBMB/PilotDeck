@@ -1,6 +1,7 @@
 import { ModelRequestError } from "./errors.js";
 import type {
   CanonicalContentBlock,
+  CanonicalImageBlock,
   CanonicalMessage,
   CanonicalToolResultContentBlock,
 } from "./canonical.js";
@@ -40,24 +41,28 @@ export function isInputModality(value: unknown): value is InputModality {
 export function downgradeUnsupportedContent(
   messages: CanonicalMessage[],
   constraints: MultimodalConstraints,
+  imageQuotaOnly = false,
 ): { changed: boolean; omittedImages: number } {
   const allowed = new Set<InputModality>(constraints.input);
   let changed = false;
   let omittedImages = 0;
   let imageCount = 0;
   const placeholderFor = (block: CanonicalContentBlock | CanonicalToolResultContentBlock): string | undefined => {
-    if (block.type !== "image") return mediaBlockToPlaceholder(block, allowed);
+    if (block.type !== "image") return imageQuotaOnly ? undefined : mediaBlockToPlaceholder(block, allowed);
     const error = imageInputError(block, constraints, imageCount + 1);
     if (!error) {
       imageCount++;
       return undefined;
     }
+    if (imageQuotaOnly && error.code !== "too_many_images") return undefined;
     omittedImages++;
     const sizeHint = block.bytes ? `, ${Math.round(block.bytes / 1024)}KB` : "";
     return `[Image: ${block.mimeType}${sizeHint} — omitted, ${error.message}]`;
   };
 
-  for (const msg of messages) {
+  // Reserve the quota for recent messages first, keeping their order on the wire.
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex--) {
+    const msg = messages[messageIndex]!;
     const content = messageContent(msg);
     for (let i = 0; i < content.length; i++) {
       const block = content[i]!;
@@ -139,9 +144,15 @@ function nestedToolResultModalities(
   });
 }
 
+export type MediaValidationOptions = {
+  allowImageResize?: boolean;
+  allowImageCountOverflow?: boolean;
+};
+
 export function assertContentSupported(
   blocks: CanonicalContentBlock[],
   constraints: MultimodalConstraints,
+  options?: MediaValidationOptions,
 ): void {
   const allowed = new Set<InputModality>(constraints.input);
   let imageCount = 0;
@@ -158,7 +169,7 @@ export function assertContentSupported(
       }
       for (const item of block.content) {
         if (item.type === "image") {
-          const error = imageInputError(item, constraints, ++imageCount);
+          const error = imageInputError(item, constraints, ++imageCount, options);
           if (error) throw error;
         }
         if (item.type === "pdf" && constraints.maxPdfBytes && item.bytes > constraints.maxPdfBytes) {
@@ -183,7 +194,7 @@ export function assertContentSupported(
     }
 
     if (block.type === "image") {
-      const error = imageInputError(block, constraints, ++imageCount);
+      const error = imageInputError(block, constraints, ++imageCount, options);
       if (error) throw error;
     }
 
@@ -209,9 +220,10 @@ export function assertContentSupported(
 }
 
 function imageInputError(
-  image: Extract<CanonicalContentBlock, { type: "image" }> | Extract<CanonicalToolResultContentBlock, { type: "image" }>,
+  image: CanonicalImageBlock,
   constraints: MultimodalConstraints,
   imageCount: number,
+  options?: MediaValidationOptions,
 ): ModelRequestError | undefined {
   if (!constraints.input.includes("image")) {
     return new ModelRequestError("unsupported_modality", "Model does not support image input.", { modality: "image" });
@@ -221,13 +233,14 @@ function imageInputError(
       mimeType: image.mimeType,
     });
   }
-  if (constraints.maxImageBytes && image.bytes && image.bytes > constraints.maxImageBytes) {
+  if (constraints.maxImageBytes && image.bytes && image.bytes > constraints.maxImageBytes
+    && !(options?.allowImageResize && image.source === "base64" && image.data)) {
     return new ModelRequestError("image_too_large", "Image content exceeds model limits.", {
       bytes: image.bytes,
       maxImageBytes: constraints.maxImageBytes,
     });
   }
-  if (constraints.maxImagesPerRequest && imageCount > constraints.maxImagesPerRequest) {
+  if (!options?.allowImageCountOverflow && constraints.maxImagesPerRequest && imageCount > constraints.maxImagesPerRequest) {
     return new ModelRequestError("too_many_images", "Image count exceeds model limits.", {
       imageCount,
       maxImagesPerRequest: constraints.maxImagesPerRequest,

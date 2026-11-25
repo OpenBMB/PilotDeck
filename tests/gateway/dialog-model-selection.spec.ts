@@ -447,6 +447,48 @@ test('an uploaded PNG uses an eligible model from the pool without making a text
   assert.equal(requestImages(f.requests[0]!)[0]?.mimeType, 'image/png');
 });
 
+test('a new upload takes precedence over history when the model accepts only one image', async t => {
+  const config = TEXT_DEFAULT_CONFIG.replace('input: [text, image], imageDetail: low', 'input: [text, image], maxImagesPerRequest: 1');
+  const f = await fixture(t, 'image inspected', { config });
+  const png = (background: string) => sharp({ create: { width: 24, height: 24, channels: 3, background } }).png().toBuffer();
+  const [oldImage, newImage] = await Promise.all([png('red'), png('blue')]);
+  for (const image of [oldImage, newImage]) {
+    const events = await f.submit({ mode: 'auto' }, undefined, 'Inspect this upload', {
+      attachments: [{ type: 'image', name: 'synthetic.png', mimeType: 'image/png', content: image.toString('base64'), bytes: image.length }],
+    });
+    assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+    assert.deepEqual(requestImages(f.requests.at(-1)!).map(block => block.data), [image.toString('base64')]);
+  }
+});
+
+test('read_file compresses for the selected model before dispatch while retaining the original in history', async t => {
+  const limit = 512 * 1024;
+  const config = TEXT_DEFAULT_CONFIG.replace('input: [text, image], imageDetail: low', `input: [text, image], maxImageBytes: ${limit}`);
+  const f = await fixture(t, 'image inspected', {
+    config,
+    reply: (_request, index) => index === 1 ? readFileReply('large.png') : undefined,
+  });
+  const width = 700;
+  const png = await sharp(randomBytes(width * width * 3), { raw: { width, height: width, channels: 3 } }).png().toBuffer();
+  assert.ok(png.length > limit);
+  await writeFile(join(f.home, 'large.png'), png);
+
+  const events = await f.submit({ mode: 'auto' }, undefined, 'Inspect large.png');
+  assert.ok(events.some(event => event.type === 'turn_completed' && event.finishReason === 'completed'));
+  assert.deepEqual(f.requests.map(request => request.provider), ['zeta', 'alpha']);
+  const [image] = requestImages(f.requests[1]!);
+  assert.ok(image?.bytes && image.bytes <= limit);
+  assert.equal(Buffer.from(image.data, 'base64').length, image.bytes);
+  assert.equal((await sharp(Buffer.from(image.data, 'base64')).metadata()).format, 'jpeg');
+  assert.ok(JSON.stringify(f.wireBody(1)).includes('data:image/jpeg;base64,' + image.data));
+  assert.ok(!events.some(event => event.type === 'agent_status' && event.event === 'model_images_omitted'));
+
+  const storage = createAgentProjectSessionStorage({ projectRoot: f.home, pilotHome: f.home, sessionId: 'web:model-choice' });
+  const history = replayTranscriptEntries((await readTranscript(storage.transcriptPath)).entries);
+  assert.ok(history.messages.some(message => message.content.some(block =>
+    block.type === 'media_reference' && block.mediaType === 'image' && block.originalBytes === png.length)));
+});
+
 for (const mode of ['no-vision', 'explicit', 'router-disabled'] as const) {
   test(`read_file retains the image in history and reports wire omission in ${mode} mode`, async t => {
     let config = TEXT_DEFAULT_CONFIG;

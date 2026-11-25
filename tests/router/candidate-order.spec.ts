@@ -31,6 +31,8 @@ function fixture(t: TestContext, options: {
   pool?: string[];
   textOnly?: string[];
   withoutTools?: string[];
+  withoutStreaming?: string[];
+  transientRetries?: number;
   errors?: Record<string, CanonicalModelError | Error>;
   prices?: RouterModelPricingMap;
 } = {}) {
@@ -55,7 +57,8 @@ function fixture(t: TestContext, options: {
     getCapabilities(provider, model) {
       return {
         supportsToolUse: !options.withoutTools?.includes(`${provider}/${model}`),
-        supportsStreaming: true, supportsParallelToolCalls: true, supportsSystemPrompt: true,
+        supportsStreaming: !options.withoutStreaming?.includes(`${provider}/${model}`),
+        supportsParallelToolCalls: true, supportsSystemPrompt: true,
         supportsThinking: false, supportsJsonSchema: false, supportsPromptCache: false,
         maxContextTokens: 100000, maxOutputTokens: 1024,
       };
@@ -72,7 +75,8 @@ function fixture(t: TestContext, options: {
     autoOrchestrate: { enabled: true, triggerTiers: ["medium"], slimSystemPrompt: false },
     stats: { enabled: false, modelPricing: options.prices },
     zeroUsageRetry: { enabled: false, maxAttempts: 1 },
-    transientRetry: { enabled: false, maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0 },
+    transientRetry: { enabled: options.transientRetries !== undefined, maxAttempts: options.transientRetries ?? 1,
+      baseDelayMs: 0, maxDelayMs: 0 },
   }, {
     modelRuntime,
     modelPool: (options.pool ?? [SIMPLE, MEDIUM, COMPLEX, REASONING, POOL]).map(ref),
@@ -89,6 +93,35 @@ function fixture(t: TestContext, options: {
 function modelError(code: string, status?: number): CanonicalModelError {
   return { provider: "shared", protocol: "openai", code, status, message: "Synthetic failure", retryable: false };
 }
+
+test("streaming failover skips a non-streaming pool model", async t => {
+  const next = "a-pool/streaming";
+  const { router, request, ctx, sent } = fixture(t, {
+    tierModels: { simple: tiers.simple }, pool: [SIMPLE, POOL, next],
+    withoutStreaming: [POOL], errors: { [SIMPLE]: { ...modelError("rate_limit_error", 429), retryable: true } },
+  });
+  const events = await collect(router.stream({ ...request, stream: true }, ctx));
+  assert.deepEqual(sent, [SIMPLE, next]);
+  assert.ok(events.some(event => event.type === "message_end"));
+  assert.ok(events.every(event => event.type !== "error"));
+});
+
+test("a new turn can probe the only provider after retries opened its circuit", async t => {
+  const errors: Record<string, CanonicalModelError> = { [SIMPLE]: modelError("connection_refused") };
+  const { router, request, ctx, sent } = fixture(t, {
+    tierModels: { simple: tiers.simple }, pool: [SIMPLE], transientRetries: 4, errors,
+  });
+  const failed = await collect(router.stream(request, ctx));
+  assert.equal(sent.length, 5);
+  assert.ok(failed.some(event => event.type === "error" && event.error.code === "connection_refused"));
+
+  delete errors[SIMPLE];
+  router.invalidateSticky(ctx.sessionId);
+  const recovered = await collect(router.stream(request, { ...ctx, turnId: "recovered" }));
+  assert.equal(sent.length, 6);
+  assert.ok(recovered.some(event => event.type === "message_end"));
+  assert.ok(recovered.every(event => event.type !== "error"));
+});
 
 async function collect(events: AsyncIterable<CanonicalModelEvent>) {
   const result: CanonicalModelEvent[] = [];
