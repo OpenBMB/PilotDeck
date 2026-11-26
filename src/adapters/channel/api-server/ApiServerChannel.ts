@@ -223,6 +223,16 @@ export class ApiServerChannel implements ChannelAdapter {
     }
 
     const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role !== "user") {
+      sendJson(res, 400, createApiServerErrorBody({
+        event: "api_invalid_message_role",
+        message: "Final message role must be user",
+        code: "invalid_message_role",
+        status: 400,
+        userHint: "End the messages array with a user message.",
+      }));
+      return;
+    }
     const userText = normalizeContent(lastMsg?.content);
     if (!userText) {
       sendJson(res, 400, createApiServerErrorBody({
