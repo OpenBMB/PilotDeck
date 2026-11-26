@@ -10,6 +10,7 @@ import type { ConnectionTestTask } from '../hooks/useConnectionTestTasks';
 
 const mocks = vi.hoisted(() => ({
   fetchProviderModels: vi.fn(),
+  fetchModelTokenLimits: vi.fn(),
   authenticatedFetch: vi.fn(),
 }));
 
@@ -17,6 +18,7 @@ vi.mock('../../../../../utils/api', () => ({ authenticatedFetch: mocks.authentic
 
 beforeEach(() => {
   mocks.authenticatedFetch.mockResolvedValue({ ok: true, json: async () => ({ tasks: [] }) });
+  mocks.fetchModelTokenLimits.mockResolvedValue({ maxContextTokens: { value: 128000, source: 'catalog' }, maxOutputTokens: { value: 32768, source: 'catalog' } });
 });
 
 vi.mock("react-i18next", () => ({
@@ -25,6 +27,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("../../../../../shared/modelListApi", () => ({
   fetchProviderModels: mocks.fetchProviderModels,
+  fetchModelTokenLimits: mocks.fetchModelTokenLimits,
 }));
 
 afterEach(() => {
