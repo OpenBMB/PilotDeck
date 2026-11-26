@@ -223,6 +223,16 @@ export class ApiServerChannel implements ChannelAdapter {
     }
 
     const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.content && typeof lastMsg.content === "object" && !Array.isArray(lastMsg.content)) {
+      sendJson(res, 400, createApiServerErrorBody({
+        event: "api_invalid_content",
+        message: "Unsupported message content",
+        code: "invalid_content",
+        status: 400,
+        userHint: "Use a text string or an array of supported content parts.",
+      }));
+      return;
+    }
     const userText = normalizeContent(lastMsg?.content);
     if (!userText) {
       sendJson(res, 400, createApiServerErrorBody({
