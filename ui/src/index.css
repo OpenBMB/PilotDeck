@@ -833,18 +833,12 @@
 
 @layer components {
   .app-root {
-    padding: 6px;
-    background:
-      radial-gradient(circle at 8% 0%, rgba(var(--pd-accent-rgb, 111, 87, 243), 0.16), transparent 28%),
-      radial-gradient(circle at 98% 100%, rgba(var(--pd-accent-rgb, 79, 124, 244), 0.15), transparent 25%),
-      var(--pd-accent-tint, #eef0f8);
+    padding: 0;
+    background: radial-gradient(circle at center, #EBE4FF 0%, #F4F0FE 100%);
   }
 
   .dark .app-root {
-    background:
-      radial-gradient(circle at 8% 0%, var(--pd-accent-soft, rgba(99, 102, 241, 0.12)), transparent 28%),
-      radial-gradient(circle at 98% 100%, rgba(59, 130, 246, 0.1), transparent 25%),
-      #0a0a0a;
+    background: radial-gradient(circle at center, #2B292D 0%, #121113 100%);
   }
 
   .user-message-bubble {
@@ -957,19 +951,29 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    border: 1px solid rgba(var(--pd-accent-rgb, 75, 73, 136), 0.14);
-    border-radius: 14px;
-    background: #fff;
-    box-shadow: 0 20px 60px rgba(var(--pd-accent-rgb, 56, 53, 116), 0.122);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   .app-shell.sidebar-hidden {
     grid-template-columns: 0 0 minmax(0, 1fr);
   }
 
+  /* With the sidebar hidden the main surface reaches the window edge, so the
+     detached-card corner would expose a stray sliver of background. */
+  .app-shell.sidebar-hidden .app-main {
+    border-radius: 0;
+  }
+
   .app-main {
     grid-column: 3;
     grid-row: 1 / -1;
+    border-radius: 14px 0 0 0;
+    overflow: hidden;
+    border-top: 1px solid var(--pd-border, rgba(75, 73, 136, 0.2));
+    border-left: 1px solid var(--pd-border, rgba(75, 73, 136, 0.2));
   }
 
   .workspace-header {
@@ -983,7 +987,7 @@
     justify-content: space-between;
     padding: 0 17px 0 20px;
     border-bottom: 1px solid var(--line);
-    background: #fffffff5;
+    background: transparent;
   }
 
   .workspace-title {
@@ -1052,7 +1056,7 @@
   }
 
   .sidebar-shell {
-    background: linear-gradient(180deg, var(--pd-neutral-soft, #fbfaff), var(--pd-accent-tint, #f4f3ff) 58%, var(--pd-accent-tint, #f0f4ff));
+    background: transparent;
   }
 
   .project-sidebar {
@@ -1063,12 +1067,104 @@
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
-    border-right: 1px solid var(--pd-border, #e2dff3);
-    background: linear-gradient(180deg, var(--pd-neutral-soft, #fbfaff), var(--pd-accent-tint, #f4f3ff) 58%, var(--pd-accent-tint, #f0f4ff));
+    border-right: 0;
+    background: transparent;
+  }
+
+  /* Unified hover/selected wash for sidebar actions and list rows. */
+  :root {
+    --pd-sidebar-item-bg: rgba(175, 178, 255, 0.207843);
+  }
+
+  /* Other light accents derive the same ~21% wash from the theme color. */
+  :root[data-appearance]:not(.dark) {
+    --pd-sidebar-item-bg: color-mix(in srgb, color-mix(in srgb, var(--pd-accent, #5b5ce2) 55%, #ffffff) 20.7843%, transparent);
+  }
+
+  .dark {
+    --pd-sidebar-item-bg: #2b292d;
   }
 
   .project-sidebar.compact {
     align-items: stretch;
+  }
+
+  /* Sidebar cleanup: hide all internal dividers, merge Projects + Conversions into one scroll area */
+  .project-sidebar .tree-section {
+    border-top: 0 !important;
+    height: auto !important;
+    flex: 0 0 auto !important;
+  }
+  .project-sidebar .tree-section.conversations {
+    margin-top: 0;
+  }
+  .project-sidebar .panel-splitter.horizontal {
+    display: none;
+  }
+  .project-sidebar .sidebar-brand-row {
+    border-bottom: 0;
+  }
+  /* Inner list containers: do NOT grow, let content size them, no independent scroll */
+  .project-sidebar .tree-list.project-tree-list,
+  .project-sidebar section.conversations > div.dock-panel-scrollbar {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    overflow-y: visible !important;
+  }
+  /* Outer flex column: the single unified scroll container */
+  .project-sidebar > .flex.min-h-0.flex-1.flex-col {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* No layout scrollbar: a gutter would make the tree rows narrower than
+       the primary-action pills. Wheel/trackpad scrolling still works. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .project-sidebar > .flex.min-h-0.flex-1.flex-col::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
+  /* Floating scrollbar for the projects/conversations area. It is sticky with
+     zero height, so it overlays the rows instead of reserving layout width. */
+  .sidebar-overlay-scrollbar {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    flex: 0 0 auto;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .sidebar-overlay-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    right: 2px;
+    width: 4px;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.16);
+    transition: background-color 120ms ease;
+    pointer-events: auto;
+  }
+
+  .project-sidebar:hover .sidebar-overlay-scrollbar-thumb {
+    background: rgba(17, 24, 39, 0.3);
+  }
+
+  .dark .sidebar-overlay-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .dark .project-sidebar:hover .sidebar-overlay-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.34);
+  }
+  /* The inner split-column flex wrapper should NOT scroll */
+  .project-sidebar > .flex.min-h-0.flex-1.flex-col > .flex.min-h-0.flex-1.flex-col {
+    overflow: visible;
+    flex: 0 0 auto;
   }
 
   .sidebar-resizer {
@@ -1079,7 +1175,7 @@
     grid-row: 1 / -1;
     place-items: center;
     cursor: col-resize;
-    background: rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
+    background: transparent;
     touch-action: none;
     user-select: none;
   }
@@ -1154,7 +1250,7 @@
   .files-panel-resizer:hover,
   .files-panel-resizer.active,
   .files-panel-resizer:focus-visible {
-    background: var(--pd-accent-soft, #e2deff);
+    background: transparent;
   }
 
   .sidebar-resizer span,
@@ -1183,9 +1279,70 @@
     height: 62px;
     flex: 0 0 auto;
     align-items: center;
-    justify-content: flex-start;
-    padding: 0 12px;
-    border-bottom: 1px solid rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
+    justify-content: space-between;
+    padding: 0 14px;
+    border-bottom: 0;
+  }
+
+  .brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .brand-logo {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    object-fit: contain;
+    background: transparent;
+    display: block;
+  }
+
+  .brand-title {
+    font-family: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+    font-weight: 500;
+    font-size: 22px;
+    line-height: 20px;
+    letter-spacing: 0;
+    color: var(--pd-ink, #1f2937);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dark .brand-title {
+    color: var(--pd-ink, #e5e5e5);
+  }
+
+  .brand-search-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #625C70;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .brand-search-btn:hover {
+    background: rgba(98, 92, 112, 0.1);
+  }
+
+  .dark .brand-search-btn {
+    color: #8b84a0;
+  }
+
+  .dark .brand-search-btn:hover {
+    background: rgba(139, 132, 160, 0.15);
   }
 
   .brand-wordmark {
@@ -1230,7 +1387,7 @@
     gap: 10px;
     padding: 0 12px;
     border: 1px solid transparent;
-    border-radius: 9px;
+    border-radius: 8px;
     background: transparent;
     color: #3f4250;
     font-size: 14px;
@@ -1238,11 +1395,20 @@
     cursor: pointer;
   }
 
+  .primary-actions .primary-action,
+  .settings-actions:not(.compact) .settings-entry {
+    height: 30px;
+    padding: 0 10px 0 8px;
+    color: #282433;
+    font-family: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+    font-weight: 400;
+    line-height: 20px;
+  }
+
   .primary-action:hover,
   .primary-action.active {
-    border-color: rgba(var(--pd-accent-rgb, 102, 93, 221), 0.161);
-    background: linear-gradient(90deg, rgba(var(--pd-accent-soft-rgb, 235, 232, 255), 0.902), rgba(var(--pd-accent-soft-rgb, 237, 245, 255), 0.859));
-    color: var(--brand-strong);
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
   }
 
   .primary-action-icon {
@@ -1252,13 +1418,22 @@
     color: #7774a4;
   }
 
-  .primary-actions .icon {
+  .primary-actions .primary-action-icon,
+  .settings-actions:not(.compact) .settings-entry .primary-action-icon {
+    width: 16px;
+    color: #7963ba;
+  }
+
+  .primary-actions .icon,
+  .settings-actions:not(.compact) .settings-entry .icon {
     display: block;
+    width: 16px;
+    height: 16px;
     flex: 0 0 auto;
   }
 
   .tree-section {
-    padding: 4px 9px 8px;
+    padding: 4px 10px 8px;
   }
 
   .tree-heading {
@@ -1270,9 +1445,11 @@
     padding: 0 8px;
     border: 0;
     background: transparent;
-    color: var(--pd-accent, #514ac8);
+    color: #847d93;
+    font-family: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
     font-size: 14px;
-    font-weight: 750;
+    font-weight: 700;
+    line-height: 20px;
   }
 
   .tree-list,
@@ -1306,20 +1483,58 @@
 
   .tree-row.project-row {
     min-height: 32px;
-    grid-template-columns: 14px 17px minmax(0, 1fr) 24px;
-    gap: 5px;
-    padding: 3px 2px;
+    grid-template-columns: 13px 16px 1px minmax(0, 1fr) 24px;
+    gap: 7px;
+    padding: 0 4px;
     border-radius: 6px;
+    color: #282433;
+    font-family: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
+  }
+
+  /* Column 3 is the 1px spacer between the folder icon and the label. */
+  .tree-row.project-row .project-expand-button > span {
+    grid-column: 4;
+    min-width: 0;
+  }
+
+  .tree-row.project-row > .project-chat-icon {
+    grid-column: 5;
+  }
+
+  .tree-row.project-row .project-row-chevron {
+    width: 13px;
+    height: 13px;
+    color: #847d93;
+  }
+
+  .tree-row.project-row .project-row-folder {
+    color: #746985;
   }
 
   .tree-row.project-row.active {
     border-color: transparent;
-    background: transparent;
+    background: var(--pd-sidebar-item-bg);
     color: var(--pd-accent, #4543bc);
   }
 
   .tree-row.project-row:hover {
-    background: #ffffffb8;
+    background: var(--pd-sidebar-item-bg);
+  }
+
+  /* Top-level conversation rows mirror the project title rows' metrics. */
+  .tree-row.chat-row {
+    min-height: 32px;
+    grid-template-columns: 16px minmax(0, 1fr) 8px;
+    padding: 0 4px;
+    border-radius: 6px;
+    color: #282433;
+    font-family: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
   }
 
   .project-expand-button {
@@ -1363,6 +1578,22 @@
     gap: 1px;
   }
 
+  .tree-heading .tree-heading-actions {
+    opacity: 0;
+    transition: opacity 200ms ease-in-out;
+  }
+
+  .tree-heading:hover .tree-heading-actions,
+  .tree-heading:focus-within .tree-heading-actions {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .tree-heading .tree-heading-actions {
+      opacity: 1;
+    }
+  }
+
   .tree-heading-actions button {
     display: grid;
     width: 22px;
@@ -1381,7 +1612,7 @@
   .project-children {
     display: grid;
     gap: 2px;
-    padding: 1px 0 5px 19px;
+    padding: 6px 0 5px 19px;
   }
 
   .project-conversation {
@@ -1392,25 +1623,29 @@
     grid-template-columns: 12px minmax(0, 1fr);
     align-items: center;
     gap: 5px;
-    padding: 6px 7px;
+    /* 20px left padding puts the title text at x=67 inside the sidebar. */
+    padding: 6px 7px 6px 20px;
     border: 1px solid transparent;
     border-radius: 8px;
     background: transparent;
-    color: #5c6070;
+    color: #282433;
+    font-family: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
     font-size: 14px;
+    font-weight: 400;
+    line-height: 20px;
     text-align: left;
     cursor: pointer;
   }
 
   .project-conversation:hover,
   .tree-row.chat-row:hover {
-    background: #ffffffb8;
+    background: var(--pd-sidebar-item-bg);
   }
 
   .project-conversation.active,
   .tree-row.chat-row.active {
-    border-color: var(--pd-accent-border, #d9d4fb);
-    background: linear-gradient(90deg, var(--pd-accent-tint, #efecff), var(--pd-accent-tint, #edf4ff));
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
     color: var(--pd-accent-strong, #3f3a91);
   }
 
@@ -1442,12 +1677,25 @@
   .settings-actions {
     flex: 0 0 auto;
     padding: 4px 10px;
-    border-top: 1px solid rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
+    border-top: 0;
+    position: relative;
+  }
+
+  .settings-actions::before {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 1px;
+    margin-bottom: 4px;
+    background: rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
   }
 
   .settings-actions.compact {
     padding: 0;
-    border-top: 0;
+  }
+
+  .settings-actions.compact::before {
+    display: none;
   }
 
   .settings-entry {
@@ -1466,7 +1714,7 @@
     flex: 0 0 auto;
     place-items: center;
     border: 0;
-    border-bottom: 1px solid rgba(var(--pd-accent-rgb, 100, 86, 189), 0.12);
+    border-bottom: 0;
     background: transparent;
     color: var(--pd-sidebar-ink, var(--pd-ink, #687080));
     cursor: pointer;
@@ -1479,9 +1727,7 @@
   }
 
   .compact-divider {
-    height: 1px;
-    margin: 0 10px 7px;
-    background: #c8c7d4;
+    display: none;
   }
 
   .primary-action.compact {
@@ -1556,22 +1802,22 @@
   }
 
   .compact-project-entry:hover {
-    background: #ffffffb8;
+    background: var(--pd-sidebar-item-bg);
   }
 
   .compact-project-entry.active {
-    border-color: var(--pd-accent-border, #d9d4fb);
-    background: linear-gradient(180deg, #ffffffd9, var(--pd-accent-soft, #f1efff));
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
     color: var(--pd-accent, #514ac8);
     font-weight: 700;
   }
 
   .recent-list button:hover,
   .recent-list button.active {
-    border-color: var(--pd-accent-border, #d9d5f9);
-    background: #ffffffe6;
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
     color: var(--brand-strong);
-    box-shadow: 0 4px 12px rgba(var(--pd-accent-rgb, 69, 61, 148), 0.071);
+    box-shadow: none;
   }
 
   .compact-settings {
@@ -1596,7 +1842,7 @@
     height: 100%;
     flex-direction: column;
     overflow: hidden;
-    background: #fff;
+    background: transparent;
     color: var(--ink);
   }
 
@@ -1644,7 +1890,7 @@
     gap: 8px;
     padding: 0 10px;
     border-bottom: 1px solid #e5e3ef;
-    background: linear-gradient(110deg, rgba(var(--pd-accent-soft-rgb, 241, 238, 255), 0.961), rgba(var(--pd-accent-soft-rgb, 238, 246, 255), 0.902));
+    background: transparent;
     cursor: grab;
     touch-action: none;
     -webkit-user-select: none;
@@ -1697,7 +1943,7 @@
     font-weight: 600;
   }
 
-  .dark .dock-panel-header.chat { background: #202024; }
+  .dark .dock-panel-header.chat { background: transparent; }
 
   .dock-panel-header[draggable="true"]:active {
     cursor: grabbing;
@@ -1921,14 +2167,15 @@
 
   /* Chrome dark mode — hardcoded light colors above don't follow Tailwind dark: */
   .dark .app-shell {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: #0a0a0a;
-    box-shadow: 0 20px 60px #00000080;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
   }
 
   .dark .workspace-header {
     border-bottom-color: #262626;
-    background: #0a0a0a;
+    background: transparent;
   }
 
   .dark .icon-button {
@@ -1961,7 +2208,7 @@
   .dark .sidebar-shell,
   .dark .project-sidebar {
     border-right-color: #262626;
-    background: #0a0a0a;
+    background: transparent;
   }
 
   .dark .sidebar-resizer,
@@ -1979,12 +2226,12 @@
   .dark .files-panel-resizer:hover,
   .dark .files-panel-resizer.active,
   .dark .files-panel-resizer:focus-visible {
-    background: #3f3f46;
+    background: transparent;
   }
 
   .dark .sidebar-brand-row,
   .dark .compact-brand {
-    border-bottom-color: #262626;
+    border-bottom-color: transparent;
   }
 
   .dark .primary-action {
@@ -1993,9 +2240,12 @@
 
   .dark .primary-action:hover,
   .dark .primary-action.active {
-    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.28));
-    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
-    color: var(--brand-strong);
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
+  }
+
+  .dark .settings-actions:not(.compact) .settings-entry .primary-action-icon {
+    color: #a3a3a3;
   }
 
   .dark .primary-action-icon,
@@ -2005,7 +2255,7 @@
   }
 
   .dark .tree-heading {
-    color: var(--pd-accent-strong, #c4b5fd);
+    color: #9b94a8;
   }
 
   .dark .tree-row {
@@ -2013,14 +2263,26 @@
   }
 
   .dark .tree-row.project-row.active {
+    background: var(--pd-sidebar-item-bg);
     color: var(--pd-accent-strong, #c4b5fd);
   }
 
+  .dark .tree-row.project-row .project-row-chevron {
+    color: #9b94a8;
+  }
+
+  .dark .tree-row.project-row .project-row-folder {
+    color: #8e869e;
+  }
+
   .dark .tree-row.project-row:hover,
-  .dark .tree-heading-actions button:hover,
   .dark .project-conversation:hover,
   .dark .tree-row.chat-row:hover,
   .dark .compact-project-entry:hover {
+    background: var(--pd-sidebar-item-bg);
+  }
+
+  .dark .tree-heading-actions button:hover {
     background: rgba(255, 255, 255, 0.06);
   }
 
@@ -2036,8 +2298,8 @@
 
   .dark .project-conversation.active,
   .dark .tree-row.chat-row.active {
-    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.32));
-    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
     color: var(--pd-accent-strong, #e0e7ff);
   }
 
@@ -2045,12 +2307,12 @@
     background: #52525b;
   }
 
-  .dark .settings-actions {
-    border-top-color: #262626;
+  .dark .settings-actions::before {
+    background: #262626;
   }
 
   .dark .compact-divider {
-    background: #3f3f46;
+    display: none;
   }
 
   .dark .compact-project-entry {
@@ -2058,21 +2320,21 @@
   }
 
   .dark .compact-project-entry.active {
-    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.32));
-    background: var(--pd-accent-selected, rgba(99, 102, 241, 0.16));
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
     color: var(--pd-accent-strong, #c4b5fd);
   }
 
   .dark .recent-list button:hover,
   .dark .recent-list button.active {
-    border-color: var(--pd-accent-border, rgba(129, 140, 248, 0.28));
-    background: rgba(255, 255, 255, 0.06);
+    border-color: transparent;
+    background: var(--pd-sidebar-item-bg);
     color: var(--brand-strong);
     box-shadow: none;
   }
 
   .dark .dock-panel.file-panel {
-    background: #0a0a0a;
+    background: transparent;
     color: var(--ink);
   }
 
@@ -2083,7 +2345,7 @@
 
   .dark .dock-panel-header {
     border-bottom-color: #262626;
-    background: #171717;
+    background: transparent;
   }
 
   .dark .dock-panel-header .header-icon {
@@ -2110,11 +2372,11 @@
 
   .dark .compact-file-actions {
     border-bottom-color: #262626;
-    background: #171717;
+    background: transparent;
   }
 
   .dark .file-action-button {
-    background: #0a0a0a;
+    background: transparent;
     color: #a3a3a3;
   }
 
@@ -2275,6 +2537,24 @@
 
 
 
+}
+
+/* Project-row label ink — declared outside @layer so it resolves directly on
+   the label span. .project-expand-button uses display:contents and Tailwind
+   preflight sets `button { color: inherit }` in @layer base, which outranks
+   the layered row-color rules and prevents the dark row color from inheriting
+   onto the label. Coloring the span directly (unlayered) avoids that quirk. */
+.tree-row.project-row .project-expand-button > span {
+  color: #282433;
+}
+.tree-row.project-row.active .project-expand-button > span {
+  color: var(--pd-accent, #4543bc);
+}
+.dark .tree-row.project-row:not(.active) .project-expand-button > span {
+  color: #d4d4d4;
+}
+.dark .tree-row.project-row.active .project-expand-button > span {
+  color: var(--pd-accent-strong, #c4b5fd);
 }
 
 /* Block copy controls float above content without adding a toolbar row. */

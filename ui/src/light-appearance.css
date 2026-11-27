@@ -15,7 +15,16 @@ html[data-appearance] :is(.project-sidebar, .settings-sidebar) {
   border-color: var(--pd-border);
   color: var(--pd-sidebar-ink);
 }
-html[data-appearance] :is(.primary-action:not(.active), .tree-row:not(.active), .project-conversation:not(.active), .tree-heading, .compact-project-entry:not(.active), .settings-sidebar .nav-item:not(.active), .settings-sidebar .back-to-app, .settings-sidebar h2) { color: var(--pd-sidebar-ink); }
+html[data-appearance].dark :is(.project-sidebar, .settings-sidebar) {
+  background: transparent;
+  background-image: none;
+}
+/* Customized light mode: unified diamond gradient backdrop through translucent shell */
+html[data-appearance]:not(.dark):not([data-light-background=image]) :is(.project-sidebar, .settings-sidebar, .app-shell, .sidebar-shell, .workspace-header, .dock-panel.file-panel, .dock-panel-header) {
+  background: transparent;
+  background-image: none;
+}
+html[data-appearance] :is(.primary-action:not(.active), .tree-row:not(.active), .project-conversation:not(.active), .compact-project-entry:not(.active), .settings-sidebar .nav-item:not(.active), .settings-sidebar .back-to-app, .settings-sidebar h2) { color: var(--pd-sidebar-ink); }
 html[data-appearance] :is(.sidebar-brand-row, .pilotdeck-settings-app .sidebar-brand) { background: transparent; }
 /* Wallpaper mode: the image shows through translucent sidebar/content panels. */
 html[data-light-background=image]:not(.dark) .app-root::before {
@@ -73,18 +82,42 @@ html[data-appearance] .pilotdeck-settings-app .general-select-wrap select:focus 
   border-color: var(--pd-accent);
   box-shadow: 0 0 0 3px var(--pd-accent-soft);
 }
-html[data-appearance] :is(.pilotdeck-settings-app .nav-item.active, .file-entry[aria-pressed=true], .user-message-bubble, .primary-action.active, .project-conversation.active, .tree-row.chat-row.active, .compact-project-entry.active) {
+html[data-appearance] :is(.pilotdeck-settings-app .nav-item.active, .file-entry[aria-pressed=true], .user-message-bubble) {
   background: var(--pd-accent-selected);
   color: var(--pd-accent-strong);
   border-color: var(--pd-border);
+}
+html[data-appearance] :is(.primary-action.active, .project-conversation.active, .tree-row.chat-row.active, .compact-project-entry.active) {
+  background: var(--pd-sidebar-item-bg);
+  color: var(--pd-accent-strong);
+  border-color: transparent;
 }
 html[data-appearance] :is(.icon-button, .file-entry, .hover-brand-surface):hover {
   background: var(--pd-accent-hover);
   border-color: var(--pd-control-border);
   color: var(--pd-accent-strong);
 }
-html[data-appearance] :is(.sidebar-resizer, .files-panel-resizer, .panel-splitter) { background: var(--pd-border); }
+html[data-appearance] :is(.sidebar-resizer, .files-panel-resizer, .panel-splitter) { background: transparent; }
 html[data-appearance] :is(.tree-row.project-row.active, .project-chat-icon button:hover, .primary-action-icon, .project-chat-icon) { color: var(--pd-sidebar-accent); }
+/* Project title rows keep their spec ink in custom appearance themes (conversations stay as-is). */
+html[data-appearance]:not(.dark) .tree-row.project-row:not(.active) { color: #282433; }
+html[data-appearance]:not(.dark) .tree-row.project-row:not(.active):hover { color: #282433; }
+html[data-appearance]:not(.dark) .tree-row.project-row .project-row-chevron { color: #847d93; }
+html[data-appearance]:not(.dark) .tree-row.project-row .project-row-folder { color: #746985; }
+html[data-appearance].dark .tree-row.project-row:not(.active) { color: #d4d4d4; }
+html[data-appearance].dark .tree-row.project-row:not(.active):hover { color: #d4d4d4; }
+html[data-appearance].dark .tree-row.project-row .project-row-chevron { color: #9b94a8; }
+html[data-appearance].dark .tree-row.project-row .project-row-folder { color: #8e869e; }
+/* Project conversation rows carry the same spec ink (fork children inherit it). */
+html[data-appearance]:not(.dark) .project-conversation:not(.active) { color: #282433; }
+html[data-appearance]:not(.dark) .project-conversation:not(.active):hover { color: #282433; }
+html[data-appearance].dark .project-conversation:not(.active) { color: #d4d4d4; }
+html[data-appearance].dark .project-conversation:not(.active):hover { color: #d4d4d4; }
+/* Top-level conversation rows match the project title rows' spec ink. */
+html[data-appearance]:not(.dark) .tree-row.chat-row:not(.active) { color: #282433; }
+html[data-appearance]:not(.dark) .tree-row.chat-row:not(.active):hover { color: #282433; }
+html[data-appearance].dark .tree-row.chat-row:not(.active) { color: #d4d4d4; }
+html[data-appearance].dark .tree-row.chat-row:not(.active):hover { color: #d4d4d4; }
 html[data-appearance] .session-indicator[data-status=unread] .conversation-dot { background: var(--pd-accent); }
 html[data-appearance] :is(.dock-panel-header, .dock-panel-header.chat) { background: var(--pd-sidebar); }
 html[data-appearance] .dock-panel-header .header-icon { background: var(--pd-accent-soft); }
@@ -182,7 +215,10 @@ html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-redu
 
 /* Neutral surfaces carry the structure; hue marks interaction, not every panel. */
 html[data-appearance] :is(.app-shell, .pilotdeck-settings-app, .general-card, .settings-card) { box-shadow: none; }
-html[data-appearance] :is(.primary-action, .tree-row, .project-conversation, .compact-project-entry, .settings-sidebar .nav-item):not(.active):hover {
+html[data-appearance] :is(.primary-action, .tree-row, .project-conversation, .compact-project-entry):not(.active):hover {
+  background: var(--pd-sidebar-item-bg); color: var(--pd-ink); border-color: transparent;
+}
+html[data-appearance] .settings-sidebar .nav-item:not(.active):hover {
   background: var(--pd-neutral-hover); color: var(--pd-ink); border-color: transparent;
 }
 html[data-appearance] :is(.settings-sidebar .nav-item.active svg, .settings-sidebar .nav-item.active) { color: var(--pd-accent-strong); }
@@ -204,7 +240,7 @@ html[data-appearance] :is(.appearance-choice, .appearance-color-control, .genera
   outline: 2px solid var(--pd-focus); outline-offset: 3px;
 }
 html[data-appearance].dark :is(.app-main, .pd-workspace-content, .pd-workspace-body, .pd-composer-surround, .pd-composer-container, .pd-chat-canvas, .chat-panel-scrollbar, .settings-content, .workspace-header, .dock-panel.file-panel) {
-  background: var(--pd-surface); color: var(--pd-ink);
+  background: transparent; color: var(--pd-ink);
 }
 html[data-appearance].dark .pd-user-message-bubble {
   background: var(--pd-gray-4);

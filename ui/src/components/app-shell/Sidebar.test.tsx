@@ -121,7 +121,7 @@ describe('Sidebar layout', () => {
     expect(sidebar.classList.contains('compact')).toBe(false);
     expect(screen.getByTestId('task-compact-state').textContent).toBe('false');
     expect(sidebar.closest<HTMLElement>('.app-shell')!.style.gridTemplateColumns).toBe('300px 1px minmax(0, 1fr)');
-    expect(screen.getByRole('img', { name: 'PILOTDECK' })).toBeTruthy();
+    expect(screen.getByText('PilotDeck', { selector: '.brand-title' })).toBeTruthy();
   });
 
   it('keeps the full task list layout in the mobile overlay even with a compact desktop preference', () => {
@@ -148,13 +148,10 @@ describe('Sidebar layout', () => {
   it('shows brand text, quick actions, projects and conversations together', () => {
     renderSidebar(null);
 
-    const brand = screen.getByRole('img', { name: 'PILOTDECK' });
-    const brandSources = Array.from(brand.querySelectorAll('img')).map((image) =>
-      image.getAttribute('src'),
-    );
-    expect(brandSources).toHaveLength(2);
-    expect(brandSources[0]).toContain('pilotdeck-wordmark-light.png');
-    expect(brandSources[1]).toContain('pilotdeck-wordmark-dark.png');
+    const brand = document.querySelector('.sidebar-brand-row .brand-logo');
+    expect(brand?.querySelector('rect')?.getAttribute('fill')).toBe('#102451');
+    expect(brand?.querySelector('path')?.getAttribute('fill')).toBe('#FFFFFF');
+    expect(screen.getByText('PilotDeck', { selector: '.brand-title' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: /Quick actions|Primary actions/ })).toBeTruthy();
     expect(screen.getByText(/New conversation|新对话/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Start a new conversation in PilotDeck|在 PilotDeck 中新建对话/ })).toBeTruthy();
@@ -172,18 +169,18 @@ describe('Sidebar layout', () => {
 
     expect(screen.getByText('Projects')).toBeTruthy();
     expect(screen.getByText('Conversations')).toBeTruthy();
-    expect(screen.getByText('PilotDeck')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^PilotDeck$/ })).toBeTruthy();
   });
 
   it('keeps a sidebar expansion control when the wordmark is collapsed', () => {
     localStorage.setItem('sidebar-v2-width', '76');
     renderSidebar(null);
 
-    expect(screen.queryByRole('img', { name: 'PILOTDECK' })).toBeNull();
+    expect(document.querySelector('.sidebar-brand-row')).toBeNull();
     const expand = screen.getByRole('button', { name: /Expand project sidebar|展开项目侧栏/ });
     expect(expand.querySelector('img')).toBeNull();
     fireEvent.click(expand);
-    expect(screen.getByRole('img', { name: 'PILOTDECK' })).toBeTruthy();
+    expect(document.querySelector('.sidebar-brand-row .brand-logo')).toBeTruthy();
   });
 
   it('opens scheduled tasks from the sidebar quick action', () => {
@@ -230,13 +227,19 @@ describe('Sidebar layout', () => {
     expect(within(list).queryByText('General')).toBeNull();
   });
 
-  it('selects a project when its row is clicked', () => {
+  it('toggles a project without selecting it when its row is clicked', () => {
     const onSelectProject = vi.fn();
     renderSidebar(null, { onSelectProject });
 
-    fireEvent.click(screen.getByRole('button', { name: /^PilotDeck$/ }));
+    const row = screen.getByRole('button', { name: /^PilotDeck$/ });
+    expect(row.getAttribute('aria-expanded')).toBe('false');
 
-    expect(onSelectProject).toHaveBeenCalledWith(project);
+    fireEvent.click(row);
+    expect(onSelectProject).not.toHaveBeenCalled();
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('toggles project and conversation lists only from the chevron buttons', () => {
@@ -246,16 +249,16 @@ describe('Sidebar layout', () => {
     const projectsHeading = screen.getByRole('button', { name: 'Collapse projects' }).closest('.tree-heading') as HTMLElement;
     const conversationsHeading = screen.getByRole('button', { name: 'Collapse conversations' }).closest('.tree-heading') as HTMLElement;
 
-    expect(screen.getByText('PilotDeck')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^PilotDeck$/ })).toBeTruthy();
     expect(within(projectsHeading).getByRole('button', { name: /Create new project|创建新项目/ })).toBeTruthy();
     expect(within(conversationsHeading).getByRole('button', { name: /Start a general conversation|新建通用对话/ })).toBeTruthy();
 
     fireEvent.click(screen.getByText('Projects'));
-    expect(screen.getByText('PilotDeck')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^PilotDeck$/ })).toBeTruthy();
     fireEvent.click(within(projectsHeading).getByRole('button', { name: 'Collapse projects' }));
-    expect(screen.queryByText('PilotDeck')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^PilotDeck$/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Expand projects' }));
-    expect(screen.getByText('PilotDeck')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^PilotDeck$/ })).toBeTruthy();
 
     fireEvent.click(screen.getByText('Conversations'));
     expect(within(conversationsHeading).getByRole('button', { name: 'Collapse conversations' })).toBeTruthy();
@@ -274,7 +277,7 @@ describe('Sidebar layout', () => {
 
     expect(screen.getByRole('button', { name: 'Collapse conversations' })).toBeTruthy();
     expect(screen.getByText('hello world')).toBeTruthy();
-    expect(screen.getByText('PilotDeck')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^PilotDeck$/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse conversations' }));
     expect(screen.queryByText('hello world')).toBeNull();
@@ -361,7 +364,7 @@ describe('desktop working-directory actions', () => {
     fireEvent.contextMenu(screen.getByText('Fallback chat'));
     fireEvent.click(screen.getByRole('menuitem', { name: /Open in File Explorer|在文件资源管理器中打开/ }));
     await waitFor(() => expect(openDirectory).toHaveBeenCalledWith(project.fullPath));
-    fireEvent.contextMenu(screen.getByText('PilotDeck'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^PilotDeck$/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Open in File Explorer|在文件资源管理器中打开/ }));
     await waitFor(() => expect(openDirectory).toHaveBeenCalledTimes(2));
   });
@@ -378,7 +381,7 @@ describe('desktop working-directory actions', () => {
 
   it('keeps native file manager actions out of the browser', () => {
     renderSidebar(project);
-    fireEvent.contextMenu(screen.getByText('PilotDeck'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^PilotDeck$/ }));
     expect(screen.getAllByRole('menuitem')).toHaveLength(2);
   });
 
@@ -410,7 +413,7 @@ describe('desktop working-directory actions', () => {
     window.addEventListener('pilotdeck:toast', toast);
     try {
       renderSidebar(project, undefined, await localizedOptions(failure === false ? 'en' : 'zh-CN'));
-      fireEvent.contextMenu(screen.getByText('PilotDeck'));
+      fireEvent.contextMenu(screen.getByRole('button', { name: /^PilotDeck$/ }));
       fireEvent.click(screen.getByRole('menuitem', { name: /Open in File Explorer|在文件资源管理器中打开/ }));
       await waitFor(() => expect(toast).toHaveBeenCalledOnce());
       expect(toast.mock.calls[0][0].detail).toMatchObject({ kind: 'error' });

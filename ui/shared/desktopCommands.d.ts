@@ -9,4 +9,5 @@ export type DesktopMenuState = {
   hasProject: boolean;
   canFind: boolean;
   sidebarVisible: boolean;
+  editSelection: boolean;
 };

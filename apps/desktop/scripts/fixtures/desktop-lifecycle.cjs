@@ -345,7 +345,7 @@ if (process.argv.includes('--tray-second-instance')) {
     } else {
       // Product actions may precede Exit; exercise the actual quit command.
       const exit = Menu.getApplicationMenu().getMenuItemById('quit');
-      assert.ok(exit?.enabled, 'File > Exit is available');
+      assert.ok(exit?.enabled, 'hidden Exit command is available');
       assert.equal(exit.label, 'Exit');
       exit.click();
     }

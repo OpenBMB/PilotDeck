@@ -12,10 +12,7 @@ export function isRendererEditingShortcut(platform: NodeJS.Platform, input: Pick
 export const WINDOWS_CAPTION_HEIGHT = 32;
 export const MAC_CAPTION_HEIGHT = 48;
 export const WINDOWS_MENUS = [
-  { id: 'menu-file', en: 'File', zh: '文件', key: 'f' },
   { id: 'menu-edit', en: 'Edit', zh: '编辑', key: 'e' },
-  { id: 'menu-view', en: 'View', zh: '查看', key: 'v' },
-  { id: 'menu-go', en: 'Go', zh: '前往', key: 'g' },
   { id: 'menu-help', en: 'Help', zh: '帮助', key: 'h' },
 ] as const;
 

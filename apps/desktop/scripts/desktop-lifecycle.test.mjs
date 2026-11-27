@@ -255,7 +255,7 @@ test('dialog failure is recoverable and language changes update both menu and co
   await second;
 });
 
-test('File > Exit shares confirmation on Windows; other platforms retain native quit roles', () => {
+test('hidden Exit shares confirmation on Windows; other platforms retain native quit roles', () => {
   let requests = 0;
   for (const platform of ['win32', 'darwin', 'linux']) {
     const sections = buildApplicationMenu(platform, 'en', () => requests++);
@@ -264,9 +264,9 @@ test('File > Exit shares confirmation on Windows; other platforms retain native 
       assert.equal(items.some(item => item.role === 'quit'), false);
       const exit = items.find(item => item.id === 'quit');
       assert.equal(exit.label, 'Exit');
+      assert.equal(exit.visible, false);
       exit.click();
       assert.equal(requests, 1);
-      assert.equal(items.find(item => item.label === 'Close Window').role, 'close');
     } else assert.equal(items.some(item => item.role === 'quit'), true);
   }
 });

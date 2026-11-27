@@ -7,6 +7,21 @@ export function hasBlockingDialog(): boolean {
     .some(element => !element.closest('[hidden], [aria-hidden="true"], [inert]') && getComputedStyle(element).display !== 'none');
 }
 
+/** Native Delete only makes sense while editable text is selected. */
+export function hasEditableSelection(): boolean {
+  const active = document.activeElement;
+  if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+    if (active.readOnly || active.disabled) return false;
+    const start = active.selectionStart, end = active.selectionEnd;
+    return start !== null && end !== null && end > start;
+  }
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+  const anchor = selection.anchorNode;
+  const element = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
+  return Boolean(element?.closest('[contenteditable="true"], .cm-content'));
+}
+
 /** One bridge for menu actions; the shell owns navigation and draft semantics. */
 export function useDesktopCommands(options: {
   canNewConversation: boolean;
@@ -31,6 +46,7 @@ export function useDesktopCommands(options: {
       canNewConversation: latest.current.canNewConversation,
       hasProject: latest.current.hasProject, canFind: latest.current.canFind && hasFindShortcutTarget(),
       sidebarVisible: latest.current.sidebarVisible,
+      editSelection: hasEditableSelection(),
     });
     const sync = () => {
       if (disposed) return;
@@ -92,6 +108,13 @@ export function useDesktopCommands(options: {
       event.preventDefault(); run('toggle-sidebar');
     };
     document.addEventListener('keydown', keydown);
+    // Selection lives inside editors, so watch it at document level to keep the
+    // native Delete item in sync while the user drags or keyboard-selects text.
+    const selectionChanged = () => schedule();
+    document.addEventListener('selectionchange', selectionChanged);
+    document.addEventListener('select', selectionChanged, true);
+    document.addEventListener('mouseup', selectionChanged, true);
+    document.addEventListener('keyup', selectionChanged, true);
     document.addEventListener('focusin', schedule);
     document.addEventListener('focusout', schedule);
     window.addEventListener('pilotdeck:refresh-menu', sync);
@@ -100,13 +123,17 @@ export function useDesktopCommands(options: {
       disposed = true;
       cancelAnimationFrame(frame); observer.disconnect(); resize?.disconnect(); stop();
       document.removeEventListener('keydown', keydown);
+      document.removeEventListener('selectionchange', selectionChanged);
+      document.removeEventListener('select', selectionChanged, true);
+      document.removeEventListener('mouseup', selectionChanged, true);
+      document.removeEventListener('keyup', selectionChanged, true);
       document.removeEventListener('focusin', schedule);
       document.removeEventListener('focusout', schedule);
       window.removeEventListener('pilotdeck:refresh-menu', sync);
       root.removeAttribute('data-desktop-integrated');
       root.removeAttribute('data-desktop-toolbar');
       root.style.removeProperty('--desktop-sidebar-width');
-      void bridge.setMenuState!({ ready: false, blocked: false, canNewConversation: false, hasProject: false, canFind: false, sidebarVisible: false }).catch(() => {});
+      void bridge.setMenuState!({ ready: false, blocked: false, canNewConversation: false, hasProject: false, canFind: false, sidebarVisible: false, editSelection: false }).catch(() => {});
     };
   }, []);
   useEffect(() => { window.dispatchEvent(new Event('pilotdeck:refresh-menu')); }, [

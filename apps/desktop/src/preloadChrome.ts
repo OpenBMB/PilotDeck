@@ -4,7 +4,7 @@ import { MAC_CAPTION_HEIGHT, WINDOWS_CAPTION_HEIGHT, WINDOWS_MENUS, windowPalett
 /** Desktop-owned caption exists on loading, sign-in, settings and error pages too. */
 export function installWindowChrome(
   platform: NodeJS.Platform,
-  ipc: Pick<IpcRenderer, 'on' | 'invoke' | 'sendSync'>,
+  ipc: Pick<IpcRenderer, 'on' | 'invoke' | 'send' | 'sendSync'>,
 ): void {
   if (platform !== 'darwin' && platform !== 'win32' && platform !== 'linux') return;
   const install = () => {
@@ -33,10 +33,22 @@ export function installWindowChrome(
         color:inherit; background:transparent; font:13px system-ui; cursor:default; }
       button:hover,button[aria-expanded="true"] { background:color-mix(in srgb,currentColor 10%,transparent); }
       button:focus-visible { outline:2px solid #818cf8; outline-offset:-2px; }
+      button.icon { padding:0; width:28px; height:28px; max-height:28px; justify-content:center; }
+      button.icon svg { display:block; }
     `;
     shadow.append(style);
     host.dataset.platform = platform;
     const nav = document.createElement('nav');
+    // Sidebar toggle sits left of the menu labels and reuses the shared
+    // 'toggle-sidebar' desktop command, so Ctrl+B and this button stay in sync.
+    const sidebarButton = document.createElement('button');
+    sidebarButton.type = 'button';
+    sidebarButton.className = 'icon';
+    sidebarButton.innerHTML = '<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
+      + '<rect x="1.6" y="2.4" width="12.8" height="11.2" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.2"/>'
+      + '<path d="M5.9 2.4v11.2" stroke="currentColor" stroke-width="1.2"/></svg>';
+    sidebarButton.addEventListener('click', () => ipc.send('pilotdeck:toggle-sidebar'));
+    nav.append(sidebarButton);
     const buttons = WINDOWS_MENUS.map(menu => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -123,6 +135,8 @@ export function installWindowChrome(
       host.hidden = root.hasAttribute('data-desktop-fullscreen');
       const zh = root.lang.startsWith('zh');
       nav.setAttribute('aria-label', zh ? '应用菜单' : 'Application menu');
+      sidebarButton.setAttribute('aria-label', zh ? '显示或隐藏侧栏' : 'Show or hide sidebar');
+      sidebarButton.title = zh ? '显示或隐藏侧栏 (Ctrl+B)' : 'Show or hide sidebar (Ctrl+B)';
       buttons.forEach((button, index) => {
         const menu = WINDOWS_MENUS[index];
         button.textContent = zh ? menu.zh : menu.en;

@@ -55,7 +55,7 @@ html[data-desktop-platform="darwin"] .app-shell .project-sidebar + .sidebar-resi
   background: transparent;
 }
 html[data-desktop-platform="darwin"] .app-shell .project-sidebar + .sidebar-resizer:is(:hover, .active) {
-  background: var(--pd-accent-soft, #e2deff);
+  background: transparent;
 }
 html[data-desktop-platform="darwin"] .settings-main > .topbar {
   padding-top: 0;
@@ -103,10 +103,11 @@ html[data-desktop-platform="darwin"] .desktop-prototype-shell .setup-sidebar {
   }
 }
 
-/* Reserve the Windows/Linux caption without replacing the existing application theme,
-   sidebar gradient, rounded frame or six-pixel viewport gutter. */
+/* Reserve the Windows/Linux caption without adding a gutter below it, so the
+   caption row (menu labels and native window buttons) reads as vertically
+   centred in the only visible top strip. */
 html:is([data-desktop-platform="win32"], [data-desktop-platform="linux"]) .app-root {
-  padding-top: calc(var(--desktop-top-inset) + 6px);
+  padding-top: var(--desktop-top-inset);
 }
 /* The inset belongs to #root so the first child's top margin cannot collapse
    through it and make the document taller than the window. */

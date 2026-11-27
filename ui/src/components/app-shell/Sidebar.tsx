@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -24,7 +25,6 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { AppTab, Project, ProjectSession } from '../../types/app';
-import BrandWordmark from '../ui/BrandWordmark';
 import { cn } from '../../lib/utils.js';
 import { isImeEnterEvent } from '../../utils/ime';
 import {
@@ -254,6 +254,8 @@ export default function Sidebar({
   const [draftSessionProjectName, setDraftSessionProjectName] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarRootRef = useRef<HTMLElement | null>(null);
+  const projectsTreeScrollRef = useRef<HTMLDivElement | null>(null);
+  const treeScrollThumbRef = useRef<HTMLDivElement | null>(null);
 
   const [conversationsExpanded, setConversationsExpanded] = useState(true);
   const [projectsExpanded, setProjectsExpanded] = useState(true);
@@ -312,6 +314,68 @@ export default function Sidebar({
     observer.observe(panel);
     return () => observer.disconnect();
   }, [isMobile, sidebarWidth]);
+
+  // Overlay scrollbar: keeps the tree rows full width while still showing the
+  // scroll position inside the projects/conversations scroller.
+  useEffect(() => {
+    const scroller = projectsTreeScrollRef.current;
+    const thumb = treeScrollThumbRef.current;
+    const content = projectsConversationsSplitRef.current;
+    if (!scroller || !thumb || !content) return;
+    const update = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scroller;
+      const maxScroll = scrollHeight - clientHeight;
+      if (maxScroll <= 1) {
+        thumb.style.opacity = '0';
+        thumb.style.pointerEvents = 'none';
+        return;
+      }
+      const track = Math.max(0, clientHeight - 8);
+      const height = Math.min(track, Math.max(24, (clientHeight / scrollHeight) * track));
+      const top = 4 + (scrollTop / maxScroll) * (track - height);
+      thumb.style.opacity = '';
+      thumb.style.pointerEvents = '';
+      thumb.style.height = `${height}px`;
+      thumb.style.transform = `translateY(${top}px)`;
+    };
+    update();
+    scroller.addEventListener('scroll', update, { passive: true });
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    resizeObserver?.observe(scroller);
+    resizeObserver?.observe(content);
+    const mutationObserver = typeof MutationObserver === 'undefined'
+      ? null
+      : new MutationObserver(update);
+    mutationObserver?.observe(content, { childList: true, subtree: true, attributes: true });
+    return () => {
+      scroller.removeEventListener('scroll', update);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [activeTab, isCompact]);
+
+  const handleTreeScrollbarPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const scroller = projectsTreeScrollRef.current;
+    if (!scroller) return;
+    const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+    const track = Math.max(0, scroller.clientHeight - 8);
+    const thumbHeight = Math.min(track, Math.max(24, (scroller.clientHeight / scroller.scrollHeight) * track));
+    const travel = track - thumbHeight;
+    if (maxScroll <= 1 || travel <= 0) return;
+    event.preventDefault();
+    const startY = event.clientY;
+    const startScrollTop = scroller.scrollTop;
+    const scrollPerPixel = maxScroll / travel;
+    const handleMove = (moveEvent: PointerEvent) => {
+      scroller.scrollTop = startScrollTop + (moveEvent.clientY - startY) * scrollPerPixel;
+    };
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+  }, []);
 
   useEffect(() => {
     if (isMobile) return;
@@ -527,13 +591,15 @@ export default function Sidebar({
     });
   }, []);
 
+  // Clicking a project title only expands/collapses it. Selecting the project
+  // would navigate away from the open session (and flash the main pane), so
+  // selection stays with the project's conversation rows.
   const handleProjectClick = useCallback(
     (project: Project) => {
       if (renamingProject === project.name) return;
-      onSelectProject(project);
       toggleProjectExpanded(project);
     },
-    [onSelectProject, renamingProject, toggleProjectExpanded],
+    [renamingProject, toggleProjectExpanded],
   );
 
   const handleSessionClick = useCallback(
@@ -846,7 +912,8 @@ export default function Sidebar({
             )}
           </div>
           {node.children.length > 0 ? (
-            <div className="mt-0.5 space-y-0.5">
+            // 4px margin + the parent grid's 2px gap = 6px above the first fork row.
+            <div className="mt-1 space-y-0.5">
               {node.children.map((child) => renderSessionTreeNode(child, depth + 1, true))}
             </div>
           ) : null}
@@ -1001,7 +1068,7 @@ export default function Sidebar({
             >
               <ChevronRight
                 className={cn(
-                  'h-3.5 w-3.5 shrink-0 text-neutral-500 transition-transform dark:text-neutral-400',
+                  'project-row-chevron h-3.5 w-3.5 shrink-0 text-neutral-500 transition-transform dark:text-neutral-400',
                   isExpanded && 'rotate-90',
                 )}
                 strokeWidth={1.75}
@@ -1009,7 +1076,7 @@ export default function Sidebar({
               <svg
                 aria-hidden="true"
                 className={cn(
-                  'icon block shrink-0',
+                  'project-row-folder icon block shrink-0',
                   isSelected
                     ? 'text-neutral-900 dark:text-neutral-100'
                     : 'text-neutral-500 dark:text-neutral-400',
@@ -1092,18 +1159,39 @@ export default function Sidebar({
         </button>
       ) : (
         <header className="sidebar-brand-row">
-          <BrandWordmark className="brand-lockup" />
+          <div className="brand-lockup">
+            <svg
+              className="brand-logo"
+              viewBox="0 0 22 22"
+              fill="none"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <rect width="22" height="22" rx="6" fill="#102451" />
+              <path
+                d="M6 1.6C5.6 3.8 5.2 4.2 3.4 4.2V4.6C5.2 4.6 5.6 5 6 7H6.2C6.6 5 7 4.6 9.4 4.6V4.2C7 4.2 6.6 3.8 6.2 1.6H6Z"
+                fill="#FFFFFF"
+              />
+              <path
+                d="M6.8 4.2H11.6C16 4.2 18.4 6.4 18.4 9.8C18.4 13.2 15.8 14.6 11.2 14.6H9.4V17.4C9.4 19 10 19.6 11.8 19.8V20.2H3.6V19.8C5.4 19.6 6 18.6 6 17.4V7.6L9.4 5.4V13.8H10.6C13.4 13.8 14.6 12.2 14.6 9.6C14.6 6.6 13.2 4.8 10.4 4.8H6.8V4.2Z"
+                fill="#FFFFFF"
+              />
+            </svg>
+            <span className="brand-title">PilotDeck</span>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenGlobalSearch}
+            className="brand-search-btn"
+            aria-label={t('common:globalSearch.title') as string}
+            title={t('common:globalSearch.title') as string}
+          >
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+              <circle cx="10.8" cy="10.8" r="7.5" /><path d="m16.3 16.3 4.3 4.3" />
+            </svg>
+          </button>
         </header>
       )}
-
-      <button type="button" onClick={onOpenGlobalSearch}
-        className={cn('sidebar-global-search', isCompact && 'compact')}
-        aria-label={t('common:globalSearch.title') as string} title={t('common:globalSearch.title') as string}>
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-          <circle cx="10.8" cy="10.8" r="7.5" /><path d="m16.3 16.3 4.3 4.3" />
-        </svg>
-        <span>{t('common:globalSearch.entry')}</span>
-      </button>
 
       <nav
         className={isCompact ? 'compact-actions' : 'primary-actions'}
@@ -1195,7 +1283,14 @@ export default function Sidebar({
           })}
         </nav>
       ) : (
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col" ref={projectsTreeScrollRef}>
+        <div className="sidebar-overlay-scrollbar" aria-hidden="true">
+          <div
+            ref={treeScrollThumbRef}
+            className="sidebar-overlay-scrollbar-thumb"
+            onPointerDown={handleTreeScrollbarPointerDown}
+          />
+        </div>
         <div
           ref={projectsConversationsSplitRef}
           className="flex min-h-0 flex-1 flex-col"

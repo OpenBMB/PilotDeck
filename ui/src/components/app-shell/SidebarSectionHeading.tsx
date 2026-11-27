@@ -27,7 +27,10 @@ export default function SidebarSectionHeading({
   return (
     <div className="tree-heading shrink-0">
       <span className="min-w-0 truncate">{title}</span>
-      <div className="tree-heading-actions shrink-0">
+      <div
+        className="tree-heading-actions shrink-0"
+        onMouseDown={(event) => event.preventDefault()}
+      >
         {children}
         {actionLabel && onAction ? (
           <button

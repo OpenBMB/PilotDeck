@@ -149,12 +149,7 @@ try {
     x: el.getBoundingClientRect().x, border: getComputedStyle(el).borderTopWidth,
     radius: getComputedStyle(el).borderTopLeftRadius,
   }));
-  if (mac) expect(geometry).toEqual({ x: 0, border: '0px', radius: '0px' });
-  else {
-    expect(geometry.x).toBeCloseTo(6);
-    expect(parseFloat(geometry.border)).toBeGreaterThan(0);
-    expect(geometry.radius).toBe('14px');
-  }
+  expect(geometry).toEqual({ x: 0, border: '0px', radius: '0px' });
   const headerGeometry = () => page.locator('.workspace-header').evaluate(el => ({ top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom }));
   const mainHeader = await headerGeometry();
   if (mac) {
@@ -224,11 +219,13 @@ try {
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMenuBarVisible())).toBe(false);
     expect(await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors)).toBe(true);
     const caption = page.locator('#pilotdeck-window-caption');
-    await expect(caption.locator('button')).toHaveCount(5);
+    await expect(caption.locator('button')).toHaveCount(3);
+    await expect(caption.locator('button[data-menu]')).toHaveText(['Edit', 'Help']);
+    await expect(caption.getByRole('button', { name: 'Show or hide sidebar', exact: true })).toBeVisible();
     await expect(caption).toHaveCSS('background-color', 'rgb(43, 44, 46)');
-    await expect(page.locator('.project-sidebar')).toHaveCSS('background-color', 'rgb(43, 44, 46)');
+    await expect(page.locator('.project-sidebar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     // Both platforms delegate popup rendering and keyboard navigation to Electron.
-    const menuCycle = [['File', 'menu-file'], ['Edit', 'menu-edit'], ['View', 'menu-view']];
+    const menuCycle = [['Edit', 'menu-edit'], ['Help', 'menu-help']];
     // Exercise repeated native teardown before reusing the same caption entries.
     for (const [label, id] of [...menuCycle, ...menuCycle, ...menuCycle]) {
       console.log(`[desktop-chrome] opening native ${id}`);
@@ -251,6 +248,18 @@ try {
   const command = async id => {
     await expect.poll(() => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu().getMenuItemById(id)?.enabled, id)).toBe(true);
     await app.evaluate(({ Menu }, id) => Menu.getApplicationMenu().getMenuItemById(id).click(), id);
+  };
+  const toggleSidebar = () => page.keyboard.press(mac ? 'Meta+b' : 'Control+b');
+  const checkUpdates = async () => {
+    if (!mac) return command('check-updates');
+    // macOS has no native Check for Updates item; entering About checks once.
+    if (!page.url().endsWith('/settings/about')) {
+      await page.goto('http://127.0.0.1:5187/settings/about');
+      return;
+    }
+    const checkAgain = page.getByRole('button', { name: 'Check again', exact: true });
+    await expect(checkAgain).toBeEnabled();
+    await checkAgain.click();
   };
   const closeGlobalSearch = async () => {
     const dialog = page.locator('[data-global-search]');
@@ -317,7 +326,6 @@ try {
   await command('find');
   await expect(page.locator('[data-global-search]')).toBeVisible();
   await closeGlobalSearch();
-  await command('chat');
   await page.goto('http://127.0.0.1:5187/p/demo/c/chrome-review');
   await expect(page.locator('.workspace-actions').getByRole('button', { name: 'Search current conversation', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Search PilotDeck', exact: true }).click();
@@ -331,7 +339,7 @@ try {
   await closeGlobalSearch();
   await command('new-conversation');
   await expect(page).toHaveURL(/\/p\/demo$/);
-  await command('toggle-sidebar');
+  await toggleSidebar();
   await expect(page.locator('.app-shell')).toHaveClass(/sidebar-hidden/);
   await expect(page.locator('html')).not.toHaveAttribute('data-desktop-integrated');
   if (mac) {
@@ -339,11 +347,11 @@ try {
     expect(await page.locator('.workspace-header > button').first().evaluate(el => el.getBoundingClientRect().left)).toBe(100);
     await page.locator('.workspace-header > button').first().click();
     await expect(page.locator('.project-sidebar')).toBeVisible();
-    await command('toggle-sidebar');
+    await toggleSidebar();
   }
-  await command('toggle-sidebar');
+  await toggleSidebar();
   if (mac) await expect(page.locator('html')).toHaveAttribute('data-desktop-integrated', '');
-  await command('check-updates');
+  await checkUpdates();
   await expect(page).toHaveURL(/\/settings\/about$/);
   await expect(page.locator('.pilotdeck-settings-app')).toBeVisible();
   await expect.poll(() => app.evaluate(() => global.chromeTest.checks())).toBeGreaterThan(0);
@@ -367,12 +375,11 @@ try {
     console.log('PASS: workspace/settings wordmarks share size and x/y alignment');
   }
   const previousChecks = await app.evaluate(() => global.chromeTest.checks());
-  await command('check-updates');
+  await checkUpdates();
   await expect.poll(() => app.evaluate(() => global.chromeTest.checks())).toBeGreaterThan(previousChecks);
   await page.screenshot({ path: path.join(artifactDir, `${platformName}-settings.png`) });
-  await command('chat');
-  await expect(page.locator('.app-shell')).toBeVisible();
   await page.goto('http://127.0.0.1:5187/p/demo');
+  await expect(page.locator('.app-shell')).toBeVisible();
   await expect(page.locator('.workspace-header h1')).toHaveText('Desktop design review');
   const pageIdentity = () => page.evaluate(() => ({
     path: location.pathname,
@@ -395,13 +402,13 @@ try {
   if (!mac) {
     await expect(page.locator('#pilotdeck-window-caption')).toHaveCSS('background-color', process.platform === 'win32' ? 'rgba(0, 0, 0, 0)' : 'rgb(244, 244, 245)');
     await verifyOriginalContentStyle();
-    await expect(page.locator('.project-sidebar')).toHaveCSS('background-image', 'linear-gradient(rgb(251, 250, 255), rgb(244, 243, 255) 58%, rgb(240, 244, 255))');
+    await expect(page.locator('.project-sidebar')).toHaveCSS('background-image', 'none');
 
     // Exercise the actual i18n instance, including persistence across reload.
     await page.evaluate(async () => { const { default: i18n } = await import('/src/i18n/config.js'); await i18n.changeLanguage('zh-CN'); });
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
-    await expect(page.locator('#pilotdeck-window-caption button')).toHaveText(['文件', '编辑', '查看', '前往', '帮助']);
-    await expect.poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('menu-file').label)).toBe('文件');
+    await expect(page.locator('#pilotdeck-window-caption button[data-menu]')).toHaveText(['编辑', '帮助']);
+    await expect.poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('menu-edit').label)).toBe('编辑');
     expect(await app.evaluate(({ Menu }) => [
       Menu.getApplicationMenu().getMenuItemById('new-conversation').label,
       Menu.getApplicationMenu().getMenuItemById('help-docs').label,
@@ -409,11 +416,11 @@ try {
 
     await page.reload();
     await expect(page.locator('.app-shell')).toBeVisible();
-    await expect(page.locator('#pilotdeck-window-caption button')).toHaveText(['文件', '编辑', '查看', '前往', '帮助']);
+    await expect(page.locator('#pilotdeck-window-caption button[data-menu]')).toHaveText(['编辑', '帮助']);
     await page.screenshot({ path: path.join(artifactDir, `${platformName}-light-zh.png`) });
     await page.evaluate(async () => { const { default: i18n } = await import('/src/i18n/config.js'); await i18n.changeLanguage('en'); });
-    await expect(page.locator('#pilotdeck-window-caption button')).toHaveText(['File', 'Edit', 'View', 'Go', 'Help']);
-    await expect.poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('menu-file').label)).toBe('&File');
+    await expect(page.locator('#pilotdeck-window-caption button[data-menu]')).toHaveText(['Edit', 'Help']);
+    await expect.poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('menu-edit').label)).toBe('&Edit');
     expect(await app.evaluate(({ Menu }) => [
       Menu.getApplicationMenu().getMenuItemById('new-conversation').label,
       Menu.getApplicationMenu().getMenuItemById('help-docs').label,
@@ -439,12 +446,12 @@ try {
   }
   await expect(page.locator('html')).toHaveAttribute('data-desktop-fullscreen', '');
   await expect(page.locator('#pilotdeck-window-caption')).toBeHidden();
-  await expect(page.locator('.app-root')).toHaveCSS('padding-top', mac ? '0px' : '6px');
+  await expect(page.locator('.app-root')).toHaveCSS('padding-top', '0px');
   if (mac) expect(await headerGeometry()).toEqual({ top: 0, bottom: 52 });
   if (simulateFullscreen) await app.evaluate(({ BrowserWindow, nativeTheme }) => BrowserWindow.getAllWindows()[0].webContents.send('pilotdeck:window-state', { fullscreen: false, dark: nativeTheme.shouldUseDarkColors }));
   else await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setFullScreen(false));
   await expect(page.locator('html')).not.toHaveAttribute('data-desktop-fullscreen');
-  if (!mac) await expect(page.locator('.app-root')).toHaveCSS('padding-top', '38px');
+  if (!mac) await expect(page.locator('.app-root')).toHaveCSS('padding-top', '32px');
   if (mac) expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getWindowButtonPosition())).toEqual({ x: 16, y: 18 });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].minimize());
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].restore());

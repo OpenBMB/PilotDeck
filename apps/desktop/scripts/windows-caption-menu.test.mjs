@@ -28,8 +28,8 @@ function fixture(t) {
       getZoomFactor: () => 1, send: (channel, id) => sent.push([channel, id]) }),
   });
   const controller = new WindowsCaptionMenu(owner, () => [
-    { id: 'menu-file', submenu: [{ label: 'File action' }] },
     { id: 'menu-edit', submenu: [{ label: 'Edit action' }] },
+    { id: 'menu-help', submenu: [{ label: 'Help action' }] },
   ], () => {
     assert.equal(nativeClosing, false, 'a replacement menu must not enter the native close stack');
     const menu = { closes: 0, popup: options => { menu.callback = options.callback; },
@@ -51,10 +51,10 @@ function fixture(t) {
 test('natural native close settles IPC and caption state only after the close stack exits', async t => {
   const { controller, menus, sent } = fixture(t);
   let settled = false;
-  const session = controller.show({ id: 'menu-file' }).then(() => { settled = true; });
+  const session = controller.show({ id: 'menu-edit' }).then(() => { settled = true; });
   await menus[0].finish();
   assert.equal(settled, false);
-  assert.deepEqual(sent.map(([, id]) => id), ['menu-file']);
+  assert.deepEqual(sent.map(([, id]) => id), ['menu-edit']);
   await tick();
   await session;
   assert.equal(sent.at(-1)[1], null);
@@ -62,8 +62,8 @@ test('natural native close settles IPC and caption state only after the close st
 
 test('a next IPC request after awaiting close cannot reenter native menu teardown', async t => {
   const { controller, menus } = fixture(t);
-  const first = controller.show({ id: 'menu-file' });
-  const next = first.then(() => controller.show({ id: 'menu-edit' }));
+  const first = controller.show({ id: 'menu-edit' });
+  const next = first.then(() => controller.show({ id: 'menu-help' }));
   await menus[0].finish();
   assert.equal(menus.length, 1);
   await tick();
@@ -77,7 +77,7 @@ test('a next IPC request after awaiting close cannot reenter native menu teardow
 test('repeated close during native completion cannot cancel deferred settlement or close twice', async t => {
   const { controller, menus, sent } = fixture(t);
   let settled = false;
-  const session = controller.show({ id: 'menu-file' }).then(() => { settled = true; });
+  const session = controller.show({ id: 'menu-edit' }).then(() => { settled = true; });
   const closings = [controller.close(), controller.close()];
   assert.equal(menus[0].closes, 1);
   await menus[0].finish();
@@ -85,29 +85,29 @@ test('repeated close during native completion cannot cancel deferred settlement 
   assert.equal(settled, false);
   await tick();
   await Promise.all([session, ...closings]);
-  assert.deepEqual(sent.map(([, id]) => id), ['menu-file', null]);
+  assert.deepEqual(sent.map(([, id]) => id), ['menu-edit', null]);
 });
 
 test('close cancels a queued switch while preserving the native settlement callback', async t => {
   const { controller, menus, sent } = fixture(t);
-  const first = controller.show({ id: 'menu-file' });
-  const second = controller.show({ id: 'menu-edit' });
+  const first = controller.show({ id: 'menu-edit' });
+  const second = controller.show({ id: 'menu-help' });
   await menus[0].finish();
   controller.close();
   await tick();
   await Promise.all([first, second]);
   assert.equal(menus.length, 1);
-  assert.deepEqual(sent.map(([, id]) => id), ['menu-file', null]);
+  assert.deepEqual(sent.map(([, id]) => id), ['menu-edit', null]);
 });
 
 test('queued switches open only the latest request after native completion', async t => {
   const { controller, menus, sent } = fixture(t);
-  const sessions = [controller.show({ id: 'menu-file' }), controller.show({ id: 'menu-edit' })];
+  const sessions = [controller.show({ id: 'menu-edit' }), controller.show({ id: 'menu-help' })];
   await menus[0].finish();
-  sessions.push(controller.show({ id: 'menu-file' }));
+  sessions.push(controller.show({ id: 'menu-edit' }));
   await tick();
   assert.equal(menus.length, 2);
-  assert.deepEqual(sent.map(([, id]) => id), ['menu-file', 'menu-file']);
+  assert.deepEqual(sent.map(([, id]) => id), ['menu-edit', 'menu-edit']);
   controller.close();
   await menus[1].finish();
   await tick();
@@ -116,13 +116,13 @@ test('queued switches open only the latest request after native completion', asy
 
 test('destroying the owner cancels a queued replacement and settles all requests', async t => {
   const { controller, menus, sent, destroy } = fixture(t);
-  const sessions = [controller.show({ id: 'menu-file' }), controller.show({ id: 'menu-edit' })];
+  const sessions = [controller.show({ id: 'menu-edit' }), controller.show({ id: 'menu-help' })];
   await menus[0].finish();
   destroy();
   await tick();
   await Promise.all(sessions);
   assert.equal(menus.length, 1);
-  assert.deepEqual(sent.map(([, id]) => id), ['menu-file']);
+  assert.deepEqual(sent.map(([, id]) => id), ['menu-edit']);
 });
 
 test('closing an idle controller acknowledges immediately without opening a popup', async t => {

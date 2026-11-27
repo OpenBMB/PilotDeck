@@ -7,7 +7,7 @@ export const desktopCommands = [
 export type { DesktopCommand, DesktopMenuState } from '../../../ui/shared/desktopCommands';
 export const emptyMenuState: DesktopMenuState = {
   ready: false, blocked: false, canNewConversation: false,
-  hasProject: false, canFind: false, sidebarVisible: false,
+  hasProject: false, canFind: false, sidebarVisible: false, editSelection: false,
 };
 export function normalizeMenuState(value: unknown): DesktopMenuState {
   const record = value && typeof value === 'object' ? value as Record<string, unknown> : {};

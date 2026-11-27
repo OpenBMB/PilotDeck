@@ -3,52 +3,65 @@ import { expect, it } from 'vitest';
 import type { MenuItemConstructorOptions } from 'electron';
 import { buildApplicationMenu } from '../../../apps/desktop/src/applicationMenu';
 
+const flatten = (menu: MenuItemConstructorOptions[]) =>
+  menu.flatMap(section => section.submenu as MenuItemConstructorOptions[]);
+const menuState = (editSelection = false) => ({
+  ready: true, blocked: false, canNewConversation: true,
+  hasProject: true, canFind: true, sidebarVisible: true, editSelection,
+});
+
 for (const platform of ['darwin', 'win32', 'linux'] as const) {
   for (const language of ['en', 'zh-CN'] as const) {
-    it(`provides localized native reload and editing roles on ${platform}/${language}`, () => {
-      const menu = buildApplicationMenu(platform, language);
-      const items = menu.flatMap(section => section.submenu as MenuItemConstructorOptions[]);
+    it(`keeps only Edit and Help with native reload and editing roles on ${platform}/${language}`, () => {
+      const menu = buildApplicationMenu(platform, language, undefined, { state: menuState() });
+      expect(menu.map(section => section.id)).toEqual(['menu-edit', 'menu-help']);
+      const items = flatten(menu);
       expect(items.find(item => item.role === 'reload')).toMatchObject({
-        label: language === 'zh-CN' ? '重新加载界面' : 'Reload Interface', accelerator: 'CmdOrCtrl+R',
+        label: language === 'zh-CN' ? '重新加载' : 'Reload', accelerator: 'CmdOrCtrl+R',
       });
       expect(items.filter(item => item.role === 'reload')).toHaveLength(1);
-      for (const role of ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll', 'quit']) {
+      for (const role of ['undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectAll', 'quit']) {
         expect(items.some(item => item.role === role)).toBe(true);
       }
-      expect(menu.some(item => item.label === 'PilotDeck')).toBe(platform === 'darwin');
+      // Hidden entries keep their accelerators without cluttering the menu.
+      expect(items.find(item => item.role === 'selectAll')).toMatchObject({ visible: false, accelerator: 'CmdOrCtrl+A' });
     });
   }
 }
 
-it('routes product actions and platform-specific help without enabling missing contexts', () => {
-  const commands: string[] = [];
-  const help: string[] = [];
-  const state = { ready: true, blocked: false, canNewConversation: true, hasProject: false, canFind: false, sidebarVisible: true };
-  for (const platform of ['darwin', 'win32'] as const) {
-    const menu = buildApplicationMenu(platform, 'zh-CN', undefined, {
-      state, dispatch: command => commands.push(command), help: action => help.push(action),
-    });
-    const items = menu.flatMap(section => section.submenu as MenuItemConstructorOptions[]);
-    expect(items.find(item => item.id === 'files')?.enabled).toBe(false);
-    expect(items.find(item => item.id === 'find')?.enabled).toBe(false);
-    expect(items.find(item => item.id === 'toggle-sidebar')).toMatchObject({ checked: true, registerAccelerator: false });
-    for (const id of ['new-conversation', 'new-project', 'settings', 'skills', 'scheduled-tasks', 'check-updates']) {
-      const entry = items.find(item => item.id === id)!;
-      expect(entry.enabled).toBe(true);
-      (entry.click as Function)();
-      expect(commands.at(-1)).toBe(id);
-    }
-    (items.find(item => item.id === 'help-docs')!.click as Function)();
-    expect(help.at(-1)).toBe('docs');
-    const settingsSection = menu.find(section => (section.submenu as MenuItemConstructorOptions[]).some(item => item.id === 'settings'));
-    expect(settingsSection?.label).toBe(platform === 'darwin' ? 'PilotDeck' : '文件');
+it('enables native Delete only while editable text is selected', () => {
+  for (const platform of ['darwin', 'win32', 'linux'] as const) {
+    const deleteItem = (editSelection: boolean) => flatten(buildApplicationMenu(platform, 'en', undefined, {
+      state: menuState(editSelection),
+    })).find(item => item.role === 'delete');
+    expect(deleteItem(false)?.enabled).toBe(false);
+    expect(deleteItem(true)?.enabled).toBe(true);
   }
 });
 
-it('disables application actions while loading or behind a blocking dialog', () => {
-  for (const state of [undefined, { ready: true, blocked: true, canNewConversation: true, hasProject: true, canFind: true, sidebarVisible: true }]) {
-    const items = buildApplicationMenu('darwin', 'en', undefined, { state }).flatMap(section => section.submenu as MenuItemConstructorOptions[]);
-    for (const id of ['new-conversation', 'new-project', 'settings', 'files', 'find']) expect(items.find(item => item.id === id)?.enabled).toBe(false);
+it('routes hidden accelerators and help without resurrecting removed sections', () => {
+  const commands: string[] = [];
+  const help: string[] = [];
+  const menu = buildApplicationMenu('win32', 'zh-CN', undefined, {
+    state: menuState(), dispatch: command => commands.push(command), help: action => help.push(action),
+  });
+  const items = flatten(menu);
+  for (const id of ['new-conversation', 'new-project', 'settings']) {
+    const entry = items.find(item => item.id === id)!;
+    expect(entry.visible).toBe(false);
+    expect(entry.enabled).toBe(true);
+    (entry.click as Function)();
+    expect(commands.at(-1)).toBe(id);
+  }
+  (items.find(item => item.id === 'help-docs')!.click as Function)();
+  expect(help.at(-1)).toBe('docs');
+  for (const id of ['menu-file', 'menu-view', 'menu-go']) expect(menu.map(section => section.id)).not.toContain(id);
+});
+
+it('disables destructive editing while loading or behind a blocking dialog', () => {
+  for (const state of [undefined, { ...menuState(true), blocked: true }]) {
+    const items = flatten(buildApplicationMenu('darwin', 'en', undefined, { state }));
+    expect(items.find(item => item.role === 'delete')?.enabled).toBe(false);
     expect(items.find(item => item.role === 'reload')?.enabled).not.toBe(false);
   }
 });

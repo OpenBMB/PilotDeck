@@ -24,10 +24,10 @@
   display: grid;
   grid-template-columns: 234px minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid rgba(var(--pd-accent-rgb, 75, 73, 136), 0.14);
-  border-radius: 14px;
+  border: 0;
+  border-radius: 0;
   background: var(--surface);
-  box-shadow: 0 20px 60px rgba(var(--pd-accent-rgb, 56, 53, 116), 0.122);
+  box-shadow: none;
   color: var(--ink);
   font-family: "PingFang SC", "PingFang TC", "Hiragino Sans GB", "Microsoft YaHei", Inter, system-ui, sans-serif;
 }
@@ -60,7 +60,7 @@
   flex-direction: column;
   overflow: hidden;
   border-right: 1px solid var(--pd-accent-border, rgb(225, 223, 240));
-  background: var(--pd-neutral-soft, rgb(248, 247, 255));
+  background: transparent;
 }
 
 :where(.pilotdeck-settings-app) .sidebar-brand {
@@ -213,6 +213,9 @@
   display: grid;
   grid-template-rows: 62px minmax(0, 1fr);
   overflow: hidden;
+  border-radius: 14px 0 0 0;
+  border-top: 1px solid var(--pd-border, rgba(75, 73, 136, 0.2));
+  border-left: 1px solid var(--pd-border, rgba(75, 73, 136, 0.2));
   background: rgb(255, 255, 255);
 }
 

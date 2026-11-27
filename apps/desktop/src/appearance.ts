@@ -57,6 +57,11 @@ ${startupStyle}
 <div id="loading" role="status"><div class="pd-startup-track" role="progressbar" aria-label="PilotDeck" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"><div class="pd-startup-bar" id="bar" style="width:8%"></div></div><p class="pd-startup-message" id="message">${labels.starting}</p></div>
 <section class="pd-startup-failure" id="failure" role="alert"><h2>${labels.failed}</h2><p class="reason" id="reason"></p><div class="pd-startup-meta" id="code"></div><p class="pd-startup-meta" id="log"></p><div class="pd-startup-actions"><button id="retry">${labels.restart}</button><button id="saveLog" class="secondary">${labels.save}</button></div><p class="pd-startup-meta" id="saveStatus" role="status"></p></section>
 </main></div><script>(()=>{
+const shell=document.getElementById('pilotdeck-startup-shell');
+let reloaded=false;try{reloaded=performance.getEntriesByType('navigation')[0]?.type==='reload'}catch{}
+// A reload already has a live runtime, so drop the boot shell instead of
+// replaying the startup screen; the app bundle paints in place.
+if(shell&&reloaded){shell.remove();return}
 const web=${web};
 const languages=${JSON.stringify({ en: startupLabels('en'), 'zh-CN': startupLabels('zh-CN') })};
 const saved=key=>{try{return localStorage.getItem(key)}catch{return null}};

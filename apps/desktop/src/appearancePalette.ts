@@ -31,7 +31,9 @@ export function deriveAppearanceColors(value: LightAppearance, dark: boolean) {
     background: dark ? '#23252b' : light.background,
     surface, sidebar,
     elevated: dark ? neutral[1] : light.surface,
-    canvasGradient: `linear-gradient(135deg, ${accent[1]}, ${neutral[1]} 55%, ${accent[2]})`,
+    canvasGradient: dark
+      ? 'radial-gradient(circle at center, #2B292D 0%, #121113 100%)'
+      : `radial-gradient(circle at center, ${mixColor(palette.accent, '#ffffff', 0.88)} 0%, ${mixColor(palette.accent, '#ffffff', 0.95)} 100%)`,
     sidebarGradient: `linear-gradient(165deg, ${sidebar}, ${sidebarEnd} 70%, ${sidebar})`,
     ink: dark ? neutral[11] : light.ink,
     muted: readable(dark ? neutral[10] : light.muted, [surface, sidebar, sidebarEnd], dark ? '#ffffff' : '#000000'),

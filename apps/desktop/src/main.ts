@@ -894,6 +894,14 @@ function resolveRuntimeRoot(): string {
   if (process.env.PILOTDECK_DESKTOP_RUNTIME_ROOT) {
     return path.resolve(process.env.PILOTDECK_DESKTOP_RUNTIME_ROOT);
   }
+  // `electron .` reports isPackaged=true for this checkout, so development is
+  // detected through defaultApp and served from the build-runtime staging dir
+  // instead of a stale copy that may exist under Electron's resources folder.
+  if (process.defaultApp) {
+    const staged = path.resolve(__dirname, "..", ".runtime", "app");
+    if (fs.existsSync(path.join(staged, "ui", "dist", "index.html"))) return staged;
+    return path.resolve(__dirname, "..", "..", "..");
+  }
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "runtime");
   }
@@ -1162,6 +1170,9 @@ function dispatchDesktopCommand(command: DesktopCommand): void {
   mainWindow.focus();
   mainWindow.webContents.send("pilotdeck:command", command);
 }
+
+// The caption's sidebar glyph reuses the keyboard/menu command pipeline.
+ipcMain.on("pilotdeck:toggle-sidebar", () => dispatchDesktopCommand("toggle-sidebar"));
 
 function desktopAboutContext() {
   return { language: readAppearance().language, appVersion: app.getVersion(), metadata: readBuildMetadata(),

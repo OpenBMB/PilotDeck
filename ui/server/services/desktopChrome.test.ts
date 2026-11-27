@@ -3,6 +3,7 @@ import { expect, it, vi } from 'vitest';
 const ipc = vi.hoisted(() => ({
   invoke: vi.fn().mockResolvedValue(undefined),
   on: vi.fn(),
+  send: vi.fn(),
   sendSync: vi.fn().mockReturnValue({ dark: true, fullscreen: false }),
 }));
 import { installWindowChrome } from '../../../apps/desktop/src/preloadChrome';
@@ -35,17 +36,20 @@ it('Windows caption initializes its saved language, follows language/fullscreen 
   installWindowChrome('win32', ipc as any);
   window.dispatchEvent(new Event('DOMContentLoaded'));
   const host = document.getElementById('pilotdeck-window-caption')!;
-  const button = host.shadowRoot!.querySelector('button')!;
-  const buttons = [...host.shadowRoot!.querySelectorAll('button')];
-  expect(buttons.map(button => button.textContent)).toEqual(['文件', '编辑', '查看', '前往', '帮助']);
+  const button = host.shadowRoot!.querySelector('button[data-menu]')!;
+  const buttons = [...host.shadowRoot!.querySelectorAll('button[data-menu]')];
+  expect(buttons.map(button => button.textContent)).toEqual(['编辑', '帮助']);
+  const sidebarButton = host.shadowRoot!.querySelector('button.icon')!;
+  sidebarButton.click();
+  expect(ipc.send).toHaveBeenCalledWith('pilotdeck:toggle-sidebar');
   document.documentElement.lang = 'en';
   await Promise.resolve();
-  expect(buttons.map(button => button.textContent)).toEqual(['File', 'Edit', 'View', 'Go', 'Help']);
+  expect(buttons.map(button => button.textContent)).toEqual(['Edit', 'Help']);
   expect(document.documentElement.dataset.desktopPlatform).toBe('win32');
   expect(document.documentElement.hasAttribute('data-desktop-dark')).toBe(true);
   button.click(); button.click();
   expect(ipc.invoke).toHaveBeenCalledTimes(1);
-  expect(ipc.invoke).toHaveBeenLastCalledWith('pilotdeck:show-menu', expect.objectContaining({ id: 'menu-file', buttons: expect.any(Array) }));
+  expect(ipc.invoke).toHaveBeenLastCalledWith('pilotdeck:show-menu', expect.objectContaining({ id: 'menu-edit', buttons: expect.any(Array) }));
   await Promise.resolve();
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10' }));
   expect(ipc.invoke).toHaveBeenCalledTimes(2);
@@ -63,20 +67,20 @@ it('Windows caption initializes its saved language, follows language/fullscreen 
   ipc.invoke.mockImplementationOnce(() => new Promise<void>(resolve => { closeSecond = resolve; }));
   button.click();
   buttons[1].dispatchEvent(new MouseEvent('mouseenter'));
-  expect(ipc.invoke).toHaveBeenLastCalledWith('pilotdeck:show-menu', expect.objectContaining({ id: 'menu-edit' }));
+  expect(ipc.invoke).toHaveBeenLastCalledWith('pilotdeck:show-menu', expect.objectContaining({ id: 'menu-help' }));
   closeFirst();
   await Promise.resolve();
   expect(buttons[1].getAttribute('aria-expanded')).toBe('true');
   const menuCallback = ipc.on.mock.calls.find(call => call[0] === 'pilotdeck:caption-menu')![1];
-  menuCallback({}, 'menu-view');
-  expect(buttons[2].getAttribute('aria-expanded')).toBe('true');
+  menuCallback({}, 'menu-edit');
+  expect(buttons[0].getAttribute('aria-expanded')).toBe('true');
   expect(buttons[1].getAttribute('aria-expanded')).toBe('false');
   closeSecond();
   await Promise.resolve();
-  expect(buttons[2].getAttribute('aria-expanded')).toBe('false');
+  expect(buttons[0].getAttribute('aria-expanded')).toBe('false');
   document.documentElement.lang = 'zh-CN';
   await Promise.resolve();
-  expect(buttons.map(button => button.textContent)).toEqual(['文件', '编辑', '查看', '前往', '帮助']);
+  expect(buttons.map(button => button.textContent)).toEqual(['编辑', '帮助']);
   button.focus();
   button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
   expect(host.shadowRoot!.activeElement).toBe(buttons[1]);
